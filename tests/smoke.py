@@ -21848,7 +21848,7 @@ with _tf36.TemporaryDirectory() as _td36w:
                 return _lines[_lo:_hi + 1]
         return None
 
-    _unbound47, _fail47, _unver47, _self47 = [], [], [], []
+    _unbound47, _fail47, _unver47, _self47, _vac47 = [], [], [], [], []
     _ran47 = _scan47 = _citing47 = 0
     for _d47 in sorted((ROOT / "docs").rglob("*.md")):
         _scan47 += 1
@@ -21862,8 +21862,11 @@ with _tf36.TemporaryDirectory() as _td36w:
             _unbound47.append(_name47)
             continue
         _sha47 = _m47.group(1)
-        for _s47 in _re37.findall(r"git show ([0-9a-f]{7,40})",
-                                  "\n".join(_note_block47(_t47) or [])):
+        _note47 = _re37.findall(r"git show ([0-9a-f]{7,40})",
+                                "\n".join(_note_block47(_t47) or []))
+        if not _note47:
+            _vac47.append(_name47)          # a bound doc this assertion never reaches — counted
+        for _s47 in _note47:                # rather than skipped in silence; see the label below
             if not (_sha47.startswith(_s47) or _s47.startswith(_sha47)):
                 _self47.append(f"{_name47}: declares {_sha47} but its note runs "
                                f"`git show {_s47}`")
@@ -21974,7 +21977,19 @@ with _tf36.TemporaryDirectory() as _td36w:
     _log47 = _sp53.run(["git", "-C", str(ROOT), "log", "--all", "--format=%H%x09%s"],
                        capture_output=True, text=True).stdout.splitlines()
     for _dn47, _needle47 in _DOCKET47.items():
-        _m47b = _CANON47.search((ROOT / "docs" / f"{_dn47}.spec.md").read_text(encoding="utf-8"))
+        # ⚠ GUARDED rather than assumed, because an unguarded read here ABORTS the suite at this
+        # line — and this line sits BEFORE D6, so a missing docket doc takes the pinned-surface
+        # pin down with it and nothing after it ever executes. MEASURED 2026-09-19 on a clone at
+        # v0.4.37: with `docs/dream-teeth-coverage.spec.md` removed, pins 1–9 print, then
+        # FileNotFoundError, no summary line, and D6 absent from the output. A missing FILE is a
+        # verdict about the corpus, so it belongs in this list beside `unbound` rather than in a
+        # traceback. The adjacent `if not _m47b` guard shows the author guarded "no binding" but
+        # not "no file" — a predicate narrower than the message it serves.
+        _doc47 = ROOT / "docs" / f"{_dn47}.spec.md"
+        if not _doc47.exists():
+            _rule_bad47.append(f"{_dn47}: no such doc")
+            continue
+        _m47b = _CANON47.search(_doc47.read_text(encoding="utf-8"))
         if not _m47b:
             _rule_bad47.append(f"{_dn47}: unbound")
             continue
@@ -22011,12 +22026,21 @@ with _tf36.TemporaryDirectory() as _td36w:
           "hand-adjudicated, and a docket outside the table is outside the check.",
           not _rule_bad47 and len(_rule_ok47) == len(_DOCKET47))
 
-    check("v0.4.37 pin 9 (REGRESSION GUARD, NOT A PIN — MEASURED: the pre-fix corpus carries NO such "
-          "token at all, since only one doc was bound and its reading note has no `git show`, so "
-          "this cannot fail on pre-fix code by construction): a bound doc's reading note agrees "
+    check("v0.4.37 pin 9 (REGRESSION GUARD, NOT A PIN — MEASURED: the pre-fix corpus binds ONE doc, "
+          "and this assertion is VACUOUS on it rather than absent for it: that doc's reading note "
+          "DOES carry `git show e5cce77` at `:41`, one line under a token opening `**H` rather than "
+          "`>`, so the blockquote walk returns the token line alone and the loop finds nothing to "
+          "compare. Green on pre-fix by construction either way — but for the REACH reason printed "
+          "below, not for the absence this label used to claim): a bound doc's reading note agrees "
           "with ITSELF — the example command it hands the reader uses the revision it declares "
           f"({len(_self47)} disagree"
           f"{': ' + '; '.join(_self47) if _self47 else ''}). "
+          f"⚠ REACH, printed rather than inferred: {len(_vac47)} bound doc(s) contribute NO assertion "
+          f"at all{': ' + ', '.join(_vac47) if _vac47 else ''} — the note block yields no `git show`, "
+          "so the walk above has nothing to compare and skips them. The guard's reach is therefore a "
+          "SUBSET of the bound corpus, and naming the subset here is the difference between a guard "
+          "with a stated boundary and one whose gap a reader must reconstruct from a count nobody "
+          "prints. "
           "⚠ The note declares its revision TWICE — the canonical token this gate reads, and the "
           "literal `git show <sha>:<path>` one line later — and only the first was ever checked. "
           "MEASURED, the rebindings that repaired the token and left the command produced THREE "
@@ -22045,7 +22069,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                                         #     gate, which is THREE checks because it
                                                         #     is three claims taking three different
                                                         #     repairs: pin 6 asserts the revision is
-                                                        #     NAMED (RED on 18 of `fbfe07e`'s
+                                                        #     NAMED (RED on 20 of `fbfe07e`'s 21
                                                         #     citing docs), pin 7a that it is
                                                         #     PRESENT — a REGRESSION GUARD, green
                                                         #     pre-fix by construction since every

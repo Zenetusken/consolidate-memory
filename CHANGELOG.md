@@ -57,6 +57,22 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    check normalizes whitespace before matching. It **cannot fail on pre-fix code**, so by this repo's
    own rule it is labelled a guard, never a pin.
 
+6. **The harness this release adds was itself reviewed, and three measured defects in it are fixed
+   here rather than shipped.** (a) The D6 ledger's provenance note carried a **superseded numeral**:
+   it read *"RED on 18 of `fbfe07e`'s citing docs"*, the pre-widening figure — the spec beside it
+   records *"`18 of 19` became `20 of 21` when it was widened"*, and the check's own printed label
+   says *"reddens the other 20"*. The ledger contradicted both. (b) An **unguarded `read_text`** in
+   the docket loop sat *before* D6, so deleting a single docket doc aborted the suite with a
+   `FileNotFoundError` and **D6 never ran** — the *"an orphaned section can never print green"*
+   guarantee defeated upstream of the counter that guarantees it. It now reports a verdict
+   (`no such doc`) and D6 still evaluates; **mutation-verified: 2176 passed / 0 failed with the doc,
+   2175 / 1 without it.** (c) Pin 9's reach is **21 of the 23 bound docs** — a reading note authored
+   as a bold paragraph rather than a blockquote yields no `git show` for the walk to compare, so the
+   assertion **skipped two docs in silence** while its label explained the gap by claiming pre-fix
+   carried no such token at all. **That stated reason was itself false**, and measurably so: the one
+   bound pre-fix doc *does* carry a `git show e5cce77` command, one line beneath a token that opens
+   `**H` rather than `>`. The reach is now **printed, not inferred**.
+
 ⚠ **This release adds the suite's first check that reads the tree's own git history**, so `ci.yml`
 now sets `fetch-depth: 0`. A shallow clone makes three of these checks report **verdicts about the
 corpus** rather than name a missing input — measured, an archive tree and a `--depth 1` clone are
