@@ -263,6 +263,47 @@ on either it fails naming the INSTRUMENT (`this clone is SHALLOW`) instead of re
 documents. MEASURED on a `--depth 1` clone: **2174 passed / 3 failed**, pin 8 RED with that fault
 message.
 
+   (r) **A final pass over the pins' own predicates, and every defect it found was one shape — an
+   instrument reading something other than its subject.** (i) **Pin 10's predicate was satisfied by the
+   comment beside it.** The check tested whether the job's text contained the string `fetch-depth: 0`,
+   and the same commit that added the remedy also added a seven-line comment NAMING the remedy — so the
+   explanatory prose satisfied the check, and a mutation deleting the `with:` block would have gone
+   green on it. It now requires a **line declaring the key** (`^\s*fetch-depth:\s*0\s*(?:#.*)?$`), which
+   a whole-line comment cannot match because its `#` sits exactly where the key would, while a key
+   carrying a trailing comment still does. MEASURED: `ci.yml`'s comment line `False` and its key `True`;
+   `release.yml`'s comment `False` and its key `True`. The glob was `.yml`-only while `*.yaml` is
+   equally legal to Actions; widened — recorded as closing a **latent** hole, since the repo carries no
+   `.yaml` workflow today. (ii) **Pin 4 read its prose through a sliding anchor.** Splitting on
+   `provenance:` and then on `on:` does not go empty when the `provenance:` comment that OPENS the prose
+   is deleted: the anchor re-binds to the `provenance:` **job name** and cuts at `runs-on:`, returning
+   the YAML fragment `name: provenance + SBOM `. Truthy — so a fault and an absence shared one
+   representation, and the check answered a missing subject with a verdict about `SECURITY.md`'s prose.
+   The anchor is now asserted and scoped to the workflow header, and a missing subject is a **FAULT that
+   states no verdict**, the arm pin 8 already established. MEASURED as a pair on one tree and one
+   mutation — the header prose deleted, the tabulation unmoved and only the report changed: pre-repair
+   **`2176 / 1`**, pin 4 the single red, reading *"unnamed `['sha256sums']`, count-claims none"*, a
+   verdict computed FROM the absent subject; post-repair the same **`2176 / 1`**, reading *"FAULT —
+   release.yml's header carries NO `provenance:` prose block, so this read has no SUBJECT"*, and the
+   derived list is withheld rather than prefixed to it. (iii) **The spec's own numerals, re-measured
+   with their matchers now stated.** Its `git` census read *36 / exactly four resolve against `ROOT` /
+   the other 32*; under the matcher — the argv[0] literal `"git"` — the head reads **39 / five / 34**
+   and the base `fbfe07e` reads **34 / 0**, so PR B adds five invocations and every one of them reads
+   `ROOT`, and the set is named by a greppable anchor rather than by a line list. The paragraph
+   recording what the instrument repair moved still carried *45 / 37+8* as a live figure, superseded by
+   pin 10's addition; it now states which correction it is about, and the reconciliation
+   (`2131 + 45 = 2176`, `2131 + 46 = 2177`) makes pin 10 precisely the one red that separates them. The
+   `DOCS` bullet held a base-bound **79** against a live **81** — the **+2 being exactly the two specs
+   this stack adds**, one per PR. (iv) **The `DOCS` decision that spec asked to have recorded is
+   recorded, and it is NOT to add it:** README does not mention this document, so it is not
+   README-reachable, and **its own outbound links are therefore not link-checked by the gate it
+   describes**. (v) **`check_contiguity`'s justification said "Named per needle" and named four of
+   seven** — a universal asserted over a fraction of its own set. All seven are named now, and the
+   partition the sentence states (**5 both-sides / 2 space-right**) reproduces member by member.
+   (vi) **And row 10 was still outside the checks table**, a blank line above it splitting the table in
+   two — the same row that this release first committed with a prose fragment for a first cell. **Both
+   are one defect: a row the reader's parser cannot reach.** No check was added or removed; the
+   self-counting pin is unchanged at **2177**.
+
 Gate: smoke **2177** passed / 0 failed · docs_links · sim · mypy (42 source files) · manifests.
 
 ## [0.4.36] — 2026-09-19

@@ -322,10 +322,16 @@ def check_contiguity() -> None:
     to read "delimited by PUNCTUATION" outright, which this sentence's own parenthetical
     contradicted: `/cm-connect` is named below as *"a backtick and a space"*, and a needle with a
     space on one side is not delimited by punctuation. The qualified form is the true one and the
-    only one the argument needs. Named per needle: (`/cm-sync` by backticks both sides,
-    `docs/network-guide.md` by `(` at `:225` and `#` at
-    `:322` — the delimiter is the single `#`; an earlier draft wrote `#)`, and no `#)` occurs
-    there — `/cm-connect` and `/cm-share` by a backtick and a space). So
+    only one the argument needs. ⚠ **Named per needle — and now all SEVEN rather than four**, because the sentence read
+    *"Named per needle"* over a list holding four of them: a universal asserted over a set its own list
+    had sampled a fraction of, which is this check's defect class sitting inside its own justification.
+    MEASURED 2026-09-19 by reading the immediate neighbours of every occurrence in README.md —
+    **backtick on BOTH sides**: `/cm-sync` (3 occurrences), `/cm-network` (2), `/cm-domain` (3),
+    `/cm-group` (2), and `docs/network-guide.md` (2, `(` on the left at both and `)` on the right at
+    one, `#` at the other — the delimiter is the single `#`; an earlier draft wrote `#)`, and no `#)`
+    occurs there); **a backtick and a SPACE**: `/cm-connect` (2) and `/cm-share` (2), space on the right
+    at every occurrence. That is the **5 both-sides / 2 space-right** partition the sentence above
+    states — reached by naming each member rather than by counting them. So
     the README fixture can only
     ever exercise a needle with at least one PUNCTUATION boundary — never one whose every boundary
     is whitespace — and it cannot reach the

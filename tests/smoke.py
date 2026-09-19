@@ -21795,19 +21795,47 @@ with _tf36.TemporaryDirectory() as _td36w:
     # it does now. ⚠ A comment at `:12` is not a counted upload line, so it is not a counterexample.
     _uploads37 = _re37.findall(r'gh release upload\s+"\$TAG"\s+([^\n]*?)\s*--clobber', _code_flat37)
     _assets37 = _uploads37[0].split() if _uploads37 else []
-    _provc37 = _uncomment37(_rel37).split("provenance:", 1)[-1].split("on:", 1)[0]
+    # ⚠ THE ANCHOR IS ASSERTED, not assumed — the SECOND of this check's two fail-open reads, and
+    # the one the earlier repair did not reach. The SECURITY.md read above carries it now; this one
+    # kept the same `[-1]`-on-a-missing-needle idiom, and its failure is worse than a wrong region,
+    # because its subject IS comment prose (see the normalization note above): when the `provenance:`
+    # comment that opens this prose is deleted the anchor does not vanish — it SLIDES to the
+    # `provenance:` JOB NAME below `jobs:`, and `.split("on:", 1)[0]` then cuts at `runs-on:` and
+    # returns a YAML fragment. MEASURED on a copy of this tree with that comment deleted: the
+    # extraction returns `name: provenance + SBOM `, whose non-emptiness makes the guard below return
+    # True — so an ABSENT claim and an UNREAD one share one representation, and pin 4 blames
+    # `SECURITY.md`'s prose (`unnamed ['sha256sums']`) while `SECURITY.md` still names `SHA256SUMS`.
+    # A fault reported as a verdict, in the check built to catch that. The prose lives in the
+    # workflow's HEADER, so the header is the scope and its anchor is the precondition: absent ⇒ the
+    # read says so, and pin 4 reddens on its own arm naming the subject it lost.
+    _provhead37 = _rel37.split("\njobs:", 1)
+    _provh_flat37 = _uncomment37(_provhead37[0])
+    _provhf37 = ""
+    if len(_provhead37) < 2:
+        _provhf37 = "release.yml declares no top-level `jobs:` key, so its header cannot be located"
+    elif "provenance:" not in _provh_flat37:
+        _provhf37 = ("release.yml's header carries NO `provenance:` prose block, so this read has no "
+                     "SUBJECT — a slid anchor here returns YAML, not prose")
+    _provc37 = (_provh_flat37.split("provenance:", 1)[1].split("on:", 1)[0]
+                if not _provhf37 else "")
     # Each asset is named in BOTH live sites by a token derived from its FILENAME, so adding a third
     # asset to the workflow reddens this until the prose names it too.
     _toks37 = [a.split(".")[0].lower() for a in _assets37]
     _named37 = [t for t in _toks37 if t not in _sec_flat37.lower() or t not in _provc37.lower()]
     _countclaim37 = [w for w in _re37.findall(r"all\s+(two|three|four|five)\b",
                                               _sec_flat37 + " " + _provc37)]
+    # ⚠ A FAULT STATES NO VERDICT — pin 8's arm, applied here: when the subject is missing, the
+    # token list is computed FROM the missing subject, so printing it would report a verdict derived
+    # from an input the check could not read. The fault replaces it rather than preceding it.
+    _provv37 = (f"FAULT — {_provhf37}; NO verdict about the prose is reported here. "
+                if _provhf37 else
+                f"unnamed {_named37 or 'none'}, count-claims {_countclaim37 or 'none'}, ")
     _num37 = {"two": 2, "three": 3, "four": 4, "five": 5}
     check("v0.4.37 pin 4 (PIN — RED on the pre-fix prose, MEASURED twice over: `release.yml`'s "
           "`provenance:` comment claimed it \"attaches all three\", while `SECURITY.md` named an "
           "SPDX SBOM and never mentioned SHA256SUMS): the live packaging prose names exactly the "
           f"assets the workflow's upload line carries ({len(_assets37)}: {_assets37 or 'NONE'}); "
-          f"unnamed {_named37 or 'none'}, count-claims {_countclaim37 or 'none'}, "
+          f"{_provv37}"
           f"upload lines read {len(_uploads37)} (must be exactly 1). Matcher: the "
           "upload line's own filename list for the ground truth, read from COMMENT-LINE-STRIPPED "
           "workflow text — the lines are DROPPED, not merely un-marked, because a marker-stripped "
@@ -22399,14 +22427,29 @@ with _tf36.TemporaryDirectory() as _td36w:
     # own input is the class this PR exists to gate, so it is gated rather than left in the comment.
     #
     # MATCHER, stated because the check is only as wide as it: the 2-space-indented blocks under a
-    # top-level `jobs:` key, per `.github/workflows/*.yml`; each block containing the literal
-    # `tests/smoke.py` must also contain `fetch-depth: 0`. It is TEXT and not a YAML parse — the same
-    # reading this suite's two existing `release.yml` readers use — so it pins the REMEDY the suite's
-    # own fault message names, NOT the depth actually fetched: a job could satisfy it and still
-    # clone shallow. It is here because the alternative was the comment.
+    # top-level `jobs:` key, per `.github/workflows/*.yml` and `*.yaml` (both legal Actions
+    # extensions, and the repo has only `.yml` today); each block containing the literal
+    # `tests/smoke.py` must also contain a LINE DECLARING `fetch-depth: 0` as its key. ⚠ It read
+    # "must also contain `fetch-depth: 0`" until the substring was measured against the mutation it
+    # exists for — the matcher note above records the measurement. It is TEXT and not a YAML parse —
+    # the same reading this suite's two existing `release.yml` readers use — so it pins the REMEDY
+    # the suite's own fault message names, NOT the depth actually fetched: a job could satisfy it and
+    # still clone shallow. It is here because the alternative was the comment.
     # Annotated because this accumulator's ONLY write is a `setdefault(...).append(...)`, and mypy
     # cannot infer a container's type from `setdefault`'s return — unlike the sibling accumulators it
     # was modelled on, which write with a plain `.append` and need no hint.
+    # ⚠ THE REMEDY IS READ AS A KEY, NOT AS A MENTION — and the first cut was the mention, which
+    # this branch's own repair then defeated. The substring `"fetch-depth: 0" in <job text>` reads
+    # the job's RAW lines, and the fix for the release-path defect opened `release.yml`'s `verify`
+    # with a seven-line comment that names the remedy three lines above the key it explains. So the
+    # COMMENT satisfied the check. MEASURED: deleting the `with:` block alone leaves the suite at
+    # `2177 passed, 0 failed` — the pin is green through the exact edit it exists to catch, which is
+    # the worst shape a pin can take because the file still LOOKS right. The matcher now requires a
+    # LINE that DECLARES the key, `^\s*fetch-depth:\s*0\s*(?:#.*)?$`: a whole-line comment cannot
+    # match it (its `#` sits exactly where the key would), while `test-macos`'s key carrying a
+    # trailing comment still does. TEXT still, and not a YAML parse — the same limit as before,
+    # stated in the label rather than fixed here.
+    _fdkey47 = _re37.compile(r"^\s*fetch-depth:\s*0\s*(?:#.*)?$")
     _sw47: dict[str, list[tuple[str, bool]]] = {}
     # ⚠ The one glob of this directory in the whole suite, so THIS read is the only thing that can
     # report on a workflow it cannot decode — nothing earlier is even looking. An unguarded read
@@ -22415,7 +22458,12 @@ with _tf36.TemporaryDirectory() as _td36w:
     # anti-vacuity clause below satisfied by the two known runners and the check GREEN over a
     # directory it had stopped reading. The fault is carried, not skipped.
     _swf47: list = []
-    for _wfp47 in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+    # ⚠ BOTH legal workflow extensions, not just the one in use: `.yaml` is equally valid to
+    # GitHub Actions and the repo has none today (MEASURED: `ls-tree -r` names `ci.yml`,
+    # `codeql.yml`, `release.yml`), so this closes a latent hole rather than a live one. A
+    # `.yaml` with no top-level `jobs:` key is skipped below like any other non-workflow.
+    for _wfp47 in sorted(list((ROOT / ".github" / "workflows").glob("*.yml"))
+                         + list((ROOT / ".github" / "workflows").glob("*.yaml"))):
         try:
             _wls47 = _wfp47.read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError) as _e47f:
@@ -22431,7 +22479,8 @@ with _tf36.TemporaryDirectory() as _td36w:
             _jtxt47 = "\n".join(_wls47[_jb47:_jend47])
             if "tests/smoke.py" in _jtxt47:
                 _sw47.setdefault(_wfp47.name, []).append(
-                    (_wls47[_jb47].strip(), "fetch-depth: 0" in _jtxt47))
+                    (_wls47[_jb47].strip(),
+                     any(_fdkey47.match(_jline47) for _jline47 in _wls47[_jb47:_jend47])))
     _sbad47 = [f"{_f}:{_j}" for _f, _js in _sw47.items() for _j, _ok in _js if not _ok]
     check("v0.4.37 pin 10 (PIN — MEASURED RED at the base `fbfe07e`, where ALL THREE jobs that run "
           "`tests/smoke.py` read False, because `fetch-depth` occurs zero times in either workflow "
@@ -22439,8 +22488,11 @@ with _tf36.TemporaryDirectory() as _td36w:
           "citation and docket gates resolve against revisions a depth-1 checkout does not contain — "
           "and on the release path a red `verify` CANCELS the release (`provenance` declares "
           "`needs: verify`) rather than degrading it, while CI stays green either way. MATCHER: the "
-          "2-space-indented blocks under a top-level `jobs:` key; a block containing the literal "
-          "`tests/smoke.py` must also contain `fetch-depth: 0`. ⚠ TEXT, not a YAML parse — so it "
+          "2-space-indented blocks under a top-level `jobs:` key, per `.github/workflows/*.yml` "
+          "and `*.yaml`; a block containing the literal `tests/smoke.py` must also contain a LINE "
+          "DECLARING the key — `^\\s*fetch-depth:\\s*0\\s*(?:#.*)?$` — because a whole-line "
+          "COMMENT naming the remedy hands the job no history, and this job's own header comment "
+          "does name it. ⚠ TEXT, not a YAML parse — so it "
           "pins the remedy the suite's own fault message names, not the depth actually fetched. "
           "⚠ ANTI-VACUITY: this also asserts BOTH known suite-runners are still MATCHED — MEASURED "
           f"{sorted(_sw47)}, since a rename that dropped one would otherwise leave a check about a "
