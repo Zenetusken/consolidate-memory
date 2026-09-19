@@ -339,8 +339,10 @@ it** — a check that cannot fail is not cover, however carefully it is worded.
    **may name an explicit absolute dir**, i.e. exactly the constant `_project_derived`'s second
    conjunct exists to refuse; it is also the highest-precedence scope, so it redirects *every*
    project. **Measured against a surgical mutation** (widening `_project_derived` to admit
-   `mem_dir_source == "policy"`): the whole suite stays green — **2146 passed, 0 failed** — while the
-   end-to-end cell renders again at **rc=0 wearing the ROOM's identity** (`domain_id: unknown`,
+   `mem_dir_source == "policy"`): it is caught by pin 19 and by nothing else — **2165 passed,
+   1 failed, and that failure is pin 19** — where before that pin existed the same widening left the
+   whole suite green — **2146 passed, 0 failed** — while the
+   end-to-end cell rendered again at **rc=0 wearing the ROOM's identity** (`domain_id: unknown`,
    `enrolled: false`, `cross_project_allowed: false`) on a store whose own project is enrolled
    `personal`; the unmutated control refuses with Arm A. **Pin 19 is the instance, not a table over
    the predicate's constant, and the reason is the finding's own shape:** a predicate edited to admit
@@ -1468,9 +1470,13 @@ missing index but a missing bound"* — is the whole of the available win:
   **resolve onto** the target, and only `resolve()` detects that. Nor may the loop stop at its first
   hit — `native_memory_dir` carries no `UNIQUE`, which is why the function returns a list and the
   caller must distinguish zero rows from two.
-- **`os.path.realpath` is 1.80× faster** than `Path(p).resolve()` (8.93 vs 16.10 µs, measured) and is
-  **not swappable**: it silently drops the `RuntimeError`/`ValueError` that `safe_resolve` exists to
-  convert into *unusable* — and both inputs are measured, not hypothetical.
+- **`os.path.realpath` is faster** — MEASURED at **1.4×–2.0×** over five fixtures, so the ratio is a
+  property of the *path* and not a constant — and is **not swappable**, for a reason *narrower* than
+  the ratio: on a symlink loop `Path(p).resolve()` raises the `RuntimeError` that `safe_resolve`
+  converts into *unusable*, while `realpath` **returns the loop path**, admitting an unusable store as
+  a usable one with nothing raised. ⚠ **A NUL is not part of that** — `realpath` raises `ValueError`
+  there too, exactly as `safe_resolve`'s own docstring records — so the loop is the whole of the
+  objection, and both inputs are measured rather than hypothetical.
 
 So the bound is the one available: **an unusable `store` yields `target is None`, and this returns `[]`
 whatever the registry holds** — on that input the scan cannot change the result. ⚠ **And it is a
@@ -1880,12 +1886,12 @@ python3 tests/smoke.py && python3 tests/docs_links.py && python3 tests/simulate_
 mypy --config-file mypy.ini && python3 tests/validate_manifests.py
 ```
 
-**All five green on the shipping revision (2026-09-19):** `smoke` 2163 passed / 0 failed,
+**All five green on the shipping revision (2026-09-19):** `smoke` 2166 passed / 0 failed,
 `docs_links`, `simulate_accumulation`, `mypy` and `validate_manifests` each rc 0.
 ⚠ **And mypy is not ceremony here — it caught a defect in this change that the other four cannot see
 by construction.** A helper's annotation read `Any`, which is never imported; under
 `from __future__ import annotations` every annotation is a **string**, so the name is resolved by
-nobody until something calls `typing.get_type_hints`, and the 2163-check suite ran **green** with the
+nobody until something calls `typing.get_type_hints`, and the whole suite ran **green** with the
 error present. The gate is the only surface that reads the annotations, which is why it is a separate
 step rather than folded into the suite. Repaired to `Path` — the precise type both call sites pass,
 which is the better fix than importing `Any` would have been.

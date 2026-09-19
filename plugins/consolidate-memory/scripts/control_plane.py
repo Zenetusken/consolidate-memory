@@ -835,13 +835,18 @@ _REGISTRY_ROW_COLS = ("project_id, display_name, native_memory_dir, session_dir,
 #     not already canonical can still resolve onto the target, and only `resolve()` detects that. Nor
 #     can the loop stop at its first hit — the LIST return is required, because two rows may name one
 #     store and the caller must distinguish zero from two.
-#   · `os.path.realpath` is 1.8x faster than `Path.resolve()` (8.9 vs 16.1 us) and would silently
-#     drop the `RuntimeError` / `ValueError` that `safe_resolve` exists to convert into "unusable".
-#     Both of those inputs are measured, not hypothetical — see the block comment in `rows_for_store`.
+#   · `os.path.realpath` is faster than `Path.resolve()` — MEASURED at 1.4-2.0x over five fixtures, so
+#     the ratio is a property of the PATH and not a constant — and it is not swappable for a reason
+#     NARROWER than the ratio: on a symlink loop `resolve()` raises the `RuntimeError` that
+#     `safe_resolve` converts to "unusable" (3.8-3.12), while `realpath` RETURNS the loop path, so an
+#     unusable store is admitted as a usable one with nothing raised to catch. A NUL is NOT part of
+#     that — `realpath` raises `ValueError` there too, exactly as `safe_resolve`'s docstring records.
+#     The loop is the whole of the objection, and it is measured rather than hypothetical — see the
+#     block comment in `rows_for_store`.
 # So the scan is bounded at the TARGET end (an unusable store resolves no row) and its cost is stated
 # here, rather than traded away for a faster wrong answer. The bound sits AFTER the query on purpose:
-# the query is the function's only fault channel, so skipping it would trade the query's cost, on a
-# rare input, for that signal — see the bound's own comment for the measurement.
+# the query is the only channel a REGISTRY fault reaches the caller through, so skipping it would
+# trade the query's cost, on a rare input, for that signal — see the bound's own comment.
 
 
 def rows_for_store(conn: sqlite3.Connection, store) -> list:

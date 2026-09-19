@@ -121,27 +121,30 @@ Design and evidence: `docs/identity-from-the-input.spec.md`.
    settings scopes; the redirect pins drove three. `policy` (`managed-settings.json`) is the highest-
    precedence scope and the one whose own docstring says it **may name an explicit absolute dir** —
    i.e. exactly the constant the predicate's second conjunct exists to refuse. **A one-line widening
-   of `_project_derived` to admit it leaves the whole suite green (2146 passed / 0 failed)** while
-   the render stamps the **room's** identity (`domain_id: unknown`, `cross_project_allowed: false`)
+   of `_project_derived` to admit it is caught by pin 19 and by nothing else — MEASURED: 2165 passed
+   / 1 failed, and that failure is pin 19** — where before that pin existed the same widening left
+   the whole suite green (2146 passed / 0 failed) while the render stamped the **room's** identity
+   (`domain_id: unknown`, `cross_project_allowed: false`)
    onto an enrolled subject's store at rc=0. Pin 19 is the **instance** rather than a table over the
    predicate's constant, and that is the finding's own shape: a predicate edited to admit a *name* is
    caught only by a check that *drives* that name.
 
 **Pins and the exit-code rule.** Each fix's pin **fails on pre-fix code**; checks that cannot are
-labelled GUARD rather than PIN. **59 new checks, measured 2026-09-19 by running the branch's own
-suite against a `fbfe07e` tree: 2129 passed / 34 failed there, and 2163 passed / 0 failed here** —
-the same total on both (2163), which is what makes the two runs comparable. **33 of the 34 failures
-carry `(PIN` in their own label, and not one GUARD or CONTROL failed** — ⚠ **and the count is stated
+labelled GUARD rather than PIN. **62 new checks, measured 2026-09-19 by running the branch's own
+suite against a `fbfe07e` tree: 2129 passed / 37 failed there, and 2166 passed / 0 failed here** —
+the same total on both (2166), which is what makes the two runs comparable. **34 of the 37 failures
+carry `(PIN` in their own label** — ⚠ **and the count is stated
 over *that* matcher, because the label has three spellings:** `(PIN)` × 17, `(PIN, site 1 of 2)` × 5,
 and `(PIN — …)` × 11. A reader who greps the **bare literal `(PIN)`** returns **17** and undercounts
 by half, which is the failure mode this entry's own subject is about — a census believed because its
 matcher was never named. Over the right matcher the taxonomy is enforced by the
 run rather than asserted by this entry: a reader who wants to audit the split can read it off
-the failures instead of counting the greys. ⚠ **The thirty-fourth is a stated exception rather than a
-pin:** pin 19's PRECONDITION, which is red on `fbfe07e` *because it asserts the fixture* — the field
+the failures instead of counting the greys. ⚠ **The other three are stated exceptions rather than
+pins:** pin 19's PRECONDITION, which is red on `fbfe07e` *because it asserts the fixture* — the field
 it reads (`mem_dir_source`) is introduced by this change, so the fixture cannot even be established
-there. That red pins no behaviour, and its label says so; a reader totalling the split should not
-count it among the pins. ⚠ **The increment is the sharp
+there — and pin 27's CONTROL and its REGRESSION GUARD, which are red there because the **subject is
+absent** rather than for the properties they assert. Each red pins no behaviour, and each label says
+so; a reader totalling the split should not count them among the pins. ⚠ **The increment is the sharp
 form of the same evidence, and it is read per round:** the two checks round 1 added are *exactly* the
 two that joined the red set (17 + 2 = 19), and the three that cannot flip — one GUARD, two
 PRECONDITIONs — stayed green on both trees. **Round 2 added six checks and moved the red count by
@@ -161,7 +164,7 @@ re-derived: **pin 24's PRECONDITION**, green on `fbfe07e` *on purpose*, because 
 attribute that pin's red to the arm rather than to a fixture that failed to build, and **pin 3's
 GUARD**, which measures `_restore36`'s promise to leave the shared registry as found and so has no
 pre-fix state to be red against. That GUARD is not decoration: **removing the `chmod` it guards turns
-it red and nothing else** (measured: 2162 passed / 1 failed), which is the only available way to show
+it red and nothing else** (measured: 2165 passed / 1 failed), which is the only available way to show
 a guard is not vacuous, since by this repo's own rule no PIN may cover it. **The identity pin
 renders **one
 store under two cwds** and requires the
@@ -208,8 +211,10 @@ input and one clause alone would misdiagnose the other.
     not 7.9). **No repair that speeds the loop is sound** — an index or a `WHERE` prefilter would speed
     the SELECT, the smaller half, and is unsound on its own terms anyway, since a non-canonical stored
     value can still **resolve onto** the target (only `resolve()` sees that, and the loop may not stop
-    at a first hit because `native_memory_dir` carries no `UNIQUE`); `os.path.realpath` is **1.80×
-    faster** and not swappable, silently dropping the raises `safe_resolve` exists to convert. So the
+    at a first hit because `native_memory_dir` carries no `UNIQUE`); `os.path.realpath` is **1.4×–2.0×
+    faster** (measured over five fixtures, so the ratio belongs to the path) and still **not
+    swappable**, because it *returns* a symlink loop's path where `resolve()` raises the error
+    `safe_resolve` converts. So the
     one available win is a **bound**: an unusable store yields `target is None`, and this returns `[]`
     whatever the registry holds. ⚠ **It is a CORRECTNESS bound, not only a cost one, and an earlier
     draft of this entry got that wrong** by claiming *no row can equal `None`*, so that the scan was

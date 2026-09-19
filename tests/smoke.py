@@ -20847,8 +20847,10 @@ with _tf36.TemporaryDirectory() as _td36:
               "not a way to name a subject. Measured on BOTH trees and against a mutation of the "
               "predicate: pre-fix the render exits 0; post-fix it refuses (`--store ... belongs to "
               "no registered project`); and widening `_project_derived` to admit "
-              "`mem_dir_source == \"policy\"` leaves the ENTIRE SUITE GREEN — 2146 passed, 0 "
-              "failed — while this very cell renders again at rc=0 wearing the ROOM's identity "
+              "`mem_dir_source == \"policy\"` reddens THIS cell and NOTHING else — MEASURED at "
+              "this revision: 2165 passed / 1 failed — where before this pin existed the same "
+              "widening left the ENTIRE SUITE GREEN (2146 passed, 0 failed) and this very cell "
+              "rendered again at rc=0 wearing the ROOM's identity "
               "(`domain_id: unknown`, `enrolled: false`, `cross_project_allowed: false`) on a "
               "store whose own project is enrolled `personal`. That is RC-5 re-opened by a "
               "one-line edit, and it is why the INSTANCE is the pin rather than a table over the "
@@ -21498,9 +21500,11 @@ with _tf36.TemporaryDirectory() as _td36w:
     # failure of its SUBJECT and not a red for its property — which is exactly why the labelling rule
     # is about the property. A guard called "green pre-fix" would be the same over-claim in the other
     # direction. What it guards is a MEASURED property of the PLACEMENT rather than of the
-    # fix. The query is `rows_for_store`'s only fault channel, so an unreadable registry must still
-    # RAISE through an unusable store. Hoisting the bound above the `conn.execute` — the one-line
-    # "optimization" the bound's own comment warns against, and which reads as strictly better — skips
+    # fix. The query is the only channel a REGISTRY fault reaches `rows_for_store` through, so an
+    # unreadable registry must still
+    # RAISE through an unusable store. Hoisting the bound above the `conn.execute` — the edit the
+    # bound's own comment warns against, which reads as strictly better and which moves BOTH lines,
+    # `target` being bound below the query — skips
     # that raise, and the caller then reads an ABSENCE where it should read a FAULT ("cannot read the
     # control-plane registry"). That is `fault == absence`, the mechanism this release closes and the
     # reason Arm C exists. ⚠ The ABSENCE message is Arm E's, not Arm A's, and an earlier revision of
