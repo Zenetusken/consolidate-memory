@@ -77,12 +77,17 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    `FileNotFoundError` and **D6 never ran** — the *"an orphaned section can never print green"*
    guarantee defeated upstream of the counter that guarantees it. It now reports a verdict
    (`no such doc`) and D6 still evaluates; **mutation-verified: 2176 passed / 0 failed with the doc,
-   2175 / 1 without it.** (c) Pin 9's reach is **21 of the 23 bound docs** — a reading note authored
-   as a bold paragraph rather than a blockquote yields no `git show` for the walk to compare, so the
-   assertion **skipped two docs in silence** while its label explained the gap by claiming pre-fix
-   carried no such token at all. **That stated reason was itself false**, and measurably so: the one
-   bound pre-fix doc *does* carry a `git show e5cce77` command, one line beneath a token that opens
-   `**H` rather than `>`. The reach is now **printed, not inferred**. (d) Pin 4's **third-site
+   2175 / 1 without it.** (c) Pin 9's reach is **the whole bound corpus, 23 of 23**, and it is
+   **printed, not inferred**. Two rounds were needed to get there. The first disclosed that **21 of
+   the 23** asserted and two were skipped in silence: a reading note authored as a bold paragraph
+   rather than a blockquote returned its token line alone, so the walk found no `git show` to
+   compare — and the label explained that gap with a reason **false at both revisions**, since the
+   one bound pre-fix doc *does* carry a `git show e5cce77`, one line beneath a token opening `**H`
+   rather than `>`. The second round then **widened the walk** itself, from a `>`-delimited block to
+   a blank-line-delimited one — a blockquote is a special case of the latter, not a different rule —
+   and MEASURED **2 docs vacuous under the old rule against 0 under this one**, with **0
+   disagreements either way**. The two docs were therefore not merely *disclosed* as unreachable;
+   they were **reachable**, and the guard now asserts on every doc it binds. (d) Pin 4's **third-site
    coordinate pointed at the claimed text at no revision**: it named `CHANGELOG.md:2495-2496` as a
    third place asserting the false packaging claim, and that resolves to a `## [0.4.5]` heading at
    this revision and to older-release journal prose on the base — while the cited passage is

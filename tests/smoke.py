@@ -21844,19 +21844,34 @@ with _tf36.TemporaryDirectory() as _td36w:
         return _hi
 
     def _note_block47(_text):
-        """The markdown blockquote block holding the canonical binding — the doc's reading note.
+        """The markdown block holding the canonical binding — the doc's reading note.
 
         Scoped to the BLOCK deliberately: a doc may legitimately `git show` an unrelated commit
         elsewhere (an evidence ledger naming a historical revision), so what is asserted is that
         the note's example command agrees with the note's own declaration.
+
+        ⚠ The block is delimited by BLANK LINES — and by a heading or a table row, either of which
+        opens a new block — and NOT by a leading `>`. It was `>`-delimited until the reach was
+        measured, and the difference is not cosmetic: a note written as a BOLD PARAGRAPH rather than
+        a blockquote collapsed to the ONE line carrying the token, so the `git show` on the next
+        line fell outside the join and the assertion was silently VACUOUS for that doc. MEASURED
+        over the 23 bound docs: **2 vacuous under the `>` rule, 0 under this one**, with `_self47`
+        empty either way — the widening reaches both docs and both AGREE with their own
+        declarations, so it adds reach without adding a red. A blockquote is a special case of this
+        rule rather than a different one (its `>` lines are non-blank and open no new block), which
+        is why the 21 docs that already asserted are untouched by the change.
         """
+        def _cont47(_s):
+            """A line CONTINUES the block: non-blank, and not a heading or a table row."""
+            return bool(_s.strip()) and not _s.lstrip().startswith(("#", "|"))
+
         _lines = _text.splitlines()
         for _i, _l in enumerate(_lines):
             if _CANON47.search(_l):
                 _lo = _hi = _i
-                while _lo > 0 and _lines[_lo - 1].lstrip().startswith(">"):
+                while _lo > 0 and _cont47(_lines[_lo - 1]):
                     _lo -= 1
-                while _hi + 1 < len(_lines) and _lines[_hi + 1].lstrip().startswith(">"):
+                while _hi + 1 < len(_lines) and _cont47(_lines[_hi + 1]):
                     _hi += 1
                 return _lines[_lo:_hi + 1]
         return None
@@ -22076,21 +22091,31 @@ with _tf36.TemporaryDirectory() as _td36w:
           "hand-adjudicated, and a docket outside the table is outside the check.",
           not _rule_bad47 and len(_rule_ok47) == len(_DOCKET47))
 
-    check("v0.4.37 pin 9 (REGRESSION GUARD, NOT A PIN — MEASURED: the pre-fix corpus binds ONE doc, "
-          "and this assertion is VACUOUS on it rather than absent for it: that doc's reading note "
-          "DOES carry `git show e5cce77` at `:41`, one line under a token opening `**H` rather than "
-          "`>`, so the blockquote walk returns the token line alone and the loop finds nothing to "
-          "compare. Green on pre-fix by construction either way — but for the REACH reason printed "
-          "below, not for the absence this label used to claim): a bound doc's reading note agrees "
+    check("v0.4.37 pin 9 (REGRESSION GUARD, NOT A PIN — MEASURED green on BOTH corpora: pre-fix "
+          "`2131 passed, 45 failed` with this check green, live `2176 passed, 0 failed`. ⚠ Green at "
+          "each revision for a DIFFERENT reason, and an earlier label of this check got the pre-fix "
+          "one wrong: it read that the pre-fix corpus's ONE bound doc left this `VACUOUS`, because "
+          "the walk was `>`-delimited, that doc's note opens `**H` rather than `>`, and the "
+          "blockquote returned the token line alone so the loop compared nothing. MEASURED over the "
+          "23 bound docs: **2 were vacuous under the `>` rule and 0 are under the blank-line rule "
+          "now in `_note_block47`**, with `_self47` empty either way — the widening reaches both "
+          "docs and both AGREE with their own declarations. So pre-fix this now asserts on its one "
+          "bound doc instead of skipping it, and is green because that doc's declaration and its "
+          "`git show` agree rather than because nothing was read. It remains a GUARD by this repo's "
+          "rule — the property cannot fail on pre-fix code for want of an anchor rule to violate — "
+          "and it is a guard on MEASUREMENT, not on the absence this label used to claim): a bound "
+          "doc's reading note agrees "
           "with ITSELF — the example command it hands the reader uses the revision it declares "
           f"({len(_self47)} disagree"
           f"{': ' + '; '.join(_self47) if _self47 else ''}). "
           f"⚠ REACH, printed rather than inferred: {len(_vac47)} bound doc(s) contribute NO assertion "
           f"at all{': ' + ', '.join(_vac47) if _vac47 else ''} — the note block yields no `git show`, "
-          "so the walk above has nothing to compare and skips them. The guard's reach is therefore a "
-          "SUBSET of the bound corpus, and naming the subset here is the difference between a guard "
-          "with a stated boundary and one whose gap a reader must reconstruct from a count nobody "
-          "prints. "
+          "so the walk above has nothing to compare and skips them. ⚠ This count IS the check's "
+          "boundary, and the boundary MOVED when the walk was widened: it printed **2** on the 23 "
+          "bound docs under the `>` rule and prints **0** here, so the guard's reach is now the "
+          "WHOLE bound corpus rather than the SUBSET the sentence this one replaces claimed. Printed "
+          "on every run rather than inferred, because a reader cannot reconstruct a reach from a "
+          "count nobody prints. "
           "⚠ The note declares its revision TWICE — the canonical token this gate reads, and the "
           "literal `git show <sha>:<path>` one line later — and only the first was ever checked. "
           "MEASURED, the rebindings that repaired the token and left the command produced THREE "
@@ -22098,8 +22123,13 @@ with _tf36.TemporaryDirectory() as _td36w:
           "resolve every citation against the very revision the repair had just moved away from. "
           "That is this family's thesis one layer down: the check read the token it could match, "
           "and the reader runs the token it could not. The assertion is scoped to the DECLARATION's "
-          "own blockquote block, never the whole file, because a doc may legitimately `git show` an "
-          "unrelated historical commit in its evidence ledger.",
+          "own BLOCK — its paragraph, never the whole file — because a doc may legitimately `git "
+          "show` an unrelated historical commit in its evidence ledger. ⚠ The block is delimited by "
+          "BLANK LINES rather than by a leading `>`, and that is the 2-to-0 measurement above "
+          "arriving in the scope: a note written as bold prose rather than a blockquote collapses "
+          "to its token line under the `>` rule, which is exactly how two docs came to assert "
+          "nothing. A blockquote remains a special case of this rule rather than a different one, "
+          "since its `>` lines are non-blank and open no new block.",
           not _self47)
 
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
