@@ -21657,11 +21657,19 @@ with _tf36.TemporaryDirectory() as _td36w:
     # THREE sites assert this, and the census is named because it took a third pass to find them:
     # `release.yml`'s `provenance:` comment (over-claims — it attached provenance to the Release),
     # `SECURITY.md` §Release integrity (mis-locates provenance AND omits SHA256SUMS), and
-    # `CHANGELOG.md:2495-2496` in the shipped `## [0.4.2]` entry (mis-locates, omits). All three
+    # `CHANGELOG.md`'s shipped `## [0.4.2]` entry, the phrase `publishes build provenance`
+    # (mis-locates, omits). All three
     # agree on the one item they all get wrong, which is the finding: cross-reading any two
     # REINFORCES the error. ⚠ The CHANGELOG site is deliberately OUT of the gate's scope — it is
     # the dated record of a shipped release, so rewriting it would make the record disagree with
     # what shipped — and that exclusion is stated here rather than left implicit.
+    #
+    # ⚠ And it is named by PHRASE, never by `:line`, because the coordinate this note first carried
+    # was decay wearing a handle's clothes: `CHANGELOG.md:2495-2496` reads a `## [0.4.5]` heading at
+    # this revision and older-release journal prose on the base, while the cited passage is
+    # byte-identical at both. A CHANGELOG grows from the TOP, so every coordinate below the newest
+    # entry shifts on each release — a line number here has a shelf life of one commit, which is the
+    # `v0.4.25` house rule's own motivating case.
     def _uncomment37(_text: str) -> str:
         """Flatten a COMMENT BLOCK: drop the line-leading marker, then normalize whitespace.
 
@@ -21713,8 +21721,13 @@ with _tf36.TemporaryDirectory() as _td36w:
           "so an over-claim phrased another way would evade it — the token arm and this one "
           "together caught the real defect, and neither is a general counter. Scope: "
           "`release.yml`'s `provenance:` comment and `SECURITY.md` §Release integrity — "
-          "`CHANGELOG.md:2495-2496` asserts the same false claim but is a dated release record, so "
-          "it is named here and deliberately not gate-read",
+          "`CHANGELOG.md`'s shipped `## [0.4.2]` entry — the phrase `publishes build provenance` — "
+          "asserts the same false claim but is a dated release record, so it is named here and "
+          "deliberately not gate-read, and named by PHRASE rather than by `:line` for a measured "
+          "reason this label is itself an instance of: its first coordinate, "
+          "`CHANGELOG.md:2495-2496`, resolves to a `## [0.4.5]` heading at this revision and to "
+          "older-release journal prose on the base, while the cited passage is byte-identical at "
+          "both — a CHANGELOG grows from the top, so a coordinate into one is decay, not a handle",
           len(_assets37) == 2 and not _named37 and bool(_provc37.strip())
           and all(_num37[w] == len(_assets37) for w in _countclaim37))
 
@@ -21848,12 +21861,41 @@ with _tf36.TemporaryDirectory() as _td36w:
                 return _lines[_lo:_hi + 1]
         return None
 
-    _unbound47, _fail47, _unver47, _self47, _vac47 = [], [], [], [], []
+    # ⚠ THE MATCHER IS THE REACH, so the corpus's SECOND citation form is counted rather than
+    # assumed away. `_CITE47` above requires the file:line to sit in its OWN backticks; an
+    # ordinary bare `foo.py:12` in running prose is equally "a `file:line` citation" to a reader
+    # and is INVISIBLE to every arm of this check. MEASURED 2026-09-19 at this revision over the
+    # same `docs/**/*.md` scan — and the population is stated as a FOUR-WAY SPLIT rather than as a
+    # single pair of figures, because this comment's first draft paired one population's doc count
+    # with another's citation count, which is this release's own defect class arriving in its own
+    # audit surface. Of 81 scanned: 14 docs carry ONLY the backticked form, 9 carry BOTH, **9
+    # carry ONLY the bare form** (59 citations), 49 carry neither. The 9 ONLY-bare are the whole
+    # gap — `_CITE47`'s 14 plus the 9 BOTH are the 23 `citing` docs this check reports on, so the
+    # ONLY-bare are exactly the `absent from the 23 above` the label's reach clause names, and
+    # they are the population counted here and printed there. ⚠ The tempting WIDER read — bare
+    # form over EVERY doc — measures 18 docs / **135** citations, and that figure must NOT be used
+    # for that sentence: its 18 SUPERSETS the 9 with the 9 docs carrying BOTH forms, which this
+    # check does report on, so quoting it as "documents this check can never report on" would
+    # overstate the gap by precisely the population the check already covers. (The two reads are
+    # otherwise equivalent — measured, counting bare over raw text and counting bare AFTER
+    # stripping every backticked citation both give 18/135, because the lookarounds exclude the
+    # backtick, so this matcher is disjoint from `_CITE47` by construction.)
+    #
+    # The universal is scoped to the form the matcher tests, and the size of what that leaves out
+    # is named at the site where a reader would otherwise reconstruct it from a denominator that
+    # looks whole.
+    _BARE47 = _re37.compile(
+        r"(?<![\w`/.-])([A-Za-z0-9_./-]+\.(?:py|md|json|html|sh|yml|js))"
+        r":(\d+(?:[-–—]\d+)?(?:\s*,\s*\d+(?:[-–—]\d+)?)*)(?![\w`])")
+    _unbound47, _fail47, _unver47, _self47, _vac47, _bare47 = [], [], [], [], [], []
     _ran47 = _scan47 = _citing47 = 0
     for _d47 in sorted((ROOT / "docs").rglob("*.md")):
         _scan47 += 1
         _t47 = _d47.read_text(encoding="utf-8")
         if not _CITE47.search(_t47):
+            _nb47 = len(_BARE47.findall(_t47))
+            if _nb47:
+                _bare47.append((str(_d47.relative_to(ROOT)), _nb47))
             continue
         _name47 = str(_d47.relative_to(ROOT))       # the relative path: `docs/adr/` names would
         _citing47 += 1                              # collide with `docs/` ones as bare basenames
@@ -21893,9 +21935,17 @@ with _tf36.TemporaryDirectory() as _td36w:
 
     check("v0.4.37 pin 6 (PIN — RED on the pre-fix corpus, MEASURED: of the citing docs at "
           "`fbfe07e`, ONE carries the canonical binding, so this reddens the other 20): every "
-          "`docs/**/*.md` carrying a `file:line` citation declares the revision its coordinates "
-          f"resolve on ({_citing47} citing docs of {_scan47} scanned, {len(_unbound47)} unbound"
+          "`docs/**/*.md` whose `file:line` citation is written in the CANONICAL BACKTICKED form "
+          f"declares the revision its coordinates resolve on ({_citing47} citing docs of "
+          f"{_scan47} scanned, {len(_unbound47)} unbound"
           f"{': ' + ', '.join(_unbound47[:4]) if _unbound47 else ''}). "
+          f"⚠ REACH, printed rather than inferred: {len(_bare47)} further doc(s) carry "
+          f"{sum(_c47 for _n47, _c47 in _bare47)} `file:line` citation(s) in a BARE form — not "
+          f"backticked — which `_CITE47` cannot see, so they are absent from the {_citing47} "
+          f"above and no arm of this check can ever report on them"
+          f"{': ' + ', '.join(_n47 for _n47, _c47 in _bare47) if _bare47 else ''}. The universal "
+          "is scoped to the matcher's form for exactly that reason, and the gap is stated here "
+          "because a denominator that looks whole is how an uncovered population goes unnoticed. "
           f"⚠ `{_MIN_DOCS47} <= citing` is the anti-vacuity clause, and the denominator is printed "
           "for the same reason: without either, a corpus that stopped citing anything prints "
           "`0 unbound` — a green over an empty set, which is the exact shape this family exists to "
@@ -22065,6 +22115,26 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                                         #     instances, all GREEN on 6/7a/7b while
                                                         #     telling the reader to resolve against
                                                         #     the superseded revision.
+                                                        # +1: v0.4.37 PR B pin 8 — the DOCKET rule:
+                                                        #     a defect docket's declared binding must
+                                                        #     be the PARENT of the commit that fixed
+                                                        #     it, so a reader lands on the tree the
+                                                        #     spec describes instead of on the repair.
+                                                        #     The five dockets are the corpus's only
+                                                        #     docs whose base revision is DERIVABLE
+                                                        #     rather than chosen, which is what makes
+                                                        #     the rule checkable at all: a binding
+                                                        #     that merely RESOLVES is satisfied by a
+                                                        #     post-fix commit, and landing on the fix
+                                                        #     is the failure this pin names. ⚠ This
+                                                        #     annotation is why the ledger's terms
+                                                        #     and the region's checks are now equal —
+                                                        #     MEASURED 2026-09-19: the region holds
+                                                        #     TEN `check("v0.4.37 …` calls and the
+                                                        #     bumps read +1/+3/+5 = 9, so this term
+                                                        #     had gone unaccounted for and a reader
+                                                        #     auditing the ledger would have found an
+                                                        #     unexplained 1.
                                                         # +3: v0.4.37 PR B, Family 4 — the citation
                                                         #     gate, which is THREE checks because it
                                                         #     is three claims taking three different

@@ -48,7 +48,14 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    (63%)** carry no extractable identifier on their citing line, so a corpus-wide phrase gate would
    fire on correct content. The census that motivated the docket is itself an instance of the class
    it measures: three reasonable matchers over one tree returned a **1.66× spread**, so the
-   deliverable is **the matcher, stated**, not the number.
+   deliverable is **the matcher, stated**, not the number. The check's own reach is now **printed
+   rather than inferred**: `_CITE47` requires the citation to sit in its own backticks, so a bare
+   `foo.py:12` in running prose is invisible to every arm. MEASURED over 81 scanned docs, the
+   corpus splits four ways — 14 backticked-only · 9 carrying both · **9 bare-only, 59 citations** ·
+   49 neither — and the label names the **bare-only 9**, which are exactly the docs `_CITE47`
+   cannot reach. The wider read an unguarded census would take (bare form over *every* doc)
+   measures 18 docs / 135 citations, and using it would have **overstated the gap by precisely the
+   population the check already covers**: its 18 supersets the 9 with the 9 docs carrying both.
 
 5. **The wrapped anchors — REFUTED as posed; shipped as a REGRESSION GUARD.**
    `CLAUDE.md:32-33` contains a phrase a contiguous `grep -c` returns **0** for, because the source
@@ -57,8 +64,10 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    check normalizes whitespace before matching. It **cannot fail on pre-fix code**, so by this repo's
    own rule it is labelled a guard, never a pin.
 
-6. **The harness this release adds was itself reviewed, and three measured defects in it are fixed
-   here rather than shipped.** (a) The D6 ledger's provenance note carried a **superseded numeral**:
+6. **The harness this release adds was itself reviewed, and the defects found in it are fixed here
+   rather than shipped.** A first round fixed three; a second, adjudicating that round's own docket,
+   fixed three more — **two of them in this release's own new prose**, which is the cleanest
+   evidence that the rule is a rule rather than a theme. (a) The D6 ledger's provenance note carried a **superseded numeral**:
    it read *"RED on 18 of `fbfe07e`'s citing docs"*, the pre-widening figure — the spec beside it
    records *"`18 of 19` became `20 of 21` when it was widened"*, and the check's own printed label
    says *"reddens the other 20"*. The ledger contradicted both. (b) An **unguarded `read_text`** in
@@ -71,7 +80,22 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    assertion **skipped two docs in silence** while its label explained the gap by claiming pre-fix
    carried no such token at all. **That stated reason was itself false**, and measurably so: the one
    bound pre-fix doc *does* carry a `git show e5cce77` command, one line beneath a token that opens
-   `**H` rather than `>`. The reach is now **printed, not inferred**.
+   `**H` rather than `>`. The reach is now **printed, not inferred**. (d) Pin 4's **third-site
+   coordinate pointed at the claimed text at no revision**: it named `CHANGELOG.md:2495-2496` as a
+   third place asserting the false packaging claim, and that resolves to a `## [0.4.5]` heading at
+   this revision and to older-release journal prose on the base — while the cited passage is
+   **byte-identical at both**. A CHANGELOG grows from the top, so a coordinate into one is decay
+   rather than a handle; it is now named by **phrase**, per this repo's own `v0.4.25` rule, and the
+   label records the measurement that forbids a line number returning. (e) The spec **misquoted the
+   measurement it cites**: two sentences said the helper's docstring measures a flatten into
+   `Run the/cm-syncverb`, which is the flatten of nothing — whitespace-removed it reads
+   `Runthe/cm-syncverb`, because the space inside `Run the` dies with the break. The *conclusion*
+   survives (the needle's neighbours are word characters under either string), so this was a
+   misquote of a cited source and not a false claim — corrected at both sites rather than argued
+   away. (f) And the reach comment itself, first drafted for item 4, **paired one population's doc
+   count with another's citation count** — 18 docs / 135 citations against the printed 9 / 59. It
+   was caught by running the check and comparing the two figures, which is the whole argument for
+   printing a reach instead of inferring one.
 
 ⚠ **This release adds the suite's first check that reads the tree's own git history**, so `ci.yml`
 now sets `fetch-depth: 0`. A shallow clone makes three of these checks report **verdicts about the

@@ -224,12 +224,15 @@ def _ws_tolerant(needle: str) -> str:
 
     Built over the raw text deliberately. An earlier draft instead flattened the HAYSTACK and
     applied these same boundary lookarounds to the result — which deletes the very characters
-    those boundaries read. MEASURED: in prose the needle's flattened neighbours are word
-    characters, so `"Run the /cm-\\nsync verb"` flattens to `"Run the/cm-syncverb"` and BOTH
-    lookarounds fail; a wrapped needle then reads as ABSENT. It passed its own mutation test
-    only because every needle in `REQUIRED_IN_README` is delimited by PUNCTUATION in README
-    (`/cm-sync` by backticks, `docs/network-guide.md` by parens, `/cm-connect` by a backtick
-    and a space) — a fixture green for an AMBIENT reason, which this repo already records.
+    those boundaries read. MEASURED, and quoted in full because the figure IS the argument:
+    `"Run the /cm-\\nsync verb"` with its whitespace REMOVED is `"Runthe/cm-syncverb"` — the
+    space inside `Run the` dies with the line break, so a flattening cannot be quoted as though
+    only the break had gone. Against that haystack ``/cm-sync`` sits with a word character on
+    BOTH sides (`e` left, `v` right), so both lookarounds fail and a wrapped needle reads as
+    ABSENT. It passed its own mutation test only because every needle in `REQUIRED_IN_README` is
+    delimited in README by PUNCTUATION (`/cm-sync` by backticks, `docs/network-guide.md` by
+    parens, `/cm-connect` by a backtick and a space) — a fixture green for an AMBIENT reason,
+    which this repo already records.
     """
     return r"\s*".join(re.escape(c) for c in needle)
 
@@ -240,10 +243,13 @@ def check_required_strings() -> None:
     Presence is whitespace-TOLERANT: a mention broken across a line is still a mention, so this
     check's message ("no longer mentions") stays true of genuine absence only. Its companion
     `check_contiguity` owns the broken-but-present case, and the two are a true PARTITION —
-    MEASURED over the full case table (contiguous · wrapped in a table cell · wrapped in prose ·
-    broken by a stray space · a longer token · genuinely absent): never two messages for one
-    string, never none. Before this split the two matched the same regex over the same haystack,
-    so both always spoke, and the absence line was factually FALSE for a wrapped string.
+    MEASURED over the full seven-case table (contiguous · wrapped in a table cell · wrapped in
+    prose · wrapped at line end · broken by a stray space · a longer token · genuinely absent):
+    never two messages for one break, and never none for a broken string — the `contiguous` row
+    correctly yields none, which is why the property is stated per row rather than as "never
+    none" over the whole table. Before this split the two matched the same regex over the same
+    haystack, so both always spoke, and the absence line was factually FALSE for a wrapped
+    string.
     """
     readme = read("README.md")
     for needle in REQUIRED_IN_README:
@@ -260,22 +266,34 @@ def check_contiguity() -> None:
     **A REGRESSION GUARD, not a pin** — by this repo's own rule: no anchor rule existed before it,
     so it cannot fail on pre-fix code.
 
-    The failure mode is measured, twice. `check_required_strings` above matches
-    `re.escape(needle)` over the whole RAW file, and a needle containing a space therefore stops
-    matching the moment the source wraps it: `" ".join(t.split())` in a reader crosses a newline,
-    but the raw file does not — and inside a COMMENT block it does not cross the `#` that leads the
-    next line either. MEASURED in v0.4.37: `release.yml`'s comment wraps as `attaches all` /
-    `#   three to the GitHub Release`, and a matcher reading for the count phrase saw `all # three`
-    and reported NO CLAIM. A matcher fault wearing an absence's clothes — and it was INVISIBLE,
-    because a second arm of the same check still reddened. Only a single-arm red would have exposed
-    it, which is why this guard exists as its own check rather than as a clause inside another.
+    The failure mode is measured, twice. BEFORE THIS SPLIT `check_required_strings` matched
+    `re.escape(needle)` over the whole RAW file, so a needle containing a space stopped matching
+    the moment the source wraps it: `" ".join(t.split())` in a reader crosses a newline, but the
+    raw file does not — and inside a COMMENT block it does not cross the `#` that leads the next
+    line either. (That function now runs the whitespace-TOLERANT pattern instead, so the strict
+    `re.escape` read is the FIRST ARM OF THIS CHECK and not a description of the other one; the
+    two remain a partition. An earlier draft stated it in the present tense, which described the
+    pre-image rather than the shipped pair.) The measured instance is PRE-FIX and is labelled so:
+    at `fbfe07e` `release.yml`'s comment wrapped as `attaches all` / `#          three to the
+    GitHub Release` — ten spaces after the `#`, quoted verbatim, where an earlier draft collapsed
+    them to three — and a matcher reading for the count phrase saw `all # three` and reported NO
+    CLAIM. ⚠ It has to stay labelled pre-fix, and that is not pedantry: v0.4.37's OWN Family 3
+    rewrote that comment, so "MEASURED in v0.4.37: it wraps as …" cited, as this release's own
+    evidence, a string this release deleted. A matcher fault wearing an absence's clothes — and
+    it was INVISIBLE, because a second arm of the same check still reddened. Only a single-arm
+    red would have exposed it, which is why this guard exists as its own check rather than as a
+    clause inside another.
 
-    **Scope: WHITESPACE breaks only — the label used to say "CONTIGUOUS", which reads as a claim
-    about every separator, and the matcher reaches exactly one.** A break introduced by anything
-    else (a Markdown table cell boundary splitting a token, a soft hyphen, inline markup) is NOT
-    covered. That is a stated boundary rather than a silent one because the separator class is
-    unbounded, and a guard that must be complete over an unbounded class has to INVERT rather than
-    enumerate — this repo's own rule. The label now claims what the matcher tests.
+    **Scope: WHITESPACE breaks only.** The MESSAGE this check emits used to read "CONTIGUOUS",
+    which claims every separator while the matcher reaches exactly one; it now names whitespace
+    ("a line break, or a stray space inside it"). ⚠ Name which surface, because they disagree:
+    the docstring HEADLINE above still reads CONTIGUOUS and the function is still named
+    `check_contiguity` — both are scoped by this paragraph rather than replaced by it, so an
+    earlier draft's "the label now claims what the matcher tests" was false of each. A break
+    introduced by anything else (a Markdown table cell boundary splitting a token, a soft hyphen,
+    inline markup) is NOT covered. That is a stated boundary rather than a silent one because the
+    separator class is unbounded, and a guard that must be complete over an unbounded class has to
+    INVERT rather than enumerate — this repo's own rule.
 
     A guard that has never fired is not a guard, so this one was mutation-verified: wrapping BOTH
     of README's `docs/network-guide.md` occurrences reddens it (wrapping one does not — the raw
@@ -284,8 +302,10 @@ def check_contiguity() -> None:
 
     ⚠ That mutation is green for an AMBIENT reason, and it is worth naming because it hid a real
     hole: MEASURED, every needle in `REQUIRED_IN_README` is delimited in README by PUNCTUATION
-    (`/cm-sync` by backticks both sides, `docs/network-guide.md` by `(` and `#)`, `/cm-connect` by
-    a backtick and a space) — not one by whitespace on both sides. So the README fixture can only
+    (`/cm-sync` by backticks both sides, `docs/network-guide.md` by `(` at `:225` and `#` at
+    `:322` — the delimiter is the single `#`; an earlier draft wrote `#)`, and no `#)` occurs
+    there — `/cm-connect` by a backtick and a space) — not one by whitespace on both sides. So
+    the README fixture can only
     ever exercise a needle whose boundary survives whitespace removal, and it cannot reach the
     PROSE case at all. The matcher pair therefore carries its own seven-case table, asserted at the
     end of this function — contiguous · wrapped in a table cell · wrapped in prose · wrapped at
