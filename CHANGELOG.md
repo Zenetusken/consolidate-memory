@@ -200,22 +200,33 @@ input and one clause alone would misdiagnose the other.
 
 10. **The registry scan is bounded at the target end — and the bound sits *after* the query on
     purpose.** The design-of-record left one finding open: `rows_for_store` resolved **every** row to
-    answer about one, with its cost **unmeasured**. Measured now: ~16 µs/row and the resolve loop is
-    **89-92%** of the function, against the 340-row live registry → 7.9 ms (10k → 0.19 s; 100k →
-    1.6 s). **No repair that speeds the loop is sound** — an index or a `WHERE` prefilter would speed
-    the ~8-11% that is *left*, and is unsound on its own terms anyway, since a non-canonical stored
+    answer about one, with its cost **unmeasured**. Measured now: **~16 µs/row**, and the 340-row live
+    registry → **5.4 ms** (10k → 0.15 s; 100k → 1.5 s). The resolve loop's *share* of the function is
+    deliberately **not** stated as a constant, because it is a property of the **registry** rather than
+    of the function — an earlier draft of this entry pinned it at **89-92%** and costed 340 rows at
+    **7.9 ms**, and neither re-measured: the two figures did not even multiply (340 × 16 µs = 5.4 ms,
+    not 7.9). **No repair that speeds the loop is sound** — an index or a `WHERE` prefilter would speed
+    the SELECT, the smaller half, and is unsound on its own terms anyway, since a non-canonical stored
     value can still **resolve onto** the target (only `resolve()` sees that, and the loop may not stop
     at a first hit because `native_memory_dir` carries no `UNIQUE`); `os.path.realpath` is **1.80×
     faster** and not swappable, silently dropping the raises `safe_resolve` exists to convert. So the
-    one available win is a **bound**: an unusable store yields `target is None`, no row can equal
-    `None`, and the scan is *determined by the argument*. ⚠ **Hoisting that bound above the
+    one available win is a **bound**: an unusable store yields `target is None`, and this returns `[]`
+    whatever the registry holds. ⚠ **It is a CORRECTNESS bound, not only a cost one, and an earlier
+    draft of this entry got that wrong** by claiming *no row can equal `None`*, so that the scan was
+    *determined by the argument*. A **resolvable** row does fail the comparison against `None`, since
+    no path equals it; but a row whose OWN value is unresolvable resolves to `None` too, and
+    `None == None` **admits** it — measured with the bound removed, one NUL-bearing row comes back for
+    a NUL-bearing `--store`, stamping a corrupt row's identity onto an archive. That is this cycle's own
+    defect shape arriving inside its repair, and it is why the bound is required rather than merely
+    cheap. ⚠ **Hoisting that bound above the
     `conn.execute` is the one placement that is wrong**, and it was measured rather than argued: the
     query is this function's only **fault channel** (`classify_registry` verifies tables and never
     columns), so skipping it reports a registry **fault** as an **absence** — `fault ≡ absence`, this
     cycle's own mechanism, sending the reader to re-enroll a project that is already enrolled. The
     bound consequently trades the query's cost, on a rare input, for that signal. Two single-variable
-    mutations carry it, each producing a different single red: bound **deleted** → the **pin** alone;
-    bound **hoisted** → the **regression guard** alone. **Not operator-visible** — nothing behaves
+    mutations carry it, each producing a different single red, **both re-run and reproduced** on the
+    constructed A-only tree: bound **deleted** → the **pin** alone (2165 passed / 1 failed); bound
+    **hoisted** → the **regression guard** alone (2165 / 1). **Not operator-visible** — nothing behaves
     differently, and the work skipped was work whose answer the argument had already fixed.
 
 **An operator can observe:** an archive render whose subject cannot be named now exits non-zero and

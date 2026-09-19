@@ -88,12 +88,23 @@ identical on both trees by construction — one harness file, two trees. They ar
 than deleted, because deleting them would hide that the triple
 moved — and the current figure is the one to trust, since it is the only one that describes the code
 that ships.
-⚠ **And the labels are load-bearing rather than decorative — the run separates them.** Of the **34**
-failures on the base tree, **33** carry `(PIN` in their own label, and the thirty-fourth is the one
-**stated exception**: pin 19's PRECONDITION, which fails there *because it asserts the fixture* —
+⚠ **And the labels are load-bearing rather than decorative — the run separates them.** Of the **37**
+failures on the base tree, **34** carry `(PIN` in their own label, and the other **three** are the
+**stated exceptions**: pin 19's PRECONDITION, which fails there *because it asserts the fixture* —
 `mem_dir_source` is a field this change introduces, so on `fbfe07e` the fixture cannot even be
-established. That is a red that pins nothing, and the label says so rather than letting a reader
-totalling the split count it among the pins. **Not one** GUARD or CONTROL failed on either tree.
+established — and pin 27's CONTROL and its REGRESSION GUARD, which fail there because the **subject is
+absent** rather than for the properties they assert. Each is a red that pins no behaviour this change
+introduced, and each label says so rather than letting a reader totalling the split count it among the
+pins.
+⚠ **This paragraph carried its own figures, and they were a revision behind — the release's own defect
+class arriving in its audit surface.** It read *"Of the **34** failures on the base tree, **33** carry
+`(PIN` … and the thirty-fourth is the one stated exception … **Not one** GUARD or CONTROL failed on
+either tree"*, which contradicted the table two sections below **and** the exception list printed
+beside that table. MEASURED by re-running the base tree and censusing the reds by their own labels:
+**37 / 34 / 3**, the three being pin 19's precondition and pin 27's CONTROL and GUARD — so *"not one
+GUARD or CONTROL failed"* was false of the very run it described, and the stale pair agreed with each
+other rather than with the tree. The figures are restated here rather than carried, because a second
+home for a measurement is a second thing to keep true.
 ⚠ **`(PIN`, not `(PIN)` — the matcher is part of the number, and the literal undercounts by half.**
 The label has three spellings and all three are PINs: `(PIN)` × 17, `(PIN, site 1 of 2)` × 5, and
 `(PIN — …)` × 11, the em-dash form being the one round 4's pins use. Grepping the bare literal

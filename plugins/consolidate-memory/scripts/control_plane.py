@@ -814,21 +814,34 @@ _REGISTRY_ROW_COLS = ("project_id, display_name, native_memory_dir, session_dir,
                       "current_root, git_common_dir")
 
 # ⚠ `rows_for_store`'s scan is IRREDUCIBLE, and this note exists so it is not "optimized" wrongly.
-# Measured on a synthetic registry: ~16 us/row, and the RESOLVE LOOP is 89-92% of it — the SELECT is
-# the remainder. 340 rows (the live registry) -> 7.9 ms; 10k -> 0.19 s; 100k -> 1.6 s. Three repairs
-# look obvious and not one of them is sound:
-#   · An INDEX, or a `WHERE native_memory_dir = ?` prefilter, speeds up the 4% and not the 89%. It is
-#     ALSO unsound on its own terms: a stored value that is not already canonical can still resolve
-#     onto the target, and only `resolve()` detects that. Nor can the loop stop at its first hit —
-#     the LIST return is required, because two rows may name one store and the caller must
-#     distinguish zero from two.
+# Measured on a synthetic registry: ~15-16 us/row, and that PER-ROW cost is the stable quantity. The
+# resolve loop's SHARE of the function is deliberately NOT stated as a constant, because it is a
+# property of the REGISTRY rather than of the function — the SELECT is a larger fraction against a
+# large on-disk registry than against a small one, and measures 99.9% loop against a synthetic one
+# whose query is free. 340 rows (the live registry) -> 5.4 ms; 10k -> 0.15 s; 100k -> 1.5 s.
+#
+# ⚠ This note carried a SUPERSEDED set until it was reconciled with the sibling under the bound. It
+# read *"the RESOLVE LOOP is 89-92% of it — the SELECT is the remainder. 340 rows (the live registry)
+# -> 7.9 ms; 10k -> 0.19 s; 100k -> 1.6 s"*, and neither re-measured: the two figures do not even
+# multiply, since 340 x 16 us = 5.4 ms and not 7.9. The correction was applied to the sibling comment
+# and not to this one, which is the release's own defect class — a surface still asserting what its
+# subject has stopped supporting — arriving inside the note that exists to prevent a wrong
+# optimization. That is also why the share is gone rather than re-stated: a second home for a
+# measurement is a second thing to keep true, and this one was not kept.
+#
+# Three repairs look obvious and not one of them is sound:
+#   · An INDEX, or a `WHERE native_memory_dir = ?` prefilter, speeds up the SELECT — the smaller half,
+#     and the half that is not the cost. It is ALSO unsound on its own terms: a stored value that is
+#     not already canonical can still resolve onto the target, and only `resolve()` detects that. Nor
+#     can the loop stop at its first hit — the LIST return is required, because two rows may name one
+#     store and the caller must distinguish zero from two.
 #   · `os.path.realpath` is 1.8x faster than `Path.resolve()` (8.9 vs 16.1 us) and would silently
 #     drop the `RuntimeError` / `ValueError` that `safe_resolve` exists to convert into "unusable".
 #     Both of those inputs are measured, not hypothetical — see the block comment in `rows_for_store`.
 # So the scan is bounded at the TARGET end (an unusable store resolves no row) and its cost is stated
 # here, rather than traded away for a faster wrong answer. The bound sits AFTER the query on purpose:
-# the query is the function's only fault channel, so skipping it would buy the last 8-11% by turning a
-# registry fault into an absence — see the bound's own comment for the measurement.
+# the query is the function's only fault channel, so skipping it would trade the query's cost, on a
+# rare input, for that signal — see the bound's own comment for the measurement.
 
 
 def rows_for_store(conn: sqlite3.Connection, store) -> list:

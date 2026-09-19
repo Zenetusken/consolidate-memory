@@ -21392,9 +21392,14 @@ with _tf36.TemporaryDirectory() as _td36w:
         """Records whether the RESOLVE LOOP ran. ONE instrument, both directions.
 
         The observable is the LOOP, and BOTH other candidates are excluded by measurement rather
-        than by taste. A result-only assertion is vacuous: an unusable store makes every row fail
-        the comparison, so the pre-fix and post-fix functions BOTH return `[]` — a result check
-        pins nothing here. And the QUERY cannot be the observable either: the query is this
+        than by taste. A result-only assertion is vacuous HERE: this fixture's one row carries a
+        RESOLVABLE sentinel, so it fails the comparison against the `None` an unusable store
+        produces, and the pre-fix and post-fix functions both return `[]` on it — a result check
+        pins nothing. ⚠ Scoped to the fixture deliberately: an earlier revision of this docstring
+        widened it to *every* row, which is false of the function and false in the one direction
+        that matters — a row whose OWN value is unresolvable resolves to `None` too and IS
+        admitted, which is why the bound is a CORRECTNESS bound rather than the optimization the
+        label below once called it. And the QUERY cannot be the observable either: the query is this
         function's only FAULT CHANNEL, since `classify_registry` verifies tables and never columns,
         so a registry can classify `healthy` and still raise on SELECT — which is exactly why
         `rows_for_store` refuses to swallow `sqlite3.Error`. A pin asserting `not queried` would
@@ -21450,12 +21455,21 @@ with _tf36.TemporaryDirectory() as _td36w:
           "pin's RED belongs to the revision that CARRIES the defect, and this defect is the scan "
           "being unconditional, so it exists only from the revision that introduced the scan): an "
           "UNUSABLE `--store` resolves NO row. `safe_resolve` yields `None` for a NUL on EVERY "
-          "supported interpreter, 3.8-3.13 (`store_context.py:192-193`), and no row can equal "
-          "`None` — so the scan is DETERMINED by the argument and every row would be resolved only "
-          "to fail the same comparison. Pre-fix it resolved all 340 live rows to reach a result it "
-          "already had. The bound sits AFTER the query on purpose, and this pin asserts the query is "
-          "NOT the thing it measures: the scan is irreducible for a USABLE target and pointless for "
-          "an unusable one, and only the second is free to skip",
+          "supported interpreter, 3.8-3.13 (`store_context.py:192-193`). ⚠ NOT because `None` is "
+          "unmatchable, which an earlier revision of THIS label asserted as *\"no row can equal "
+          "`None`\"* — FALSE of the function it describes, and asserted one layer above a comment "
+          "that forbids exactly that universal. A row whose OWN value is unresolvable resolves to "
+          "`None` too, and `None == None` ADMITS it, so the bound is a CORRECTNESS bound and not "
+          "the optimization this label once called it. The counterexample is stated where the bound "
+          "lives, with the measurement that found it (the bound's own comment in `control_plane.py` "
+          "— search `None == None`), and is not restated here, because a second home for a "
+          "measurement is a second thing to keep true. So what this pin measures is the PLACEMENT, "
+          "not a saving: bounded above the loop, the scan is SKIPPED for an unusable store — "
+          "while a USABLE target still resolves every row. The bound sits AFTER the query on "
+          "purpose, and this pin asserts the query is NOT the thing it measures. Pre-fix it "
+          "resolved all 340 rows of the LIVE registry (MEASURED, `projects` row count) to reach "
+          "the `[]` this registry's resolvable rows already implied — a cost, and this registry's "
+          "cost only; never the bound's reason",
           _rfs27 is not None and _rows27 == [] and _w27.touched is False)
 
     _w27c = _RowWatch27()
