@@ -130,11 +130,16 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    the check emits, which is the surface that actually changed.
 
 ⚠ **This release adds the suite's first check that reads the tree's own git history**, so `ci.yml`
-now sets `fetch-depth: 0`. A shallow clone makes three of these checks report **verdicts about the
+now sets `fetch-depth: 0`. A shallow clone makes two of these checks report **verdicts about the
 corpus** rather than name a missing input — measured, an archive tree and a `--depth 1` clone are
-indistinguishable: the fault arm advises deepening a clone that does not exist, the verdict arm
-prints *"0 failing"* from an instrument that cannot read, and the history arm calls the one correctly
-bound docket BAD.
+indistinguishable: the fault arm advises deepening a clone that does not exist, and the verdict arm
+prints *"0 failing"* from an instrument that cannot read. **The third is repaired here rather than
+disclosed:** the history arm used to call the one correctly bound docket BAD, and it now claims its
+two faults — a tree that cannot be asked for its own history, by the command's own **return code**,
+and a **shallow clone whose truncation actually BIT**, the one shape a return code cannot see — and
+on either it fails naming the INSTRUMENT (`this clone is SHALLOW`) instead of reporting on
+documents. MEASURED on a `--depth 1` clone: **2173 passed / 3 failed**, pin 8 RED with that fault
+message.
 
 Gate: smoke **2176** passed / 0 failed · docs_links · sim · mypy (42 source files) · manifests.
 

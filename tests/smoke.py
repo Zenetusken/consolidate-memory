@@ -22039,8 +22039,27 @@ with _tf36.TemporaryDirectory() as _td36w:
                  "refusal-verdict-parity": "a refusal stops being spelled like a verdict",
                  "render-declaration-parity": "the dashboard reads the data, not the label"}
     _rule_ok47, _rule_bad47 = [], []
-    _log47 = _sp53.run(["git", "-C", str(ROOT), "log", "--all", "--format=%H%x09%s"],
-                       capture_output=True, text=True).stdout.splitlines()
+    # ⚠ THE FAULT ARM. This check reads the TREE'S OWN history, so a tree that cannot answer for it
+    # — no readable `.git`, or a truncating shallow clone — yields a log in which EVERY needle
+    # matches 0 commits, and the check then prints a VERDICT about the DOCUMENTS from an instrument
+    # that could not read. That is `a-fault-and-a-verdict-must-not-share-a-message`, the conflation
+    # pin 7a/7b already split for citations, and it is one of the three lies the spec's Verification
+    # table records the archive tree telling. Detected the way `_ls47` detects an unanswerable
+    # revision — by the command's own RETURN CODE, never by an empty result — PLUS the one case a
+    # return code cannot see: a shallow clone answers rc=0 with a truncated log, so that fault is
+    # claimed only when the truncation actually BIT (a needle went short). A fault FAILS rather than
+    # skipping, since a check that skips measures nothing while printing green; its remedy is a FULL
+    # clone (`fetch-depth: 0`, which `ci.yml` sets for this job) and never a doc edit.
+    _r47 = _sp53.run(["git", "-C", str(ROOT), "log", "--all", "--format=%H%x09%s"],
+                     capture_output=True, text=True)
+    _sh47 = _sp53.run(["git", "-C", str(ROOT), "rev-parse", "--is-shallow-repository"],
+                      capture_output=True, text=True)
+    _log47 = _r47.stdout.splitlines()
+    _fault47 = ""
+    if _r47.returncode != 0:
+        _fault47 = "this tree cannot be asked for its own history (no readable `.git`)"
+    elif not _r47.stdout.strip():
+        _fault47 = "this tree's history is EMPTY"
     for _dn47, _needle47 in _DOCKET47.items():
         # ⚠ GUARDED rather than assumed, because an unguarded read here ABORTS the suite at this
         # line — and this line sits BEFORE D6, so a missing docket doc takes the pinned-surface
@@ -22071,25 +22090,49 @@ with _tf36.TemporaryDirectory() as _td36w:
         else:
             _rule_bad47.append(f"{_dn47} -> {_bind47} is no fixing commit's parent")
 
-    check("v0.4.37 pin 8 (PIN — RED on the pre-fix corpus, where four of the five dockets declare "
-          "no binding at all, so the rule has nothing to hold): a defect docket's binding is the "
-          "PARENT of the commit that FIXED its rows — re-derived from history rather than trusted "
-          f"from the table ({len(_rule_ok47)}/{len(_DOCKET47)}: {'; '.join(_rule_ok47) or 'none'}"
-          f"{'; BAD: ' + '; '.join(_rule_bad47) if _rule_bad47 else ''}). "
-          "⚠ This is the third and last claim about a binding, and the other two cannot stand in for "
-          "it: check 6 asserts a revision is NAMED and check 7b that the naming is TRUE, but a "
-          "plausible constant passes both. Only this one makes the binding RE-DERIVABLE — the "
-          "reader can run the same two git commands and get the same number. The needle is a phrase "
-          "from the fixing commit's SUBJECT, so the matcher reads history and never the document's "
-          "prose, which is what keeps it out of the family it is checking. A docket whose fix commit "
-          "is reworded reddens this, and that red is true: the binding stopped being re-derivable. "
-          "⚠ The universal here is only as wide as the TABLE, and the table is hand-reviewed by "
-          "necessity: MEASURED, the discriminating fact (a docket asserts pre-state; a design record "
-          "does not) is not in the `file:line` token — three docs are syntactically identical and "
-          "semantically opposite — and two needle-free structural predicates failed to separate them "
-          "(0 docs fail both, the mis-bound docket included). So this gates the five that were "
-          "hand-adjudicated, and a docket outside the table is outside the check.",
-          not _rule_bad47 and len(_rule_ok47) == len(_DOCKET47))
+    # ⚠ The second fault shape, and the reason a return code alone is not enough: a SHALLOW clone
+    # answers rc=0 with a TRUNCATED log, so a needle can go short because the commit is older than
+    # the truncation point rather than because the binding is wrong. The fault is claimed only when
+    # the truncation actually BIT — a shallow clone deep enough to contain all five needles is not
+    # faulted, so this arm cannot manufacture a red. Where it does bite, the two causes are
+    # indistinguishable and the honest verdict is about the INSTRUMENT.
+    if not _fault47 and _rule_bad47 and _sh47.returncode == 0 and _sh47.stdout.strip() == "true":
+        _fault47 = "this clone is SHALLOW, so the needles may name commits it cannot see"
+
+    if _fault47:
+        _msg47 = ("v0.4.37 pin 8 (PIN): ⚠ **A FAULT, and NOT a verdict — "
+                  f"{_fault47}.** No needle was searched, so **no document is reported on**: the "
+                  "zero this check would otherwise print is about the INSTRUMENT, not the corpus. "
+                  "⚠ MEASURED on an archive tree, this check used to call the one correctly-bound "
+                  "docket BAD — a verdict about a DOCUMENT from an instrument that could not read, "
+                  "which is `fault == absence` arriving in the check that guards against it, and "
+                  "why the citation analogue is split into pin 7a (fault) and 7b (verdict). The "
+                  "remedy is a FULL clone (`fetch-depth: 0`, which `ci.yml` sets for this job) and "
+                  "never a doc edit. A fault FAILS rather than skipping: a check that skips "
+                  "measures nothing while printing green.")
+    else:
+        _msg47 = ("v0.4.37 pin 8 (PIN — RED on the pre-fix corpus, where four of the five dockets "
+                  "declare no binding at all, so the rule has nothing to hold): a defect docket's "
+                  "binding is the PARENT of the commit that FIXED its rows — re-derived from history "
+                  f"rather than trusted from the table ({len(_rule_ok47)}/{len(_DOCKET47)}: "
+                  f"{'; '.join(_rule_ok47) or 'none'}"
+                  f"{'; BAD: ' + '; '.join(_rule_bad47) if _rule_bad47 else ''}). "
+                  "⚠ This is the third and last claim about a binding, and the other two cannot "
+                  "stand in for it: check 6 asserts a revision is NAMED and check 7b that the naming "
+                  "is TRUE, but a plausible constant passes both. Only this one makes the binding "
+                  "RE-DERIVABLE — the reader can run the same two git commands and get the same "
+                  "number. The needle is a phrase from the fixing commit's SUBJECT, so the matcher "
+                  "reads history and never the document's prose, which is what keeps it out of the "
+                  "family it is checking. A docket whose fix commit is reworded reddens this, and "
+                  "that red is true: the binding stopped being re-derivable. "
+                  "⚠ The universal here is only as wide as the TABLE, and the table is hand-reviewed "
+                  "by necessity: MEASURED, the discriminating fact (a docket asserts pre-state; a "
+                  "design record does not) is not in the `file:line` token — three docs are "
+                  "syntactically identical and semantically opposite — and two needle-free "
+                  "structural predicates failed to separate them (0 docs fail both, the mis-bound "
+                  "docket included). So this gates the five that were hand-adjudicated, and a docket "
+                  "outside the table is outside the check.")
+    check(_msg47, not _fault47 and not _rule_bad47 and len(_rule_ok47) == len(_DOCKET47))
 
     check("v0.4.37 pin 9 (REGRESSION GUARD, NOT A PIN — MEASURED green on BOTH corpora: pre-fix "
           "`2131 passed, 45 failed` with this check green, live `2176 passed, 0 failed`. ⚠ Green at "

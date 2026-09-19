@@ -627,15 +627,22 @@ Measured on the *same* `fbfe07e` content, the two extractors differing only in w
 | suite total | 2130 passed / **46** failed | **2131 passed / 45 failed** |
 | pin 7a | **RED** — *"1 of 21 citing docs name a revision this clone cannot answer for"*, remedy `fetch-depth: 0` | **GREEN** |
 | pin 7b | `0 of 21 citing docs resolved, 20 unbound, **0 failing**` | `1 of 21 resolved, 20 unbound, **2 failing**` |
-| pin 8 | `refusal-verdict-parity: the needle matches **0** commits, not 1` | `refusal-verdict-parity -> e5cce77 = fb6cddf^` ✓ |
+| pin 8 | **RED, naming the INSTRUMENT** — *"⚠ A FAULT, and NOT a verdict — this clone is SHALLOW, so the needles may name commits it cannot see"* (**repaired**, see below; it read `refusal-verdict-parity: the needle matches **0** commits, not 1` before) | `refusal-verdict-parity -> e5cce77 = fb6cddf^` ✓ |
 
-Three separate lies, and only the first is loud. 7a reported a **fault in a verdict's register** — it
+Two separate lies, and only the first is loud — **the third the repair closed rather than
+recorded.** 7a reported a **fault in a verdict's register** — it
 told the reader to deepen a clone that does not exist, which is precisely the conflation that check was
 split out to prevent, arriving one layer up. 7b printed **`0 failing`** — a clean bill of health from an
 instrument that could not read, the vacuous-green shape its own anti-vacuity clause exists to catch and
-which the clause did catch, but on the *floor* rather than on the truth. And 8 called the one correctly
-bound docket **BAD**. A count is not the damage here: `46` differs from `45` by one, and two of the
-three lies are invisible in the total. **So the correction below is not "the archive run was off by
+which the clause did catch, but on the *floor* rather than on the truth. **Pin 8 used to call the one
+correctly bound docket `BAD`, and it is the arm this release repairs:** it now claims its two faults —
+a tree that cannot be asked for its own history (by the command's **return code**, the idiom 7a already
+uses) and a **shallow clone whose truncation actually BIT**, the one shape a return code cannot see,
+since a shallow clone answers `rc=0` with a log that is merely short — and on either it FAILS naming
+the instrument instead of reporting on documents. MEASURED on a `--depth 1` clone: **2173 passed / 3
+failed**, pin 8 RED with that fault message, 7a and 7b failing exactly as tabulated above. A count is
+not the damage here: `46` differs from `45` by one, and
+the lies are invisible in the total. **So the correction below is not "the archive run was off by
 one" — it is that the archive run's history-reading verdicts were never about `fbfe07e`.**
 
 Any pin that invokes `render_html.py` carries `--no-open` (PR B adds none, but the discipline stands).
