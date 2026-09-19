@@ -22018,18 +22018,25 @@ with _tf36.TemporaryDirectory() as _td36w:
     # that makes the binding re-derivable by a reader rather than trusted. It reads history, so it
     # inherits check 7's clone-depth dependency.
     #
-    # ⚠ Scope: the FIVE dockets. The needle is a phrase from the FIXING COMMIT's own subject, so
-    # this matches history, never the document's prose — which is the point, since the whole family
-    # is about prose asserting what nothing ties to the tree. A docket whose fix commit is reworded
-    # reddens this, and that is a true red: the binding has stopped being re-derivable.
+    # ⚠ Scope: the SEVEN dockets below — a set of VERIFIED bindings, not a clause over a class.
+    # MEASURED 2026-09-19: 22 of this repo's docs carry a `**`X`-numbered**` note, and only these
+    # seven have had their fixing commit's subject phrase derived and measured unique. This read
+    # "the FIVE dockets are the corpus's ONLY docs whose base revision is DERIVABLE", which the
+    # sweep falsifies — `dbt-truth-restoration` and `signal-pipeline-hardening` pass the same test.
+    # The needle is a phrase from the FIXING COMMIT's own subject, so this matches history, never
+    # the document's prose — the point, since the family is about prose asserting what nothing ties
+    # to the tree. A docket whose fix commit is reworded reddens this, and that is a true red: the
+    # binding has stopped being re-derivable.
     #
     # ⚠ The table listed TWO of the five when this first shipped, so the check's universal named a
     # class it sampled a third of — the same defect as the census it replaces, one layer down. All
-    # five were verified to satisfy the rule before being added; what made the other three SAFE to
-    # add is that the needle is load-bearing for them (their binding has two children — the fix and
-    # its merge — so the phrase is what picks the fix), which is measured, not assumed.
+    # seven were verified to satisfy the rule before being added; for three of them the needle is
+    # load-bearing (their binding has two children — the fix and its merge — so the phrase is what
+    # picks the fix). ⚠ And MEASURED for the two added 2026-09-19: their bindings have ONE child
+    # each, so the child relation alone would pick the fix and the needle's work is uniqueness
+    # rather than discrimination. Recorded because the difference is real, not decorative.
     #
-    # ⚠ The needle must match EXACTLY ONE commit, and that was measured for all five before the
+    # ⚠ The needle must match EXACTLY ONE commit, and that was measured for all seven before the
     # table grew — but the loop below originally took the FIRST match and stopped, so a needle that
     # later collided would have silently re-targeted this check at a different commit while still
     # printing green. Uniqueness is now asserted rather than trusted.
@@ -22037,7 +22044,9 @@ with _tf36.TemporaryDirectory() as _td36w:
                  "track-c-ci-docs-hygiene": "repo-doc hygiene",
                  "dream-teeth-coverage": "make every gate mean what it claims",
                  "refusal-verdict-parity": "a refusal stops being spelled like a verdict",
-                 "render-declaration-parity": "the dashboard reads the data, not the label"}
+                 "render-declaration-parity": "the dashboard reads the data, not the label",
+                 "dbt-truth-restoration": "truth restoration (Track B)",
+                 "signal-pipeline-hardening": "signal-pipeline hardening"}
     _rule_ok47, _rule_bad47 = [], []
     # ⚠ THE FAULT ARM. This check reads the TREE'S OWN history, so a tree that cannot answer for it
     # — no readable `.git`, or a truncating shallow clone — yields a log in which EVERY needle
@@ -22111,7 +22120,7 @@ with _tf36.TemporaryDirectory() as _td36w:
                   "never a doc edit. A fault FAILS rather than skipping: a check that skips "
                   "measures nothing while printing green.")
     else:
-        _msg47 = ("v0.4.37 pin 8 (PIN — RED on the pre-fix corpus, where four of the five dockets "
+        _msg47 = ("v0.4.37 pin 8 (PIN — RED on the pre-fix corpus, where six of the seven dockets "
                   "declare no binding at all, so the rule has nothing to hold): a defect docket's "
                   "binding is the PARENT of the commit that FIXED its rows — re-derived from history "
                   f"rather than trusted from the table ({len(_rule_ok47)}/{len(_DOCKET47)}: "
@@ -22130,7 +22139,7 @@ with _tf36.TemporaryDirectory() as _td36w:
                   "design record does not) is not in the `file:line` token — three docs are "
                   "syntactically identical and semantically opposite — and two needle-free "
                   "structural predicates failed to separate them (0 docs fail both, the mis-bound "
-                  "docket included). So this gates the five that were hand-adjudicated, and a docket "
+                  "docket included). So this gates the seven that were hand-adjudicated, and a docket "
                   "outside the table is outside the check.")
     check(_msg47, not _fault47 and not _rule_bad47 and len(_rule_ok47) == len(_DOCKET47))
 
@@ -22193,9 +22202,9 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                                         #     be the PARENT of the commit that fixed
                                                         #     it, so a reader lands on the tree the
                                                         #     spec describes instead of on the repair.
-                                                        #     The five dockets are the corpus's only
-                                                        #     docs whose base revision is DERIVABLE
-                                                        #     rather than chosen, which is what makes
+                                                        #     These seven dockets' base revisions are
+                                                        #     DERIVABLE rather than chosen, which is
+                                                        #     what makes
                                                         #     the rule checkable at all: a binding
                                                         #     that merely RESOLVES is satisfied by a
                                                         #     post-fix commit, and landing on the fix

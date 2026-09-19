@@ -61,8 +61,9 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    `CLAUDE.md:32-33` contains a phrase a contiguous `grep -c` returns **0** for, because the source
    wraps it. No check verifies phrases today, so this becomes live the moment the anchor rule is
    adopted: **an anchor that wraps is not greppable, therefore not an anchor.** A ninth `docs_links`
-   check normalizes whitespace before matching. It **cannot fail on pre-fix code**, so by this repo's
-   own rule it is labelled a guard, never a pin.
+   check matches a needle across a wrap by interleaving `\s*` through it and reading the **raw** file —
+   normalizing the haystack instead would delete the very neighbours its boundaries read. It **cannot
+   fail on pre-fix code**, so by this repo's own rule it is labelled a guard, never a pin.
 
 6. **The release's own new content was itself reviewed, and the defects found in it are fixed here
    rather than shipped.** The opening round found three; each later round — adjudicating the previous
@@ -127,7 +128,36 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    the automatic screen flags nine more but keys on ordinary words like `rem` and `over`, so that
    figure is a screen and not a verdict. (j) The spec's row 9 referred to *"the label"* in a table
    that **has a `label` column** whose own row-9 value is `**GUARD**`; it now names the **message**
-   the check emits, which is the surface that actually changed.
+   the check emits, which is the surface that actually changed. (k) **A second adversarial round was
+   delegated against the frozen branch, and its six findings were adjudicated by re-measurement rather
+   than accepted on delivery — five confirmed and repaired, one refuted, and the refutation is the one
+   worth keeping.** A sweep reported `render-declaration-parity.spec.md`'s `render_dashboard.py`
+   coordinate as stale; it is exactly what the citing sentence claims the **shipped** line shows, and
+   that document's reading note declares and hand-verifies a shipped-tree coordinate class the sweep
+   had not read. The five repairs share this release's shape — **a claim about the tree that its own
+   document already contradicted.** (1) `deep-field-theme.spec.md`'s note declared *every* `file:line`
+   below `e15ac3e`-numbered, and two are not: that commit **inserted six CSS lines** in
+   `dashboard.template.html`, shifting every coordinate ≥125 by `+6`, and the doc was edited *inside*
+   the commit that moved it. MEASURED at `e15ac3e` — `:246`/`:375` hold `.core{fill:var(--accent)}` and
+   `#net-groups{display:block…}`, while the two rules the sentence is about (both
+   `#network-blk .domain-count,.project-meta`, one `--faint` and the later one `--ink2`) sit at
+   `:252`/`:381` — and the note now carves out the one coordinate belonging to a later pass's own
+   reading. (2) `_DOCKET47`'s scope claimed its **five** dockets were *"the corpus's ONLY docs whose
+   base revision is DERIVABLE"*: a universal over an unestablished class, since **22** of this repo's
+   docs carry a `` **`X`-numbered** `` note and **seven** of them have a fixing commit whose subject
+   phrase is derived and measured unique. Two were added (`dbt-truth-restoration` → `6ac5380`,
+   `signal-pipeline-hardening` → `ceaccc0`), each with **one** child rather than the other five's two —
+   the needle's work there is uniqueness, not discrimination — and six numeral sites moved with the
+   scope, the check's own printed message among them. (3) The spec's stated **two-part rule** still
+   carried the phrase half its own row 7 refutes by measurement; what PR B adopts is the resolution
+   half, and it now says so where the rule is stated rather than only where it was refuted. (4) Item 5
+   above said the ninth check *"normalizes whitespace before matching"* — the draft the helper's own
+   docstring records as **measured wrong**: it interleaves `\s*` through the needle and reads the
+   **raw** file, because flattening the haystack deletes the neighbours its boundaries read. (5)
+   `refusal-verdict-parity.spec.md` asserted that *"on every commit of the branch"* line 830 holds
+   `ACTION_WRITES`; measured, it holds an unrelated `return` at both branch heads, and `ACTION_WRITES`
+   is what it holds at the doc's **declared base** `e5cce77` — a true statement about the base, in a
+   sentence that asserted it of the branch.
 
 ⚠ **This release adds the suite's first check that reads the tree's own git history**, so `ci.yml`
 now sets `fetch-depth: 0`. A shallow clone makes two of these checks report **verdicts about the

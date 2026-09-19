@@ -1,8 +1,9 @@
 # Deep Field — design-of-record
 
-> **Reading the citations.** Every `file:line` below is **`e15ac3e`-numbered**. Resolve it against
-> that commit — `git show e15ac3e:<path>` — and **never against the working tree**, which has moved
-> them.
+> **Reading the citations.** Every `file:line` below is **`e15ac3e`-numbered** — except the coordinate
+> inside the re-anchoring account at `:400`, which is the reading that pass took on the tree it ran
+> against. Resolve the rest against that commit — `git show e15ac3e:<path>` — and **never against the
+> working tree**, which has moved them.
 
 **Status: implemented.** Target release: **v0.4.24 (patch)** — a new default colour theme
 for the HTML archive, the visual system behind the README art, and the maintainer capture
@@ -230,7 +231,7 @@ arithmetic:
   node (0 matches each), and neither string appears in either JS bundle. Both classes are **CSS
   with no emitter**. `draw()` writes `project-label` (`--ink`, the one class this bullet names
   correctly) and `project-meta`, whose fill resolves to **`--ink2`, not `--faint`** — two rules
-  set it (`dashboard.template.html:246` and `:375`), and **both carry `#network-blk` and score
+  set it (`dashboard.template.html:252` and `:381`), and **both carry `#network-blk` and score
   (1,1,0)**, so no specificity separates them: the later one wins on **source order**, in every
   theme, and there is no unprefixed competitor for specificity to decide against. **Corrected:**
   this sentence read *"the `#network-blk`-prefixed one wins on ID specificity"*, which is false for

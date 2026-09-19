@@ -41,10 +41,11 @@ time — never asserted from this document. Two inherited rules apply with force
 the base commit — `git show e5cce77:<file> | sed -n '<N>p'` — and **never against the branch tree**,
 which is the trap: most of these coordinates address the **pre-fix** code that this spec's own fix
 replaces, so the branch's first commit already moved them. RC-3 cites `memory_status.py:830` for the
-3-element matcher; on every commit of the branch that line holds `ACTION_WRITES`, and finding 47's
-rule (*quote the phrase; a line number is not a handle*) is why the phrase travels with the
-coordinate here. So: a coordinate that does not resolve on the merged tree is **expected**, and one
-that does not resolve on `e5cce77` is a defect in this document.
+3-element matcher — which is what that line holds at `e5cce77`; on the branch tree the same number
+lands on an unrelated `return`, and finding 47's rule (*quote the phrase; a line number is not a
+handle*) is why the phrase travels with the coordinate here. So: a coordinate that does not resolve on
+the merged tree is **expected**, and one that does not resolve on `e5cce77` is a defect in this
+document.
 
 ## Scope
 
