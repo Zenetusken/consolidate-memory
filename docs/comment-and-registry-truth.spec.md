@@ -388,8 +388,8 @@ how a reader learns to distrust the number.
 
 ## The review round — five repairs, and two refutations the artifact's own text settles
 
-**Stage 3's fresh pair was dispatched on the shipped revision; the findings below were adjudicated at
-the head `2492caa`** — not against the binding, because the branch moved once more under the round. Each
+**Stage 3's fresh round was dispatched on the shipped revision; the findings below were adjudicated at
+the head `2492caa`** — not against the binding, because the branch moved once more under it. Each
 was re-measured first-party rather than accepted on delivery, and each repair **edits the claim it
 falsifies** rather than annotating below it, which is this branch's own item-1 rule.
 
