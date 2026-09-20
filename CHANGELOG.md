@@ -5,7 +5,7 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
-## [0.4.39] — UNRELEASED
+## [0.4.39] — 2026-09-20
 
 **Patch — one defect on two arms: the dream read a project's transcripts from the STORE's slug only, so
 a session launched in a SUBDIRECTORY of the project root was invisible to it.**
