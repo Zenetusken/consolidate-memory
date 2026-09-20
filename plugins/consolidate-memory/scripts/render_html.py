@@ -582,7 +582,7 @@ def _resolve_identity(store: "Path | None", project: str | None) -> "StoreContex
             # a different project id (the defect that producer's docstring records) and re-derives
             # the very store the row already names. The cwd template supplies only the environment
             # and the two fields no row carries (`registry_state`, `plugin_data_dir`), which is why
-            # ...which is why the rendered identity is cwd-invariant. The template still has to be
+            # the rendered identity is cwd-invariant. The template still has to be
             # BUILT from some directory, and `Path.cwd()` is unguarded at this site for the same
             # reason it is unguarded at the foot of this function — it is the call that raises, so
             # it cannot be an argument to a guard around `resolve()`.

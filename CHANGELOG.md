@@ -5,6 +5,116 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.38] — 2026-09-19
+
+**Patch — two defects, each closed by the one repair its class allows: a splice artifact repaired
+by deleting the DUPLICATE, and a rule that was false in three places repaired by naming its real
+boundary rather than by adding rows until a false universal came true.**
+
+Two comments sharing no root cause, chartered together because the first rides code v0.4.36
+introduces. Design and evidence: `docs/comment-and-registry-truth.spec.md`.
+
+1. **A doubled clause is repaired by deleting the duplicate, not the connective.** One comment
+   line in `render_html.py` ended on `…, which is why` and the next opened on `…which is why the
+   rendered identity is cwd-invariant` — **two overlapping copies of one clause**, so reading
+   either line alone looks almost right. The tail is the connective the sentence needs; the head
+   is the copy, so the repair removes `...which is why ` and nothing else. ⚠ Diagnosing the first
+   line's `, which is why` as *dangling* is a verdict read off the wrong instrument — a clause
+   whose consequent sits on the next line is what a **wrap** is — and that diagnosis drives a
+   repair that leaves behind the very consequent-less sentence this item exists to remove. The
+   clause is PR A's own new code, which is why it rides a later release instead of re-opening A's
+   measured gate. **No check**: nothing here verifies that a comment parses as prose, and
+   inventing a gate for a class observed once would be the same defect in a new place. Its only
+   observable is that the doubled clause is absent.
+
+2. **The `DOCS` registry states one rule in its header and a different one inside, and neither was
+   true of the list.** The header's `Templates are included because…` sentence states its own
+   exception, so it is scoped; the interior comment (`Every doc the README links to`) stated a
+   **false universal** and named no exception. MEASURED over the README's markdown link targets:
+   **12** `.md` files, of which **four were absent from the list** and all four exist — so those
+   four are added. The interior comment's false universal is not restated but **replaced by the
+   entry's own justification**: the clause a restatement would have carried (`the criterion this
+   list actually applies`) is a **rule**, and a rule stated below the header that already states
+   one puts the list's criterion in **two places** — the defect this item removes, rebuilt by its
+   own repair. So the criterion moved **into** the header, which now also carries the principle's
+   second inclusion (*the design record a reader is handed off to*), and the comment keeps only
+   the measured fact and the entry's reason. ⚠ **The false rule had a SOURCE, and correcting the
+   restatement left it standing.** The interior comment did not invent its universal — it *cited*
+   one, naming its authority in the same sentence (`the docstring's promise is "…"`), and that
+   authority is the file's own invariant 2, which states the checked set as *every other doc a
+   reader lands on from the README*. One rule, three homes — the header (over-claiming about ONE
+   entry), the interior comment (corrected here), and the docstring: **the origin, corrected in the same
+   edit**, because a reader who fixed only the comment from the text in front of them would
+   regenerate it from the sentence it cites. Invariant 2 is now scoped to the set the check
+   actually walks and names the two docs its old form silently excluded (`CLAUDE.md`,
+   `plugins/dream-beta-tester/docs/SPEC-A.md`), which the list's own boundary note had already
+   measured. ⚠ The four entries a reader might reach for *instead* —
+   the list entries with **no** README arrival — are a **different** set of four, and conflating
+   them drives a wrong repair: three are the GitHub templates the header's own sentence covers,
+   and the fourth is the design record that made the header false about **one** member — the entry
+   the header's second inclusion now names. ⚠ **No closure rule describes this list** — a
+   2-hop spec is listed while two other 2-hop docs are not — so the header now states the
+   principle **with its exclusions named**, and the list's measured edge is recorded after it,
+   because a rule that does not name its exclusions is a universal again one edit later.
+   **A REGRESSION GUARD, not a pin** — each added entry's links already resolve, so no check added
+   here can fail on pre-fix code. What it buys is that the four docs' own outbound links enter the
+   check. MEASURED: gate green, checked files **14 → 18**.
+
+3. **The release turned its audit on its own shipped text, and six claims were false — four of
+   them this branch's.** Every numeral was re-derived from the tree with its matcher named, and
+   every repair **edits the claim it falsifies** rather than annotating below it. ⚠ **Two are
+   figures that lost their operand, and the distinction between them is the item.** Part 2's
+   derivation paragraph states `16` reached, ten held and **14** entries, all true at this branch's
+   base `9585b10`, where they yield the `4` the paragraph derives. The head reads **18** entries
+   holding **14** — the four additions land — and the difference is still `4`, so the figures are
+   **bound to the base rather than recomputed**: the head's numerals are a different derivation of
+   the same invariant, and swapping them in would have replaced correct content with correct-looking
+   content about operands that no longer produce it. The Defect-2 diagnosis is bound the same way
+   for a sharper reason — it is a **pre-repair** diagnosis in the present tense, its coordinates are
+   the base's numbering, and its clause `no comment in the file accounts for it` is false from the
+   repair onward, because the header's second inclusion names precisely that entry. ⚠ **The
+   registry's own docstring was the third, and it is this item's defect one register up.** Invariant
+   2 said two docs *a reader does land on* from the README are absent — **arrival** vocabulary over
+   a **link-graph** measurement — while the README also links the **directory** `docs/adr`, holding
+   **24** documents that no `.md`-filtered walk can represent and which are neither entries of the
+   list nor instances of any exclusion class the header names. The operand is now stated, the
+   directory and its documents are named as the arrival the words invite, and the file's own header
+   rule (*neither depth nor a link is the membership rule*) is what made the mismatch findable: **a
+   file that states its criterion and then reports a count from a different one is this item's
+   defect arriving in the registry's own docstring.** ⚠ **The fourth is a PREDECESSOR's, and this
+   release falsifies it rather than merely finding it** — the citation check's bare-form census
+   reads *MEASURED … at this revision … Of `81` scanned … `49` carry neither*, and the document this
+   release ships is walked, so the same walk returns **82** and **50** while its other two cells and
+   its citation total hold. The binding is restated as the **corpus** rather than a revision, and
+   the superseded pair is named so that a reader who remembers `81 / 49` can tell a moved operand
+   from a broken matcher. ⚠ **A fifth was repaired alongside it, and the two differ in kind: the
+   census moved because this branch moved it, while the docstring quoting the pre-fix workflow
+   comment's wrap was false before this branch existed.** It is corrected here because the file is
+   open for the census anyway and because the correction is one word — the quote is of a file's
+   **bytes**, the file carries **ten** spaces after the `#` where the docstring wrote three, and
+   this registry itself names the three-space form as a rejected draft. What that quote is *about* —
+   the wrap, and the `#` marker the faulty join leaves behind — is unaffected, which is why the
+   repair is to the quotation's fidelity and not to its claim. ⚠ **The sixth is the registry's, one
+   home above the third, and it is the header's own exclusion list.** The appositive under
+   *destinations that are not reader-facing documents* listed **`LICENSE`**, and `LICENSE` **is** a
+   reader-facing document — it arrives from the README as a markdown target **twice** (`:391`,
+   `:395`). So the list was false about **one of its own members**, which is item 2's test turned on
+   the header that states the rule; the member was **cut** rather than the clause reworded, because
+   the class the clause excludes is defined by reader-facing-ness, and `LICENSE` fails that
+   definition instead of sitting outside it. ⚠ **The destination the clause does reach is a
+   directory, and reaching it is all it does** — `docs/adr` is not a document, so the clause covers
+   the destination and says **nothing** about the `24` documents behind it. A directory's scope is
+   not its contents' scope, and the file's own practice is the proof: `docs/` is likewise a
+   directory, is likewise linked from `CONTRIBUTING.md`, and five of its `82` tracked documents are
+   listed. ⚠ **Two docket entries were refuted by the artifact's own adjacent text** and are
+   recorded as refuted rather than silently dropped: a `CHANGELOG` clause read as an attribution is
+   a **conditional perfect** naming the clause the repair deliberately did *not* write, and a
+   mention census read as an unscoped universal states its operand in the same sentence-group.
+
+**No check added or removed; D6 unchanged at 2177.** Verification: `smoke 2177 passed / 0 failed`
+· `docs_links rc=0` (**18 files link-checked**, 7 required strings unbroken) · `sim rc=0` ·
+`mypy rc=0` · `manifests rc=0`.
+
 ## [0.4.37] — 2026-09-19
 
 **Patch — prose stops asserting what nothing ties to the tree. Where v0.4.36 tied an identity to its
