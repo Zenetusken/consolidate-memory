@@ -13,14 +13,27 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import sys
 import tempfile
+import typing
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
 import _ui  # sibling: dream_cue (v0.1.54 — the WAKE cue fires HERE, the arc's true terminal boundary)
 import memory_status as ms  # sibling: the SINGLE-SOURCE procedure_integrity predicate (v0.1.44) — derive, don't duplicate
+
+if typing.TYPE_CHECKING:
+    # Type-only, and the narrowness is deliberate: `from __future__ import annotations` above makes
+    # every annotation a string, so this import never executes and `store_context` stays a lazy
+    # in-function import at its call sites (the file's existing idiom — the module is imported
+    # inside the functions that need it, never at module scope). Writing the resolver's annotations
+    # as `Any` instead would be the smaller diff and the wrong one: it would stop mypy checking
+    # `resolution_source` and `mem_dir_source`, which are the two fields v0.4.36 adds and therefore
+    # the two most likely to be misspelled — and a name not tied to what it claims is the exact
+    # defect class this release closes. `object` (whom this replaces) at least kept the arity.
+    from store_context import StoreContext
 
 # The gorgeous HTML/CSS/vanilla-JS lives in a sibling BUNDLED template (a real editable asset, shipped under
 # plugins/consolidate-memory/scripts/). Found via __file__ so it resolves from the installed plugin cache
@@ -372,6 +385,321 @@ def _store_for(store: str | None, project: str | None) -> Path | None:
     return None
 
 
+# ---- the identity resolver (v0.4.36) -----------------------------------------------------------
+# An archive stamps an IDENTITY. Its subject is the store named by --store/--project; the directory
+# the process happens to be standing in is not evidence about it. RC-5 was the archive asking the
+# room. Each refusal below carries a distinct, stable anchor phrase, so a pin can assert WHICH arm
+# fired without matching prose — a fault and a verdict must not share a message (v0.4.35's theme,
+# one module over).
+_ARM_NO_PROJECT = "belongs to no registered project"
+_ARM_CLAIMED = "is claimed by"
+_ARM_REGISTRY = "cannot read the control-plane registry"
+_ARM_MISMATCH = "is not the store for"
+_ARM_NO_PATH = "does not exist"
+# A FIFTH arm, and it is the same rule that produced Arm C: two faults must not share one message.
+# Arm A is a verdict about the REGISTRY ("no row names this store, and the room does not derive
+# it"); when a configured store path cannot be resolved, no source could be tested at all, so Arm A
+# is not merely unhelpful there — it is unearned, and its remedy (`--project`) faults identically.
+_ARM_ENV = "resolves through an unusable store path"
+_REMEDY_PROJECT = "pass --project <its dir>"
+_REMEDY_PATH = "check the path"
+_REMEDY_ENV = "check autoMemoryDirectory in your settings"
+
+
+def _canon(p: Path) -> "Path | None":
+    """Canonicalize `p`, or `None` when the path is unusable. The RULE lives in `store_context`.
+
+    Kept as a named call site rather than inlined so the six places below read as one decision,
+    and delegating rather than restating because this is exactly the defect class the release
+    exists to close: a rule with a second copy is a rule that drifts. Measured across the
+    interpreters this repo supports (3.8-3.13, the CI matrix's own range): a symlink loop raises
+    `RuntimeError` on 3.8-3.12 and **does not raise at all** on 3.13, where it returns the loop
+    path itself; a NUL raises `ValueError` on all of them; a working directory deleted under the
+    process raises `FileNotFoundError`. RC-5's first cut named two of those three classes and
+    applied them INSIDE the candidate loop only — so `--project`, `--store`, the cwd, and the
+    comparison's own two operands were left bare, and removing the base tree's
+    `except Exception: pass` did not turn them into the named refusal it was meant to become.
+    It turned them into an uncaught traceback, at exactly the sites the fix did not reach:
+    measured, all three classes, base rc=0 against worktree rc=1.
+    """
+    from store_context import safe_resolve   # lazy: main() owns store_context's ABSENCE as a
+    return safe_resolve(p)                   # plugin-install fault, so a module-level import here
+                                             # would raise before that guard could name it
+
+
+def _shown(p: Path) -> str:
+    """A path as it can be PRINTED. A NUL is legal inside a `Path` and illegal in a message.
+
+    The refusal exists to be read, and a NUL in the argument is a byte the terminal silently drops —
+    so the reader sees `/tmp/x y` and goes looking for a space that is not there.
+    """
+    return str(p).replace("\x00", "\\0")
+
+
+def _project_derived(c: StoreContext) -> bool:
+    """Is the candidate's store a FUNCTION of the candidate, or a CONSTANT?
+
+    `resolve_store` is not injective: a global redirect maps every directory to one store, so a
+    round-trip through it would "verify" any candidate and so evidence nothing. This conjunct is
+    what turns the round-trip into a test rather than a formality.
+
+    ⚠ Closed over NAMES only, and the asymmetry is the point. `resolution_source` is WHITELISTED,
+    so a route that does not exist yet is refused rather than admitted; a denylist here defaults to
+    ADMISSION and would already have missed `CLAUDE_CODE_PROJECT_DIR_NAME`, which never touches
+    `autoMemoryDirectory` and so never consults the scope whitelist below either.
+    """
+    from store_context import PROJECT_DERIVED_SOURCES, PROJECT_LOCAL_SCOPES
+    if c.resolution_source in PROJECT_DERIVED_SOURCES:      # default-git-root, default-path
+        return True
+    if c.resolution_source == "autoMemoryDirectory":
+        return c.mem_dir_source in PROJECT_LOCAL_SCOPES
+    return False
+
+
+def _registry_row_for_store(store: Path) -> "tuple[dict | None, str]":
+    """Source 1's lookup: the registry row that STORED this exact store path.
+
+    A stored key rather than a re-derivation, so the row it returns is admitted WITHOUT
+    `_project_derived`. The row records the store its project had; gating it on re-deriving that
+    store from the row's root would refuse exactly the stale rows the registry is most useful for.
+
+    Returns `(row, refusal)`. A miss is `(None, "")` — NOT a refusal: Arm A is a conjunction
+    ("matches 0 rows AND every source-2/3 candidate fails"), so a store with no row must still get
+    its own marker tried. Only Arm B (two rows claiming one store) and Arm C (a registry that
+    cannot be read) refuse here.
+    """
+    from control_plane import classify_registry, connect_if_exists, db_path, rows_for_store
+    db = db_path()
+    state, err = classify_registry(db)
+    if state == "absent":
+        # Vacuously no rows: with no file, "no registered project names this store" is true of
+        # every store, and the codebase's own doctrine says so — assert_mutation_allowed() returns
+        # early on ("absent", "healthy"). Arm A is a CONJUNCTION, so this is not a refusal: it is
+        # the miss that lets sources 2/3 have their turn, and only their failure makes it Arm A.
+        # Returning here is also what keeps Arm C honest: connect_if_exists() returns None for an
+        # absent file too, so without this branch `absent` would refuse with the FAULT's message.
+        return None, ""
+    if state != "healthy":
+        # Arm C. The same string `cm doctor` prints — and now literally the same FORMATTER, not a
+        # re-authoring of its format. This is reached exactly when no context could be resolved, so
+        # there is no ctx to pass to `_registry_state_line`; `registry_state_text` is the half of it
+        # that needs nothing but the classification. A second copy of the format was the defect v0.4.32
+        # shipped a release about, and the two spellings describe ONE condition — so a reword in
+        # either would have left `cm doctor` and this refusal describing one fault in two sentences.
+        from store_context import registry_state_text as _rst
+        return None, (f"{_ARM_REGISTRY} ({_rst(state, err)}) — {_REMEDY_PROJECT}")
+    conn = connect_if_exists(db)
+    if conn is None:
+        # Table-check healthy, yet the file will not open — permission-denied arrives here when
+        # classify_registry's read of the header succeeded by another route. A fault, not a miss.
+        return None, f"{_ARM_REGISTRY} ({state}) — {_REMEDY_PROJECT}"
+    try:
+        rows = rows_for_store(conn, store)
+    except sqlite3.Error as e:
+        # classify_registry is TABLE-level and never COLUMN-level: a registry carrying all five
+        # tables but a `projects` table missing a column classifies "healthy" while the scan
+        # raises. Deliberately NOT swallowed — unlike iter_registered_projects' OperationalError
+        # -> [], which would report a registry we could not read as Arm A and send the reader to
+        # re-enroll a project that is already enrolled.
+        return None, f"{_ARM_REGISTRY} ({state}: {e}) — {_REMEDY_PROJECT}"
+    finally:
+        conn.close()
+    if len(rows) > 1:
+        # `native_memory_dir` carries no UNIQUE constraint, so two rows can name one store.
+        # Picking either would be a coin flip presented as a recovery.
+        return None, (f"--store {store} {_ARM_CLAIMED} {len(rows)} registry rows "
+                      f"— {_REMEDY_PROJECT}")
+    return (rows[0] if rows else None), ""
+
+
+def _refuse(msg: str) -> "StoreContext | None":
+    """Name a refusal on stderr and return None — the resolver's ONLY failure channel.
+
+    The resolver used to return `(ctx, refusal)` under the rule *"refusal == '' wins"*. The harm was
+    not that a caller could print an empty message — it was guarded — but that TWO REPRESENTATIONS
+    of one state (`''` for no-fault beside `None` for no-context) had to be kept in agreement by
+    convention, and the convention was the only thing holding them together: mypy cannot narrow
+    `ctx` from a `str` being empty, and neither can a reader. One sentinel, and it is `None`.
+
+    ⚠ `_registry_row_for_store` still returns `(row, refusal)`, with `(None, "")` for a miss, and
+    that is NOT this shape. It has three outcomes — miss, hit, fault — where the miss and the fault
+    are genuinely different states rather than one state spelled twice, and every path that
+    produces a fault produces a non-empty message, so the empty string never reaches here. The rule
+    is about one state wearing two representations; there, two representations describe two states.
+    """
+    print(f"render_html: {msg}", file=sys.stderr)
+    return None
+
+
+def _resolve_identity(store: "Path | None", project: str | None) -> "StoreContext | None":
+    """Derive the archive's identity from its SUBJECT — the context, or `None` after a named refusal.
+
+    Three input shapes, one rule. `--project` names the subject outright; `--store` alone must have
+    its subject RECOVERED; with neither, cwd IS the subject and there is nothing to verify it
+    against — so that arm consults no recovery source, though it still opens the registry.
+    """
+    from store_context import resolve_store as _rs
+    from store_context import store_context_from_registry as _sctx_from_row
+    if project:
+        proj_p = _canon(Path(project))
+        if proj_p is None:
+            # The named subject is itself unusable. Measured on the base tree this arm rendered at
+            # rc=0 (a synthesized identity); with the blanket catch gone it raised straight out of
+            # the resolver, once per class — `--project` on a symlink loop, and again on a NUL.
+            return _refuse(f"--project {project} {_ARM_NO_PATH} — {_REMEDY_PATH}")
+        ctx = _rs(proj_p)
+        if store is not None:
+            want, got = _canon(Path(store)), _canon(ctx.native_memory_dir)
+            if got is None:
+                # The PROJECT's own store is unusable, so the pair cannot be compared at all. Left
+                # to fall into the mismatch arm below, this said `is not the store for` — true, in
+                # the way a lucky guess is — and told the reader to re-run WITHOUT `--store`, which
+                # is the very invocation that faults here. A pairing verdict for an environment
+                # fault, with a remedy that reproduces it.
+                return _refuse(f"--project {project} {_ARM_ENV} "
+                               f"({_shown(ctx.native_memory_dir)}) — {_REMEDY_ENV}")
+            if want is None or want != got:
+                # RC-5b: two inputs that must agree, compared nothing. A silent preference for
+                # either one is a wrong masthead with the right one in hand.
+                if want is None or not Path(store).exists():
+                    # A path fault must not wear a pairing fault's message: `is not the store for`
+                    # would send the reader to check a pairing when the mistake is the path. Shares
+                    # its wording with the `--store`-alone arm below — the same fault, one message.
+                    return _refuse(f"--store {store} {_ARM_NO_PATH} — {_REMEDY_PATH}")
+                return _refuse(f"--store {store} {_ARM_MISMATCH} {project} "
+                               "— re-run without --store (it derives that from --project), "
+                               "or pass a matching pair")
+        return ctx
+    if store is not None:
+        store_p = Path(store)
+        row, refusal = _registry_row_for_store(store_p)
+        if refusal:
+            return _refuse(refusal)
+        if row is not None:
+            # Source 1 recovers an IDENTITY DIRECTLY, unlike sources 2/3, which recover a candidate
+            # that must then verify — so it is admitted without the gate. It passes the ROW to the
+            # purpose-built producer rather than resolve_store(<the row's root>): the latter mints
+            # a different project id (the defect that producer's docstring records) and re-derives
+            # the very store the row already names. The cwd template supplies only the environment
+            # and the two fields no row carries (`registry_state`, `plugin_data_dir`), which is why
+            # ...which is why the rendered identity is cwd-invariant. The template still has to be
+            # BUILT from some directory, and `Path.cwd()` is unguarded at this site for the same
+            # reason it is unguarded at the foot of this function — it is the call that raises, so
+            # it cannot be an argument to a guard around `resolve()`.
+            try:
+                _tpl_dir = Path.cwd()
+            except OSError:
+                return _refuse(f"the working directory {_ARM_NO_PATH} — {_REMEDY_PATH}")
+            _tpl = _canon(_tpl_dir)
+            if _tpl is None:
+                return _refuse(f"the working directory {_ARM_NO_PATH} — {_REMEDY_PATH}")
+            return _sctx_from_row(row, template=_rs(_tpl))
+        # Sources 2 and 3, each admitted ONLY because it verifies: the candidate's store must BE
+        # this store AND be a function of the candidate rather than a global redirect's constant.
+        # Source 2 is the store's OWN script-written marker — a move keeps its `project_path`
+        # deriving here, a redirect voids it. Source 3 is the room, admissible only when it
+        # verifies; the defect was never that the process has a cwd, but that the cwd was believed.
+        cands: list = []
+        try:
+            st = json.loads((store_p / ms.STATE_FILE).read_text(encoding="utf-8"))
+            pp = str(st.get("project_path") or "") if isinstance(st, dict) else ""
+            if pp:
+                cands.append(Path(pp))
+        except (OSError, json.JSONDecodeError, ValueError):
+            pass                    # no marker, or an unreadable/garbled one: try source 3 alone
+        try:
+            cands.append(Path.cwd())
+        except OSError:
+            # `Path.cwd()` itself raises `FileNotFoundError` when the directory the process stands
+            # in has been deleted underneath it — the same OSError family the guard below admits.
+            # Source 3 is then simply ABSENT as a source rather than fatal: a candidate that cannot
+            # be resolved cannot verify, which is the rule this whole loop already runs on.
+            pass
+        target = _canon(store_p)
+        if target is None:
+            # The store cannot be canonicalized — a symlink loop, or a NUL — so no candidate can be
+            # compared against it and no source can verify. This is NOT the existence test below
+            # and does not sit where it sits: that one must come LAST, because a store that is
+            # merely ABSENT is legitimately recoverable (source 1 via the stored row, source 3 via a
+            # cwd that derives it). An UNUSABLE path is recoverable by neither, so it refuses here.
+            return _refuse(f"--store {store} {_ARM_NO_PATH} — {_REMEDY_PATH}")
+        bad_path = ""
+        for cand in cands:
+            try:
+                c = _rs(cand)
+            except (OSError, ValueError, RuntimeError):
+                # A candidate that cannot be RESOLVED cannot VERIFY, so it fails here like any
+                # other and the next source gets its turn — the same degrade the marker parse
+                # above already promises for a garbled marker.
+                #
+                # ⚠ The marker's `project_path` is the reachable vector, and it splits "garbled"
+                # in two: `json.loads` accepts an escaped NUL, so the file PARSES while
+                # `Path.resolve()` raises `ValueError: embedded null byte`. That raise lands HERE,
+                # outside the parse's own `except`, so before this guard a garbled marker did not
+                # degrade to source 3 — it took the render down with an uncaught traceback.
+                # Measured: a store whose own project renders rc=0 with NO marker exits 1 with a
+                # NUL in one, from every cwd.
+                #
+                # Narrow on purpose: `except Exception` here would rebuild the
+                # `except Exception: pass` that RC-1 exists to close — a fault and an absence
+                # sharing one representation. These classes ARE path-unusable; anything else
+                # should stay loud.
+                continue
+            cand_store = _canon(c.native_memory_dir)
+            if cand_store is None:
+                # ⚠ NOT a non-match — an UNUSABLE path. `resolve_store` declines to canonicalize a
+                # NUL rather than raising (that is `_norm_path`'s policy, and the reason no
+                # exception reaches the arm above), so the fault arrives here as a VALUE, and
+                # `None != target` would quietly file it as "this candidate isn't the one".
+                # Reporting that at the fall-through as Arm A sends the reader to pass `--project`
+                # for a settings fault — and the `--project` run fails the same way, so the printed
+                # remedy is a command that faults. `fault ≡ absence` is the RC-1 mechanism this
+                # release exists to close; this is where it would have come back.
+                bad_path = bad_path or _shown(c.native_memory_dir)
+                continue
+            if cand_store == target and _project_derived(c):
+                return c
+        # A MISS and a FAULT both land here, and they get different messages. Note that
+        # `belongs to no registered project` is TRUE of both — with an absent path, nothing names
+        # or derives it either, so the assertion is vacuously satisfied. Its defect is not falsity
+        # but uselessness, in two parts: it is silent on the one fact the reader can act on (the
+        # path is not there), and its remedy `--project <its dir>` points at a directory that does
+        # not exist. Measured, it also made the SAME typo'd --store read `does not exist` when
+        # --project was passed and a registration fault when it was not — so which message the
+        # reader got depended on a flag with nothing to do with the mistake.
+        #
+        # ⚠ The existence test is LAST, after every source has had its turn, and the position is
+        # the whole reason it is safe: source 1 recovers a store that was DELETED since enrolment
+        # (the row is a stored key, and it still names the project), and source 3 admits an absent
+        # store that the cwd DERIVES (a project that has not dreamed yet — the store is not created
+        # until it does). Testing existence first would refuse both, breaking two legitimate
+        # invocations to fix a message. Measured on this revision: both render rc=0.
+        if not store_p.exists():
+            return _refuse(f"--store {store} {_ARM_NO_PATH} — {_REMEDY_PATH}, "
+                           f"or {_REMEDY_PROJECT}")
+        if bad_path:
+            # Every source that ran produced a store that cannot be resolved, so "no registered
+            # project names this store" was never established — the sources could not be TESTED.
+            # Fifth arm, ordered after the path test (which is about `--store` alone and stays
+            # last-but-one) and before Arm A, whose verdict this would otherwise counterfeit.
+            return _refuse(f"--store {store} {_ARM_ENV} ({bad_path}) — {_REMEDY_ENV}")
+        return _refuse(f"--store {store} {_ARM_NO_PROJECT} — {_REMEDY_PROJECT}")
+    # With neither flag the cwd IS the subject, so there is nothing to verify it against — but it
+    # still has to BE. `Path.cwd()` raises `FileNotFoundError` for a directory deleted under the
+    # process, and the base tree's blanket catch turned that into a rendered archive stamped with a
+    # synthesized identity; without the catch it becomes a traceback. Neither is a refusal.
+    # ⚠ `Path.cwd()` is called OUTSIDE `_canon` on purpose-of-necessity: it is the CALL that
+    # raises, so it cannot be the argument to a guard that catches around `resolve()`.
+    try:
+        cwd_raw = Path.cwd()
+    except OSError:
+        return _refuse(f"the working directory {_ARM_NO_PATH} — {_REMEDY_PATH}")
+    cwd_ctx = _canon(cwd_raw)
+    if cwd_ctx is None:
+        return _refuse(f"the working directory {_ARM_NO_PATH} — {_REMEDY_PATH}")
+    return _rs(cwd_ctx)
+
+
 def main(argv: list) -> int:
     ap = argparse.ArgumentParser(description="render the per-repo dream ARCHIVE (index + dashboards) as one self-contained HTML")
     ap.add_argument("cycle", nargs="?", help="cycle-record JSON path (memory_status.py --seed + filled); omit to render from the log")
@@ -404,16 +732,46 @@ def main(argv: list) -> int:
         print(f"render_html: template integrity fault — {e}", file=sys.stderr)
         return 1
 
-    store = _store_for(args.store, args.project)
-    live_identity: dict = {}
+    # `store_context` is the same shipping-class dependency as the template and the JS bundles
+    # above, in the same directory, and it gets the same one-line degrade. It did not, until now:
+    # this import used to sit inside the blanket `except Exception: pass` that RC-5a removed, so a
+    # truncated install rendered an empty masthead at exit 0; with that catch gone it raised an
+    # uncaught ModuleNotFoundError instead — a traceback, which is exactly what the rule three
+    # lines above forbids. Only ImportError is caught, for the reason `_load_template`'s ValueError
+    # arm states: a fault INSIDE store_context is not a truncated install, and must not go to the
+    # reader wearing that message.
+    #
+    # ⚠ The ORDER is the guard, not a style choice. `_store_for` used to run ABOVE this try, and its
+    # `--project` branch imports `memory_status`, which imports `store_context` — so the arm the
+    # guard exists for was reached before the guard could see it, and `--project` alone still
+    # raised a ten-line traceback on a truncated install while `--store` degraded cleanly. That is
+    # the shipped `cm report` path: all three of its branches pass `--project` and never `--store`.
+    # Measured on BOTH trees (base rc=1 traceback, worktree rc=1 traceback) — which is what makes
+    # it an unmet rule rather than a regression, and what made it invisible to a pin that drove
+    # `--store` only.
     try:
         from store_context import (identity_snapshot as _id_html,
-                                   resolve_store as _rs_html,
                                    warn_unenrolled_share as _w_html)
-        _proj = Path(args.project).resolve() if args.project else Path.cwd()
-        _ctx_html = _rs_html(_proj)
+        store = _store_for(args.store, args.project)
+    except ImportError as e:
+        print(f"render_html: {e} — is the plugin install complete?", file=sys.stderr)
+        return 1
+    # The resolution is deliberately NOT wrapped. A fault and an absence must not share one
+    # representation: under the old `except Exception: pass` both were `{}`, so a broken plugin
+    # install rendered an empty masthead under a clean exit 0. Only the advisory warn below stays
+    # wrapped, because its failure must not void an otherwise-correct render.
+    # `None` means the refusal has ALREADY been named on stderr — there is nothing to print here,
+    # and nothing that could print an empty message.
+    _ctx_html = _resolve_identity(store, args.project)
+    if _ctx_html is None:
+        return 1
+    live_identity: dict = _id_html(_ctx_html)
+    try:
+        # RC-5c: the warn must be handed the SUBJECT's context. Its `_warned_unenrolled` flag is a
+        # ONE-SHOT gate, so a cwd-derived context writes it into the wrong project's state file and
+        # silently suppresses that project's future warnings — a display defect that persists as
+        # durable state.
         _w_html(_ctx_html)
-        live_identity = _id_html(_ctx_html)
     except Exception:
         pass
     history = read_history(store)

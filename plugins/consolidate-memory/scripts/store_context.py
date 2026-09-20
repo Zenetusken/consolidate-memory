@@ -33,6 +33,18 @@ VOLATILE_FRONTMATTER = (
     "base_revision", "canonical_revision",
 )
 
+# The routes a store may be *derived through*: the git common dir, or (no git) the working-tree
+# root. The NAMES define the set and the assignment sites in resolve_store consume them, so an
+# alphabetized tidy of the tuple is a no-op and neither half can drift from the rule it names.
+_SRC_GIT_ROOT = "default-git-root"
+_SRC_DEFAULT_PATH = "default-path"
+PROJECT_DERIVED_SOURCES = (_SRC_GIT_ROOT, _SRC_DEFAULT_PATH)
+
+# Settings scopes that make an autoMemoryDirectory route project-local. The only scopes whose
+# containment reset can return the store to the default, so the only ones a candidate's own
+# project can still be read off.
+PROJECT_LOCAL_SCOPES = ("project", "local")
+
 
 class WriteRefused(RuntimeError):
     """Raised when a mutation is refused (disagreement, disabled auto-memory, no override)."""
@@ -147,6 +159,9 @@ class StoreContext:
     cross_project_allowed: bool = False
     registry_error: str = ""
     domain_lifecycle: str = "active"
+    # Which settings scope supplied autoMemoryDirectory ("" when none did). A scope, not a path —
+    # it is what separates a project-local route from a global redirect.
+    mem_dir_source: str = ""
 
 
 def slug_for(project_dir: Path) -> str:
@@ -162,6 +177,29 @@ def _home_dir(environ: Any = None) -> Path:
     if h:
         return Path(h).expanduser()
     return Path.home()
+
+
+def safe_resolve(p: Path) -> "Optional[Path]":
+    """Canonicalize `p`, or `None` when the path is UNUSABLE — one rule, one class set, one home.
+
+    `Path.resolve()` does not raise one class, and every site that assumed otherwise was one
+    blanket `except` away from being right by accident. Measured across the interpreters this repo
+    supports (3.8-3.13 — the CI matrix's own range):
+
+      * a **symlink loop** raises `RuntimeError` on 3.8-3.12, and on 3.13 **does not raise at all**
+        — it returns the loop path itself, so the failure is loud-and-wrong there and quiet-and-
+        wrong after;
+      * a **NUL** in the path raises `ValueError` on every one of them (3.13 words it `lstat:
+        embedded null character in path`);
+      * a working directory **deleted under the process** raises `FileNotFoundError`.
+
+    This lives here because `store_context` is the sole path constructor (ADR 002), and because it
+    is the ONE module both other callers may import at module scope without a cycle.
+    """
+    try:
+        return p.resolve()
+    except (OSError, ValueError, RuntimeError):
+        return None
 
 
 def config_root(environ: Optional[dict] = None) -> Path:
@@ -183,10 +221,12 @@ def plugin_data_dir(cfg: Optional[Path] = None, environ: Optional[dict] = None) 
 
 
 def _norm_path(p: Path) -> str:
-    try:
-        return str(p.resolve()).replace("\\", "/")
-    except OSError:
-        return str(p).replace("\\", "/")
+    # Declines to canonicalize rather than failing, like every other resolver here — and this is
+    # the site a settings NUL actually reached: `resolve_store` calls it on the CHOSEN native path,
+    # so the raise arrived after every candidate had been tried, from a path the caller never
+    # named. `except OSError` was one class short of the policy it was spelling.
+    r = safe_resolve(p)
+    return str(r if r is not None else p).replace("\\", "/")
 
 
 def profile_id_for(cfg: Path, environ: Optional[dict] = None) -> str:
@@ -905,7 +945,7 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         override = Path(ov_env).expanduser()
 
     ambiguity: list = []
-    source = "default-git-root" if common is not None else "default-path"
+    source = _SRC_GIT_ROOT if common is not None else _SRC_DEFAULT_PATH
     native = default_native
 
     cwd_slot_dir: Optional[Path] = None
@@ -923,7 +963,7 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     if custom is not None:
         source = "autoMemoryDirectory"
         native = custom
-        if mem_dir_source in ("project", "local"):
+        if mem_dir_source in PROJECT_LOCAL_SCOPES:
             if not _project_local_mem_ok(
                     custom, cfg, root, default_native, pdata=pdata, project_id=pid):
                 ambiguity.append(
@@ -933,9 +973,9 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
                 if slot_env:
                     source = "CLAUDE_CODE_PROJECT_DIR_NAME"
                 elif common is not None:
-                    source = "default-git-root"
+                    source = _SRC_GIT_ROOT
                 else:
-                    source = "default-path"
+                    source = _SRC_DEFAULT_PATH
             elif mem_dir_source == "project" and _path_contained(custom, root):
                 # pentest (Low 19): a REPO-SUPPLIED settings.json can relocate the
                 # "private, NOT in git" store into the working tree and pre-seed
@@ -965,10 +1005,12 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     live = []
     seen = set()
     for c in candidates:
-        try:
-            key = str(c.resolve())
-        except OSError:
-            key = str(c)
+        # Declines to canonicalize rather than failing — but the guard named only `OSError`, so a
+        # NUL in a settings-derived candidate (which `json.loads` happily accepts as an escape)
+        # raised `ValueError` straight out of `resolve_store` and killed the render. Measured: the
+        # only reachable route by which this function could take a caller down.
+        _r = safe_resolve(c)
+        key = str(_r) if _r is not None else str(c)
         if key in seen:
             continue
         seen.add(key)
@@ -1026,6 +1068,7 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         cross_project_allowed=cross_project_allowed,
         registry_error=reg_err,
         domain_lifecycle=life,
+        mem_dir_source=mem_dir_source,
     )
 
 
@@ -1107,10 +1150,23 @@ def assert_writable(ctx: StoreContext) -> None:
                            + " — pass an explicit store override")
 
 
-def _registry_state_line(ctx: StoreContext) -> str:
-    err = getattr(ctx, "registry_error", "") or ""
-    state = getattr(ctx, "registry_state", "absent") or "absent"
+def registry_state_text(state: str, err: str = "") -> str:
+    """The ONE rendering of a registry classification: `state`, or `state: err`.
+
+    Public because there is a second site that must agree with it and has no context to hand:
+    `render_html`'s Arm C is reached exactly when no context could be resolved, so the
+    classification is all it has. A second copy of this format is precisely the defect class
+    v0.4.32 shipped a release about — "two periphery sites each kept a SECOND copy of a rule the
+    store already states canonically" — and the two spellings describe one condition (`cm doctor`
+    and an archive refusal), so a reword in one would leave the reader with two sentences for one
+    fault. `cm doctor` prints this via `_registry_state_line` below.
+    """
     return state if not err else f"{state}: {err}"
+
+
+def _registry_state_line(ctx: StoreContext) -> str:
+    return registry_state_text(getattr(ctx, "registry_state", "absent") or "absent",
+                               getattr(ctx, "registry_error", "") or "")
 
 
 def _integrity_check(ctx: StoreContext) -> str:

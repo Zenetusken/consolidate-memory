@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional, Tuple
 
-from store_context import StoreContext, WriteRefused, plugin_data_dir, config_root
+from store_context import StoreContext, WriteRefused, plugin_data_dir, config_root, safe_resolve
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -804,6 +804,140 @@ def iter_registered_projects(conn: sqlite3.Connection) -> list:
     except sqlite3.OperationalError:
         return []
     return [dict(r) for r in rows]
+
+
+# The full column set `store_context_from_registry` consumes (its `_col` calls). Deliberately NOT
+# `iter_registered_projects`' narrower list: that one omits `current_root` and `git_common_dir`, and
+# the producer falls back to `template.project_root` when `current_root` is absent — a fallback whose
+# template is the cwd. Reusing the sibling would therefore let RC-5 back in through its own repair.
+_REGISTRY_ROW_COLS = ("project_id, display_name, native_memory_dir, session_dir, status, domain_id, "
+                      "current_root, git_common_dir")
+
+# ⚠ `rows_for_store`'s scan is IRREDUCIBLE, and this note exists so it is not "optimized" wrongly.
+# Measured on a synthetic registry: ~15-16 us/row, and that PER-ROW cost is the stable quantity. The
+# resolve loop's SHARE of the function is deliberately NOT stated as a constant, because it is a
+# property of the REGISTRY rather than of the function — the SELECT is a larger fraction against a
+# large on-disk registry than against a small one, and measures 99.9% loop against a synthetic one
+# whose query is free. 340 rows (the live registry) -> 5.4 ms; 10k -> 0.15 s; 100k -> 1.5 s.
+#
+# ⚠ This note carried a SUPERSEDED set until it was reconciled with the sibling under the bound. It
+# read *"the RESOLVE LOOP is 89-92% of it — the SELECT is the remainder. 340 rows (the live registry)
+# -> 7.9 ms; 10k -> 0.19 s; 100k -> 1.6 s"*, and neither re-measured: the two figures do not even
+# multiply, since 340 x 16 us = 5.4 ms and not 7.9. The correction was applied to the sibling comment
+# and not to this one, which is the release's own defect class — a surface still asserting what its
+# subject has stopped supporting — arriving inside the note that exists to prevent a wrong
+# optimization. That is also why the share is gone rather than re-stated: a second home for a
+# measurement is a second thing to keep true, and this one was not kept.
+#
+# Three repairs look obvious and not one of them is sound:
+#   · An INDEX, or a `WHERE native_memory_dir = ?` prefilter, speeds up the SELECT — the smaller half,
+#     and the half that is not the cost. It is ALSO unsound on its own terms: a stored value that is
+#     not already canonical can still resolve onto the target, and only `resolve()` detects that. Nor
+#     can the loop stop at its first hit — the LIST return is required, because two rows may name one
+#     store and the caller must distinguish zero from two.
+#   · `os.path.realpath` is faster than `Path.resolve()` — MEASURED at 1.4-2.0x over five fixtures, so
+#     the ratio is a property of the PATH and not a constant — and it is not swappable for a reason
+#     NARROWER than the ratio: on a symlink loop `resolve()` raises the `RuntimeError` that
+#     `safe_resolve` converts to "unusable" (3.8-3.12), while `realpath` RETURNS the loop path, so an
+#     unusable store is admitted as a usable one with nothing raised to catch. A NUL is NOT part of
+#     that — `realpath` raises `ValueError` there too, exactly as `safe_resolve`'s docstring records.
+#     The loop is the whole of the objection, and it is measured rather than hypothetical — see the
+#     block comment in `rows_for_store`.
+# So the scan is bounded at the TARGET end (an unusable store resolves no row) and its cost is stated
+# here, rather than traded away for a faster wrong answer. The bound sits AFTER the query on purpose:
+# the query is the only channel a REGISTRY fault reaches the caller through, so skipping it would
+# trade the query's cost, on a rare input, for that signal — see the bound's own comment.
+
+
+def rows_for_store(conn: sqlite3.Connection, store) -> list:
+    """Registry rows whose `native_memory_dir` IS `store` — filtered by RESOLVED path on both sides.
+
+    A STORED KEY, not a re-derivation: the row records the store its project had, so this is the
+    control plane's own answer to "who owns this store", and it is admitted without the round-trip
+    guard the other two recovery sources need.
+
+    Returns a LIST, because `native_memory_dir` carries no UNIQUE constraint: two rows can name one
+    store, and the caller must distinguish zero rows from two. Filtering is in Python rather than in
+    SQL — the same house style as `_iter_store_roots` and `_project_id_for_native` — because the
+    comparison is between RESOLVED paths, which a `WHERE` cannot express. It matches ABSOLUTE
+    stored values only, and skips any value it cannot resolve; the block comment below gives both
+    reasons, and neither is hypothetical.
+
+    ⚠ Deliberately does NOT swallow `sqlite3.Error`, unlike the sibling above. `classify_registry`
+    verifies tables and never columns, so a registry can classify `healthy` while this scan raises;
+    a caller told "no registered project" would go re-enroll a project that is already enrolled.
+    """
+    rows = conn.execute(f"SELECT {_REGISTRY_ROW_COLS} FROM projects").fetchall()
+    # ONE rule for "this path is unusable", imported rather than restated: an unguarded
+    # `Path.resolve()` here raises `RuntimeError` on a symlink loop (3.8-3.12) and `ValueError` on
+    # a NUL, neither of which is a `sqlite3.Error` — so both escaped this function's deliberate
+    # non-swallowing and killed a render whose store the offending value had nothing to do with.
+    # Unusable is not a match: the comparison cannot be MADE, and the bound below is what makes
+    # that true. Stated without the tempting universal — a *resolvable* row fails the comparison
+    # against `None`, because no path equals it, but a row whose OWN value is unresolvable
+    # resolves to `None` too, and `None == None` ADMITS it. Measured, with the bound removed: one
+    # NUL-bearing row comes back for a NUL-bearing `--store` — a corrupt row's identity stamped
+    # onto an archive, which is this release's own defect shape arriving inside its repair.
+    target = safe_resolve(Path(store))
+    # THE BOUND. An unusable `store` yields `target is None`, and this returns `[]` whatever the
+    # registry holds — so on this input the scan cannot change the result. It is also a CORRECTNESS
+    # bound, not only a cost one: it is what stops the `None == None` admission recorded above, and
+    # a bound justified as an optimization alone is one refactor away from being deleted as one.
+    # The per-row `safe_resolve` IS the scan's cost, and the per-row cost is the stable quantity:
+    # ~15-16 us/row, measured at three sizes (340 -> 5.4 ms; 10k -> 0.15 s; 100k -> 1.5 s). The
+    # SHARE is deliberately not stated as a constant, because it is a property of the REGISTRY
+    # rather than of the function — the SELECT is a larger fraction against a large on-disk
+    # registry than against a small one, and measures 99.9% loop against a synthetic one whose
+    # query is free. An earlier revision of this comment pinned it at "89-92% of the function's
+    # total" and costed 340 rows at 7.9 ms; neither re-measured (340 rows is 5.4 ms, and the two
+    # figures did not multiply: 340 x 16 us = 5.4 ms, not 7.9). The remaining scan is IRREDUCIBLE
+    # and deliberately not "optimized" — see the note under `_REGISTRY_ROW_COLS` for the three
+    # unsound repairs, including why the comparison cannot become a `WHERE` or `os.path.realpath`.
+    #
+    # ⚠ Placed HERE and not above the `conn.execute`. Hoisting it looks strictly better — it would
+    # skip the query too — and it is a tempting edit precisely because it is nearly free: the two
+    # lines move together, since `target` is bound BELOW the query, so moving the `if` alone is an
+    # `UnboundLocalError` rather than a working hoist. That placement is the wrong one, MEASURED so: the
+    # query is this function's only FAULT CHANNEL. `classify_registry` verifies tables and never
+    # columns — the docstring's own premise — so a registry can classify `healthy` while this SELECT
+    # raises. Hoisted, an unusable store returns BEFORE that raise, the caller reads an ABSENCE where
+    # it should read a FAULT, and the reader is sent to check a SETTING — Arm E's remedy, since an
+    # unusable store is exactly Arm E's input and `render_html` orders that arm before Arm A
+    # precisely so Arm A's verdict cannot counterfeit this one. That is `fault == absence`, the
+    # mechanism v0.4.35 closed and the reason Arm C exists at all. The trade is a bare `SELECT` over
+    # the registry, on a rare input, against that signal, and the signal wins.
+    if target is None:
+        return []
+    out = []
+    for r in rows:
+        d = dict(r)
+        raw = str(d.get("native_memory_dir") or "")
+        p = Path(raw)
+        # ⚠ ABSOLUTE ONLY, and an unresolvable value is not a match — ONE condition, two defects,
+        # because both come from resolving a stored value without asking what it is.
+        #
+        # A RELATIVE stored value resolves against the PROCESS's cwd, which makes the row this
+        # function returns — and so the identity the archive is stamped with — depend on where the
+        # render ran. That is RC-5's own defect (an assertion taking its source from the ambient
+        # context) reappearing inside RC-5's repair. Measured on one registry, one `--store`, two
+        # cwds: a store owned by charlie was stamped with atlas's identity, because a row holding
+        # `memory` resolved onto charlie's store from the slug directory and onto nothing from
+        # charlie's own. `native_memory_dir` is written ABSOLUTE by `store_context` — its name is
+        # the contract — so a relative value cannot name a store and the anchor it was given here
+        # was never the right one.
+        #
+        # And resolution can RAISE. A NUL in a stored value is not a `sqlite3.Error`, so it escapes
+        # this function's deliberate non-swallowing (see the docstring) as an uncaught ValueError
+        # and kills a render whose store the corrupt row has nothing to do with — measured, and
+        # broader here than in `render_html`: this loop touches EVERY row, and it runs FIRST, so
+        # one bad row takes down every `--store` invocation rather than only its own.
+        if not raw or not p.is_absolute():
+            continue
+        # No `target is not None` guard needed: the early return above makes `target` non-None for
+        # every row reached here, and an unusable ROW still cannot equal it (`None != target`).
+        if safe_resolve(p) == target:
+            out.append(d)
+    return out
 
 
 def get_migration_mode(conn: sqlite3.Connection) -> str:
