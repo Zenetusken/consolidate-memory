@@ -312,8 +312,13 @@ membership is a judgment about reader-facing-ness — and it is not even the clo
    recorded near-miss (a restatement that would have duplicated the header while the false line
    stood). Three instances inside one repair is why the rule is stated here rather than left to taste:
    **fix the line, don't append below it.**
-2. **Correct or delete `:85-86`.** The rule it should state is the header's, scoped to the entries it
-   heads. A false universal is not repaired by adding rows until it becomes true — that would drag the
+2. **Correct or delete `:85-86` — and the repair takes the SECOND branch.** The correction branch is
+   foreclosed by measurement, not by preference: the rule the comment would then state — the header's,
+   scoped to the entries it heads — is still a rule stated **below** a header that already states one,
+   which puts the list's criterion in **two places**, the defect this item removes rebuilt by its own
+   repair. So the criterion moved **into** the header, which gained the second inclusion part 1
+   requires, and the comment keeps only the measured fact and the entry's reason, **asserting no
+   rule**. A false universal is not repaired by adding rows until it becomes true — that would drag the
    whole README closure (source files, assets, `LICENSE`) into a prose-link registry to satisfy a
    sentence that should not have been written.
    ⚠ **And do not "restate the header" — the first draft of this spec proposed exactly that, and
