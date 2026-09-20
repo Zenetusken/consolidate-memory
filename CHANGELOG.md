@@ -60,6 +60,57 @@ introduces. Design and evidence: `docs/comment-and-registry-truth.spec.md`.
    here can fail on pre-fix code. What it buys is that the four docs' own outbound links enter the
    check. MEASURED: gate green, checked files **14 → 18**.
 
+3. **The release turned its audit on its own shipped text, and six claims were false — four of
+   them this branch's.** Every numeral was re-derived from the tree with its matcher named, and
+   every repair **edits the claim it falsifies** rather than annotating below it. ⚠ **Two are
+   figures that lost their operand, and the distinction between them is the item.** Part 2's
+   derivation paragraph states `16` reached, ten held and **14** entries, all true at this branch's
+   base `9585b10`, where they yield the `4` the paragraph derives. The head reads **18** entries
+   holding **14** — the four additions land — and the difference is still `4`, so the figures are
+   **bound to the base rather than recomputed**: the head's numerals are a different derivation of
+   the same invariant, and swapping them in would have replaced correct content with correct-looking
+   content about operands that no longer produce it. The Defect-2 diagnosis is bound the same way
+   for a sharper reason — it is a **pre-repair** diagnosis in the present tense, its coordinates are
+   the base's numbering, and its clause `no comment in the file accounts for it` is false from the
+   repair onward, because the header's second inclusion names precisely that entry. ⚠ **The
+   registry's own docstring was the third, and it is this item's defect one register up.** Invariant
+   2 said two docs *a reader does land on* from the README are absent — **arrival** vocabulary over
+   a **link-graph** measurement — while the README also links the **directory** `docs/adr`, holding
+   **24** documents that no `.md`-filtered walk can represent and which are neither entries of the
+   list nor instances of any exclusion class the header names. The operand is now stated, the
+   directory and its documents are named as the arrival the words invite, and the file's own header
+   rule (*neither depth nor a link is the membership rule*) is what made the mismatch findable: **a
+   file that states its criterion and then reports a count from a different one is this item's
+   defect arriving in the registry's own docstring.** ⚠ **The fourth is a PREDECESSOR's, and this
+   release falsifies it rather than merely finding it** — the citation check's bare-form census
+   reads *MEASURED … at this revision … Of `81` scanned … `49` carry neither*, and the document this
+   release ships is walked, so the same walk returns **82** and **50** while its other two cells and
+   its citation total hold. The binding is restated as the **corpus** rather than a revision, and
+   the superseded pair is named so that a reader who remembers `81 / 49` can tell a moved operand
+   from a broken matcher. ⚠ **A fifth was repaired alongside it, and the two differ in kind: the
+   census moved because this branch moved it, while the docstring quoting the pre-fix workflow
+   comment's wrap was false before this branch existed.** It is corrected here because the file is
+   open for the census anyway and because the correction is one word — the quote is of a file's
+   **bytes**, the file carries **ten** spaces after the `#` where the docstring wrote three, and
+   this registry itself names the three-space form as a rejected draft. What that quote is *about* —
+   the wrap, and the `#` marker the faulty join leaves behind — is unaffected, which is why the
+   repair is to the quotation's fidelity and not to its claim. ⚠ **The sixth is the registry's, one
+   home above the third, and it is the header's own exclusion list.** The appositive under
+   *destinations that are not reader-facing documents* listed **`LICENSE`**, and `LICENSE` **is** a
+   reader-facing document — it arrives from the README as a markdown target **twice** (`:391`,
+   `:395`). So the list was false about **one of its own members**, which is item 2's test turned on
+   the header that states the rule; the member was **cut** rather than the clause reworded, because
+   the class the clause excludes is defined by reader-facing-ness, and `LICENSE` fails that
+   definition instead of sitting outside it. ⚠ **The destination the clause does reach is a
+   directory, and reaching it is all it does** — `docs/adr` is not a document, so the clause covers
+   the destination and says **nothing** about the `24` documents behind it. A directory's scope is
+   not its contents' scope, and the file's own practice is the proof: `docs/` is likewise a
+   directory, is likewise linked from `CONTRIBUTING.md`, and five of its `82` tracked documents are
+   listed. ⚠ **Two docket entries were refuted by the artifact's own adjacent text** and are
+   recorded as refuted rather than silently dropped: a `CHANGELOG` clause read as an attribution is
+   a **conditional perfect** naming the clause the repair deliberately did *not* write, and a
+   mention census read as an unscoped universal states its operand in the same sentence-group.
+
 **No check added or removed; D6 unchanged at 2177.** Verification: `smoke 2177 passed / 0 failed`
 · `docs_links rc=0` (**18 files link-checked**, 7 required strings unbroken) · `sim rc=0` ·
 `mypy rc=0` · `manifests rc=0`.

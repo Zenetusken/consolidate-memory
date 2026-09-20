@@ -16,9 +16,14 @@ Invariants:
 2. **Every relative link in the checked set resolves the way GitHub resolves it** —
    doc-relative with no repo-root fallback, raw HTML `href`/`src` included. **The set is
    `DOCS` below, which is a CURATED list and not the closure of the README's links** — two
-   docs a reader does land on from the README, `CLAUDE.md` and
+   docs the link graph reaches from the README, `CLAUDE.md` and
    `plugins/dream-beta-tester/docs/SPEC-A.md`, are deliberately absent and their links are
-   therefore unchecked. This invariant used to state the closure, and the comment inside
+   therefore unchecked. ⚠ THE OPERAND IS THE LINK GRAPH this file walks — inline markdown
+   destinations resolved relative to the linking file and filtered to tracked `.md` — and
+   NOT every way a reader arrives, which is the wider reading the words invite: the README
+   also links the DIRECTORY `docs/adr`, holding 24 documents that no `.md`-filtered walk can
+   represent at all, and it is neither an entry of the list nor one of the exclusion classes
+   the header names. This invariant used to state the closure, and the comment inside
    `DOCS` quoted it as its authority for a rule the list does not implement; the note after
    the list now carries the boundary instead.
 3. **Manual anchors are balanced.** The README uses explicit `<a id="…">` markers because
@@ -79,8 +84,16 @@ PREVIEW_FILES = ("index.html", "sample.json")
 # invisible until someone opens the form, and the same goes for a design record a reader is
 # handed off to rather than linked to. This is a CURATED set, not the closure of the
 # README's links: destinations that are not reader-facing documents — source code, assets,
-# the generated preview, `LICENSE` — are out of scope by design, and neither depth nor a link
-# is the membership rule (see the notes inside the list, and after it).
+# the generated preview — are out of scope by design, and neither depth nor a link is the
+# membership rule (see the notes inside the list, and after it). ⚠ That clause speaks about
+# DESTINATIONS, and neither of the README's two unsettled ones is settled by it. The root
+# `LICENSE` it does not reach — a reader-facing document is outside the class it excludes — and
+# this list omits it: a judgment, not a category. The DIRECTORY `docs/adr` it does reach, and
+# reaching it is all it does; the clause says nothing about the 24 documents a reader arrives at
+# through it, and a directory's scope is not its contents' scope. This file's own practice is
+# the proof: `docs/` is likewise a directory, is likewise linked (from `CONTRIBUTING.md`), and
+# five of its 82 tracked documents are listed below. Recorded rather than added, because a
+# boundary that is not written down is re-derived, differently, by the next editor.
 DOCS = [
     "README.md",
     "CONTRIBUTING.md",
@@ -99,22 +112,28 @@ DOCS = [
     "plugins/consolidate-memory/skills/consolidate-memory/references/harness-map.md",
     "plugins/dream-beta-tester/docs/SPEC.md",
     "plugins/dream-beta-tester/docs/CONTRACT.md",
-    # No markdown link reaches this one, anywhere in the tree — measured, not assumed: it is
-    # listed as the design record for the network map's selection, navigation and escape — the
-    # doc a reader is handed off to.
+    # No markdown link reaches this one under the matcher this gate walks — `](...)`
+    # destinations in tracked files, doc-relative — measured, not assumed. ⚠ The bound is
+    # that matcher and not the tree, and the difference is a DIRECTORY link, which the walk
+    # cannot follow: `CONTRIBUTING.md` links `docs/`, and this file is inside it. It is
+    # listed as the design record for the network map's selection, navigation and escape —
+    # the doc a reader is handed off to.
     "docs/network-graph-interaction.spec.md",
     # Reached from SECURITY.md, which is itself in this list — so the chain README →
     # SECURITY.md → spec is walked, and the spec's own outbound links are checked too.
     "docs/redos-guard-linearity.spec.md",
 ]
-# The measured EDGE of this list, recorded so the next editor inherits it rather than
+# The measured EDGE of THIS WALK, recorded so the next editor inherits it rather than
 # re-deriving it: `plugins/dream-beta-tester/docs/SPEC-A.md` and the repo-root `CLAUDE.md`
 # are each one hop PAST an entry above, and neither is listed. Depth is not the rule —
 # `docs/redos-guard-linearity.spec.md` above is also a 2-hop arrival and IS listed — and
 # neither is unreachability: both are linked from markdown in the tree — `SPEC-A.md`
 # from `SPEC.md` and `STATUS.md`, `CLAUDE.md` from `CONTRIBUTING.md`. Membership is a
 # judgment about reader-facing-ness, and these two are where that judgment was measured to
-# stop, not a rule that derives it.
+# stop, not a rule that derives it. ⚠ The EDGE is the edge of THIS WALK, not of arrival: the
+# walk follows markdown destinations from a linking `.md` and filters to tracked `.md`, so a
+# DIRECTORY link is invisible to it by construction — the README hands a reader to `docs/adr`
+# and to the 24 documents inside it, and this note can name neither.
 
 # smoke.py pins these as the README's cross-project workflow; a restructure must not lose
 # them. Duplicated deliberately: this gate runs without smoke's fixtures, and the strings

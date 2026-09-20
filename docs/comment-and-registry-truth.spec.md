@@ -10,20 +10,27 @@ it and five lines below**: the upper one over-claims about a single entry, the l
 > the measurement is what corrected it. The truth is asymmetric:
 >
 > - **Subject 1** (the splice) is PR A's own new code. MEASURED: it is **absent at `fbfe07e`** and
->   **present from `475af7b` onward** — A's own v0.4.36 commit, and an ancestor of the head — so a
->   coordinate *can* name it. The first draft of this note said it "exists at **no committed
->   revision**"; that was true when written and false from `475af7b`, which is this cycle's
->   revision-binding lesson arriving in a reading note.
-> - **Subject 2** (the registry comments) is **pre-existing** — present at the base revision at the
->   *same line number* the live tree shows, with the uncommitted diff touching it **0 times**. A
->   coordinate for it would resolve today.
+>   **present from `475af7b` to this branch's base `9585b10`** — A's own v0.4.36 commit, and an
+>   ancestor of the head — so a coordinate *can* name it. ⚠ **Not past the base: item 1 deletes the
+>   duplicate the splice IS**, which is why a coordinate for it is bound there rather than taken
+>   from the head. The first draft of this note said it "exists at **no committed revision**"; that
+>   was true when written and false from `475af7b`, which is this cycle's revision-binding lesson
+>   arriving in a reading note.
+> - **Subject 2** (the registry comments) is **pre-existing** — present at the base revision and
+>   unmoved there, so the bare ranges this document quotes for it are the base's own numbering and
+>   a coordinate for it resolves at the base. ⚠ **The head is the one revision it does not resolve
+>   at**: this branch's own item 2 rewrites that comment, so what the repair moves is exactly the
+>   numbers a coordinate would name.
 >
 > The document nonetheless cites by **greppable anchor** throughout — but after the correction the
 > reason is a **choice, not a constraint**, and the difference is stated because the first draft got it
 > wrong. A document carrying even one `file:line` must declare the revision its coordinates resolve on
 > (the rule PR B's citation gate enforces), and binding to `fbfe07e` would print a revision beneath a
-> document half of which that revision cannot show. **But `fbfe07e` is not the only base available: both
-> subjects exist at `475af7b` and at the head, so a base *could* be declared.** What remains is the
+> document half of which that revision cannot show. **But `fbfe07e` is not the only base available:
+> both subjects exist at this branch's base `9585b10`, where the coordinates this document quotes
+> for them resolve, so a base *could* be declared.** ⚠ **Not the head** — the repairs this document
+> records are what empty it of both subjects, so the bases a reader can declare are the revisions
+> *before* them. What remains is the
 > **house rule** — greppable anchors, never `file:line` — which this document follows on its own terms.
 > The first draft's "cannot honestly declare a base" was true when written and dissolved at `475af7b`;
 > ⚠ **and it was over-scoped even while it was true.** The rule it invokes governs **coordinate
@@ -92,13 +99,14 @@ both left behind.
 
 MEASURED by a read that does not expire: **`475af7b` is the commit that added this clause** — A's own
 (`v0.4.36 — RC-5: a masthead stops being read from the room`) — while `fbfe07e` does not contain it and
-the head carries it at the same two lines. This is PR A's code, confirmed rather than assumed, which is
-what makes the sequencing rule above apply. ⚠ The first draft measured this as *"2 of 2 added lines in
-the uncommitted diff"* — true when taken, and meaningless once A committed. **`git log -S` is the
+this branch's base `9585b10` carries it at the same two lines. This is PR A's code, confirmed rather
+than assumed, which is what makes the sequencing rule above apply. ⚠ The first draft measured this as
+*"2 of 2 added lines in the uncommitted diff"* — true when taken, and meaningless once A committed.
+**`git log -S` is the
 durable form of the same claim**: a working-tree diff answers about *now*, and a history read answers
 about the tree. ⚠ **That retired reading was file-scoped, and the scope is load-bearing**: the same
-pattern over the same range **unscoped** returns **25** added lines over `fbfe07e..475af7b` — A's
-**38** over `fbfe07e..9585b10`, while the **scoped** arm reads **2** at both and
+pattern over the same two ranges, **unscoped**, returns **25** added lines over `fbfe07e..475af7b`
+and **38** over `fbfe07e..9585b10` — while the **scoped** arm reads **2** at both and
 **1** at this branch's head, where item 1 has deleted exactly the copy. A re-runner who drops the
 scope and lands on a nearby range concludes the measurement was wrong rather than that it was
 narrow; one who keeps the scope but reads the head finds item 1's own observable rather than a
@@ -270,9 +278,13 @@ mention is not an arrival either way: the reader must copy a path out of a sente
 
 ⚠ **The count is FOUR, and the first draft's "two" is repaired rather than annotated** — it is this
 document's own under-count class arriving in the census that establishes it, the same shape as the
-sixteen that named thirteen. It is derivable three ways, and the third needs no new instrument: the
-graph reaches **16** tracked `.md` from the README, the list **holds ten** of them, and the list has
-**14** entries — `14 - 10 = 4`. The independent read uses part 2's matcher (`ls-tree -r --name-only
+sixteen that named thirteen. It is derivable three ways, and the third needs no new instrument: at
+this branch's base `9585b10` — the revision part 2's opening measurement is bound to — the graph
+reaches **16** tracked `.md` from the README, the list **holds ten** of them, and the list has **14**
+entries — `14 - 10 = 4`. ⚠ **Both operands MOVE at the head and the difference does not**, which is
+why the figures are bound to a revision rather than recomputed: the four additions land the list at
+**18** entries holding **14**, so the head reads `18 - 14 = 4`. The independent read uses part 2's
+matcher (`ls-tree -r --name-only
 <rev>` filtered to `.md`; edges by the raw inline-link form resolved relative to the linking file; BFS
 from `README.md`) and names the same four.
 
@@ -281,15 +293,18 @@ from `README.md`) and names the same four.
 are the ones the repair *adds*; the four list entries with **no README arrival** (this paragraph) are
 the ones no addition can fix. Disjoint sets, same cardinality.
 
-⚠ **Four entries have no markdown arrival, and only ONE of them leaves the header false.** The three
+⚠ **This paragraph is the PRE-REPAIR diagnosis, bound to the base `9585b10`** — its coordinates are
+that revision's numbering, and the repairs above have since closed what it reports. Four entries had
+no markdown arrival, and only ONE of them left the header false. The three
 templates — the PR template and the two issue forms — are the exception `:73-74` states in its own
 second sentence (*"Templates are included because a broken link in an issue form is invisible until
 someone opens the form"*), which **names that class in words**: a contributor lands *in* each of them by
-GitHub's own injection, which is an arrival with no link. So none of the three is a counterexample to a
-header that states its own exception. `docs/network-graph-interaction.spec.md` is: it is in the list, it
-is not a README link, it is neither template nor form, and no comment in the file accounts for it.
-`:91-92`'s explicit two-hop justification for `redos-guard-linearity` is the one entry whose reach the
-file actually documents.
+GitHub's own injection, which is an arrival with no link. So none of the three was a counterexample to a
+header that states its own exception. `docs/network-graph-interaction.spec.md` was the one that was —
+in the list, not a README link, neither template nor form, and no comment in the file accounted for it
+— ⚠ **and that is the entry the header's second inclusion now names, which is the repair that closed
+this site.** `:91-92`'s explicit two-hop justification for `redos-guard-linearity` is the one entry
+whose reach the file actually documents.
 
 **So no closure rule describes this list, and that is the finding.** It is a **hand-curated set** whose
 membership is a judgment about reader-facing-ness — and it is not even the closure of one hop (four
@@ -330,8 +345,8 @@ membership is a judgment about reader-facing-ness — and it is not even the clo
    added, and a doc Claude loads automatically — so the next editor inherits the boundary rather than
    re-deriving it. The four entries with no markdown arrival split **three and one**: the three
    templates take **none** — the header already names their class in its own second sentence, above —
-   while `docs/network-graph-interaction.spec.md` needs the justification nothing in the file currently
-   gives it.
+   while `docs/network-graph-interaction.spec.md` needed the justification nothing in the file then
+   gave it — the entry the header's own second inclusion now carries.
 4. **Scope the module docstring's invariant 2 — the SOURCE of `:85-86`, not a separate finding.**
    `:85-86` did not invent its rule; it **cited** one, naming its authority inside the same sentence
    (`the docstring's promise is "…"`), and that authority is the second of the **eight** invariants
@@ -404,10 +419,19 @@ the space:
 
 - **The registry's exclusion list omits `docs/adr` and should name it. REFUTED.** The header's
   exclusions read *destinations that are not reader-facing documents — source code, assets, the
-  generated preview, `LICENSE` — are out of scope by design*: a **general clause with an exemplifying
+  generated preview — are out of scope by design*: a **general clause with an exemplifying
   appositive**, not a closed enumeration. `docs/adr` is a **directory** — a destination that is not a
-  document — so the clause covers it, and part 1's own enumeration already says so in as many words
-  (*the **directory** `docs/adr`*). MEASURED, since the refutation turns on what the class holds:
+  document — so the clause covers **it**, and part 1's own enumeration already says so in as many
+  words (*the **directory** `docs/adr`*). ⚠ **What that reach does NOT do is dispose of the documents
+  behind the destination**: the clause's subject is the destination, and a directory's scope is not
+  its contents' scope — this file's own practice is the proof, since `docs/` is likewise a directory,
+  is likewise linked, and five of its 82 tracked documents are listed. ⚠ **And the quotation above is
+  the header as this branch LEAVES it, not as this refutation first read it**: the appositive carried
+  a fourth member, `LICENSE`, which the repair recorded in the round below **cut** — because `LICENSE`
+  is a reader-facing document, hence not a member of the class the clause excludes, so the list was
+  false about its own entry. That is this branch's registry defect arriving in the header that states
+  the rule, and it is why the member moved rather than the clause. MEASURED, since the refutation
+  turns on what the class holds:
   **24** `.md` files live there; the only markdown link into that directory anywhere in the tree is the
   README's one link to the directory itself; **no ADR is linked individually**; and **not one of the 24
   carries a single `](` markdown link of its own**. So the class adds no coverage the check could walk —
@@ -443,3 +467,48 @@ entries counted `:85-86`'s quoted docstring promise — a **comment** — as a l
 instrument is a hypothesis about the instrument until its matcher and its working directory are
 stated**, and this document's rule that an unnamed count is not a fact binds the instruments as much as
 the claims.
+
+## The second review round — six repairs, and the two docket entries the artifact refuted (2026-09-20)
+
+**Adjudicated at the head `4bd7e19`**, over this branch's own shipped text and over the two files its
+predecessors own, and each finding is folded by **editing the claim it falsifies** rather than by
+annotating below it — this branch's own item-1 rule, applied to the round that audits it.
+
+⚠ **Two docket entries were REFUTED, and both by the artifact's own adjacent text.** One read the
+CHANGELOG's clause *the criterion this list actually applies* as an attribution to the wrong comment:
+it is a **conditional perfect** — *the clause a restatement would have carried* — naming the clause the
+repair deliberately did **not** write, so the sentence describes a counterfactual rather than naming an
+author. The other read part 2's mention census as an unscoped universal; its operand — backticked prose
+in tracked files, the counting document excluded — is stated in the same sentence-group, adjacent. **A
+docket entry is a claim like every other claim, and these two were wrong about the artifact while being
+right about its wording**, which is the only reason recording them earns the space.
+
+| # | where | what was false | the repair |
+| --- | --- | --- | --- |
+| 1 | part 2's derivation paragraph | its three figures — `16` reached, ten held, `14` entries — are the BASE's, stated in a document whose head reads `18` and `14`; `4` is their difference at both | bound to `9585b10`, with the head's operands stated beside it as the same difference over moved operands |
+| 2 | the Defect-2 diagnosis | a **pre-repair** diagnosis in the present tense: its coordinates are the base's numbering, and *no comment in the file accounts for it* is false from the repair on, because the header's second inclusion names that entry | a frame binding the paragraph to `9585b10`, and the clauses the repair closed put in the past tense |
+| 3 | this file's own invariant 2, the `DOCS` header's exclusions, the one-hop comment, and the boundary note's frame and tail | *two docs a reader does land on from the README* — **arrival** vocabulary over a **link-graph** operand, while the README also links the **directory** `docs/adr` | the operand named — the graph this file walks — with the directory and its `24` documents stated as the arrival the words invite and the walk cannot represent |
+| 4 | the bare-form census comment in the citation check | *MEASURED 2026-09-19 at this revision … Of `81` scanned … `49` carry neither* — the doc this release adds is walked, so the same walk returns `82` and `50`; the label bound a **corpus** count to a **revision** | `82` / `50`, the binding restated as the corpus, and the superseded pair named so a moved operand cannot read as a broken matcher |
+| 5 | the comment-flattening docstring | it quotes the pre-fix workflow comment's wrap with **three** spaces after the `#`; the file carries **ten**, and this release's own registry names the three-space form as a rejected draft | the quote corrected to the file's bytes, with the reason the spacing is quoted at all |
+| 6 | the `DOCS` header's em-dash exclusions | the appositive listed **`LICENSE`** as an instance of *destinations that are not reader-facing documents* — and `LICENSE` **is** a reader-facing document, arriving from `README.md` as a markdown target twice (`:391`, `:395`) — so the list was false about its own member | the member cut, because it fails the clause's own criterion: item 2's test applied to the header that states the rule, and the reason the round above now quotes the appositive as the branch leaves it |
+
+⚠ **Findings 4 and 5 are a predecessor's text, and the disposition differs between them — which is the
+rule rather than an inconsistency.** Finding 4's census is falsified **by this release**: the branch
+ships a document, the document is walked, and the population moves — so the new surface carries the
+audit of what it falsified. Finding 5 was false before this branch existed and the branch neither
+wrote, touched nor moved it; it is repaired here because the correction is one word, because the file
+is open in this commit for finding 4, and because **the quotation is of a file's bytes and the bytes
+disagree**. What that quote is *about* — the wrap, and the `#` marker the faulty join leaves behind —
+is unaffected by the spacing, which is why the repair is to the quotation's fidelity and not to its
+claim.
+
+⚠ **Finding 1's figures were RIGHT and the repair binds rather than recomputes** — the same call the
+round above made at three sibling sites. The head's numerals would have replaced a correct derivation
+with a different one and left the **relation** (reached minus held equals the additions) stated about
+operands that no longer produce it.
+
+⚠ **And finding 3 was found by this file's own header rule.** The registry's header states that
+*neither depth nor a link is the membership rule*, while the docstring's sentence reported a count
+measured **by links** in the vocabulary of **arrival**. A file that states its criterion and then
+reports a count from a different one is this branch's registry defect arriving in the registry's own
+docstring, one register below the comment the branch repaired.

@@ -21748,8 +21748,10 @@ with _tf36.TemporaryDirectory() as _td36w:
 
         ⚠ `" ".join(t.split())` crosses a newline but NOT the `#` that leads the next line, so a
         phrase wrapping inside a comment block keeps an interior marker. MEASURED — the pre-fix
-        `release.yml` comment wraps as `attaches all` / `#   three to the GitHub Release`, and a
-        count-claim matcher reading `all (two|three|…)` saw `all # three` and reported NO CLAIM.
+        `release.yml` comment wraps as `attaches all` / `#          three to the GitHub Release`,
+        and a count-claim matcher reading `all (two|three|…)` saw `all # three` and reported
+        NO CLAIM. (Quoted with the file's own ten spaces after the `#`, so the quote is checkable
+        at its source rather than only at its conclusion.)
         That is a matcher fault wearing an absence's clothes, and on this check it was invisible:
         the other arm still reddened, so only a single-arm red hid a dead arm. Strip, then flatten.
         """
@@ -22021,12 +22023,12 @@ with _tf36.TemporaryDirectory() as _td36w:
     # ⚠ THE MATCHER IS THE REACH, so the corpus's SECOND citation form is counted rather than
     # assumed away. `_CITE47` above requires the file:line to sit in its OWN backticks; an
     # ordinary bare `foo.py:12` in running prose is equally "a `file:line` citation" to a reader
-    # and is INVISIBLE to every arm of this check. MEASURED 2026-09-19 at this revision over the
-    # same `docs/**/*.md` scan — and the population is stated as a FOUR-WAY SPLIT rather than as a
-    # single pair of figures, because this comment's first draft paired one population's doc count
-    # with another's citation count, which is this release's own defect class arriving in its own
-    # audit surface. Of 81 scanned: 14 docs carry ONLY the backticked form, 9 carry BOTH, **9
-    # carry ONLY the bare form** (59 citations), 49 carry neither. The 9 ONLY-bare are the whole
+    # and is INVISIBLE to every arm of this check. MEASURED 2026-09-19 over the same `docs/**/*.md`
+    # scan — and the population is stated as a FOUR-WAY SPLIT rather than as a single pair of
+    # figures, because this comment's first draft paired one population's doc count with another's
+    # citation count, which is this release's own defect class arriving in its own audit surface.
+    # Of 82 scanned: 14 docs carry ONLY the backticked form, 9 carry BOTH, **9 carry ONLY the bare
+    # form** (59 citations), 50 carry neither. The 9 ONLY-bare are the whole
     # gap — `_CITE47`'s 14 plus the 9 BOTH are the 23 `citing` docs this check reports on, so the
     # ONLY-bare are exactly the `absent from the 23 above` the label's reach clause names, and
     # they are the population counted here and printed there. ⚠ The tempting WIDER read — bare
@@ -22037,6 +22039,15 @@ with _tf36.TemporaryDirectory() as _td36w:
     # otherwise equivalent — measured, counting bare over raw text and counting bare AFTER
     # stripping every backticked citation both give 18/135, because the lookarounds exclude the
     # backtick, so this matcher is disjoint from `_CITE47` by construction.)
+    #
+    # ⚠ **Both numerals are bound to the CORPUS this walk reads, never to this file's own bytes** —
+    # and the first form of this paragraph is what makes that worth stating, because it read "at
+    # this revision" in a file that carried IDENTICAL bytes at every revision of the stack. The two
+    # cells that moved, `81 → 82` and `49 → 50`, did not drift with a revision: they counted ONE
+    # MORE DOC — the spec this release adds — while the other two cells and the 59 citations held.
+    # ⚠ So the reading a re-runner compares against is the check's own printed line, `23 citing
+    # docs of 82 scanned`, and the superseded pair is named rather than deleted, because a reader
+    # who remembers `81 / 49` should be able to tell a moved operand from a broken matcher.
     #
     # The universal is scoped to the form the matcher tests, and the size of what that leaves out
     # is named at the site where a reader would otherwise reconstruct it from a denominator that
