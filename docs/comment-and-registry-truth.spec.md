@@ -2,8 +2,8 @@
 
 **PR C — v0.4.38.** A two-item hygiene PR, chartered by the user after PR B was frozen. Its subjects
 are two **comments**: one that is not a sentence, and one that states a rule the list it sits inside
-does not implement — in a file that states the rule correctly eleven lines above it, and a third,
-accurate comment three lines below it.
+does not implement — in a file carrying two further comments on that same rule, **eleven lines above
+it and five lines below**: the upper one over-claims about a single entry, the lower is accurate.
 
 > **Reading note — this document carries NO `file:line` coordinate, and the reason is NARROWER than
 > "neither subject exists at a revision".** That was the first draft of this note and it was **false**;
@@ -226,19 +226,19 @@ registry could add.
 ### The measurement, part 2 — reachability, and the rule the list does NOT implement
 
 MEASURED over the graph of markdown links between tracked `.md` files, resolved relative to the linking
-file: **116 tracked `.md` files at this revision; only 16 are reachable from the README at all.** Of
-those sixteen the list holds ten. The remaining six split cleanly:
+file: **116 tracked `.md` files at B's head `9585b10` — this branch's base; only 16 are reachable from
+the README at all.** Of those sixteen the list holds ten. The remaining six split cleanly:
 
 ⚠ **The tracked total carries its matcher and its revision, because the first draft's `113` carried
 neither.** MATCHER: `git ls-tree -r --name-only <rev>`, filtered to `.md`. Measured across this stack:
-**114** at the base `fbfe07e`, **115** at A's `faaa3c2`, **116** at `852ca9e`, **116** at the head
-`9585b10` — the `docs/` subset tracking it at 79 / 80 / 81 / 81. ⚠ **An earlier draft of this very
-paragraph over-corrected: it read "no revision yields 113" — a universal over an unbounded space,
-derived from four samples.** Measured one revision further back, `113` is exactly **`e5cce77`**'s
-count: the **F1 base**, superseded by `fbfe07e`. So `113` was never a number about nothing — it was a
-census **carried forward across a base revision**, which is a sharper diagnosis than the universal was,
-and the same failure mode as every stale numeral in this stack. The figure in the sentence above is the
-head's, and it is the one the 16 and the 10 are measured against.
+**114** at the base `fbfe07e`, **115** at A's `faaa3c2`, **116** at `852ca9e`, **116** at B's head
+`9585b10`, **which is this branch's base** — the `docs/` subset tracking it at 79 / 80 / 81 / 81.
+⚠ **An earlier draft of this very paragraph over-corrected: it read "no revision yields 113" — a
+universal over an unbounded space, derived from four samples.** Measured one revision further back,
+`113` is exactly **`e5cce77`**'s count: the **F1 base**, superseded by `fbfe07e`. So `113` was never a
+number about nothing — it was a census **carried forward across a base revision**, which is a sharper
+diagnosis than the universal was, and the same failure mode as every stale numeral in this stack. The
+figure in the sentence above is `9585b10`'s, and it is the one the 16 and the 10 are measured against.
 
 ⚠ **Its provenance is claimed with a confidence the arithmetic does not support, and the measurement is
 what says so.** `113` is `e5cce77`'s total **and** `fbfe07e`'s total with the root `README.md` dropped
@@ -247,8 +247,8 @@ exactly one `.md`. "Carried forward" is therefore one live reading and "the trac
 traversal root removed" is another, and neither can be excluded. A provenance stated where two fit is
 the same defect this paragraph is repairing, one layer in. What the sentence's own pair does settle is
 which reading is **consistent**: the `16` counts the README, so a denominator that drops it is a unit
-mismatch rather than a census — and that is why the figure written above is the head's total, the set
-the `16` is measured against.
+mismatch rather than a census — and that is why the figure written above is the total at `9585b10`,
+the set the `16` is measured against.
 
 | hop | `.md` reachable from README, absent from `DOCS` |
 | --- | --- |
@@ -258,8 +258,8 @@ the `16` is measured against.
 ⚠ **And FOUR `DOCS` entries are reachable by NO markdown link from the README at all** —
 `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE/bug.yml`,
 `.github/ISSUE_TEMPLATE/feature.yml`, and `docs/network-graph-interaction.spec.md`. Checked against
-every link form, not just the one the extractor sees. The two **issue forms are mentioned nowhere else
-in the tree at all** — a strictly stronger unreachability than the other two. Those two do surface as
+every link form, not just the one the extractor sees. The two **issue forms carry no prose mention
+anywhere in the tree** — a strictly stronger unreachability than the other two. Those two do surface as
 backticked prose, and their mention sets are **measured rather than generalised** — operand: backticked
 prose in tracked files, this document excluded as the one doing the counting — because they are not the
 same size: `.github/PULL_REQUEST_TEMPLATE.md` is named in **two** (`CHANGELOG.md`, and
@@ -383,3 +383,58 @@ more **scanned** doc and the same number of **citing** docs. MEASURED, not predi
 **81 → 82** and citing holds at **23**, with this file absent from the citing set. Stated because the
 scanned total appears in a check's printed output, and an unexplained move in a printed denominator is
 how a reader learns to distrust the number.
+
+---
+
+## The review round — five repairs, and two refutations the artifact's own text settles
+
+**Stage 3's fresh pair was dispatched on the shipped revision; the findings below were adjudicated at
+the head `2492caa`** — not against the binding, because the branch moved once more under the round. Each
+was re-measured first-party rather than accepted on delivery, and each repair **edits the claim it
+falsifies** rather than annotating below it, which is this branch's own item-1 rule.
+
+⚠ **A peer finding is a hypothesis.** Two of this round's were refuted by the artifact's own text, and
+both refutations are checkable rather than rhetorical — which is the only reason recording them earns
+the space:
+
+- **The registry's exclusion list omits `docs/adr` and should name it. REFUTED.** The header's
+  exclusions read *destinations that are not reader-facing documents — source code, assets, the
+  generated preview, `LICENSE` — are out of scope by design*: a **general clause with an exemplifying
+  appositive**, not a closed enumeration. `docs/adr` is a **directory** — a destination that is not a
+  document — so the clause covers it, and part 1's own enumeration already says so in as many words
+  (*the **directory** `docs/adr`*). MEASURED, since the refutation turns on what the class holds:
+  **24** `.md` files live there; the only markdown link into that directory anywhere in the tree is the
+  README's one link to the directory itself; **no ADR is linked individually**; and **not one of the 24
+  carries a single `](` markdown link of its own**. So the class adds no coverage the check could walk —
+  and *a general rule that gives examples is not a list that failed to be exhaustive*, which the header
+  says in the same breath as *CURATED* and *not the closure of the README's links*.
+- **The note after the list restates the list's criterion, giving the rule a second home. REFUTED** —
+  and the refutation is the docstring's own. Invariant 2 closes *the note after the list now carries the
+  boundary instead*, so the note is a **delegated** home; and the header points at it in the very
+  sentence that states the principle (*see the notes inside the list, and after it*). **Two independent
+  delegations make it a designated carrier, not a duplicate.**
+
+**Five findings were CONFIRMED, and every one is a binding rather than a value** — four here, one in the
+CHANGELOG:
+
+| # | where | what was false | the repair |
+| --- | --- | --- | --- |
+| 1 | the opening sentence | *states the rule correctly* about `:73-74`, which this document's own Defect 2 calls **over-claiming about ONE entry** | restated as what Defect 2 measures: the upper comment over-claims, the lower is accurate |
+| 2 | the same sentence | *three lines below it* — the gap is **5**, under the convention its own sibling establishes (**11**, from `:73-74` to `:85-86`), and no pair of comments in the block is 3 apart | corrected to **five** |
+| 3 | part 2's opening measurement and its two provenance notes | *this revision*, *the head* — bound to no revision, in a document that uses the same phrase for its own head elsewhere | bound at every site to **B's head `9585b10` — this branch's base** |
+| 4 | part 2's mention census | *mentioned nowhere else in the tree at all* — a universal with no stated operand, while the registry's own list entries name both issue forms | scoped to **no prose mention anywhere in the tree**, the operand the pair beside it is measured under |
+| 5 | the CHANGELOG's v0.4.38 item 2 | *four are absent from the list*, present tense — **0** are absent at the head, where all four were added | past tense |
+
+⚠ **Finding 3's numerals were RIGHT and its label was wrong, and that is why the repair binds rather
+than recomputes.** The figures — `116` tracked, `16` reachable, ten held, and the `14 - 10 = 4` that
+follows — are correct **at `9585b10`**, and the `16` is the set the others are measured against. Swapping
+in the head's would have replaced correct content with wrong content: the head reads **117** tracked, and
+the increment is this document. **Binding the label is the whole repair.**
+
+⚠ **The round's own instruments caught themselves, in the class this document exists to repair.** A
+first read of the tracked total came from a compound command whose reported status is its **last
+stage's**, so a `git grep` that never ran read as *no match*; and a first census of the registry's
+entries counted `:85-86`'s quoted docstring promise — a **comment** — as a list entry. **A zero from an
+instrument is a hypothesis about the instrument until its matcher and its working directory are
+stated**, and this document's rule that an unnamed count is not a fact binds the instruments as much as
+the claims.

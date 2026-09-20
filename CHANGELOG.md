@@ -31,7 +31,7 @@ introduces. Design and evidence: `docs/comment-and-registry-truth.spec.md`.
    true of the list.** The header's `Templates are included because…` sentence states its own
    exception, so it is scoped; the interior comment (`Every doc the README links to`) stated a
    **false universal** and named no exception. MEASURED over the README's markdown link targets:
-   **12** `.md` files, of which **four are absent from the list** and all four exist — so those
+   **12** `.md` files, of which **four were absent from the list** and all four exist — so those
    four are added. The interior comment's false universal is not restated but **replaced by the
    entry's own justification**: the clause a restatement would have carried (`the criterion this
    list actually applies`) is a **rule**, and a rule stated below the header that already states
