@@ -71,7 +71,10 @@ PREVIEW = ROOT / "docs" / "previews" / "nocturne"
 PREVIEW_FILES = ("index.html", "sample.json")
 
 # Docs a reader can arrive at from the README. Templates are included because a broken link
-# in an issue form is invisible until someone opens the form.
+# in an issue form is invisible until someone opens the form. This is a CURATED set, not the
+# closure of the README's links: destinations that are not reader-facing documents — source
+# code, assets, the generated preview, `LICENSE` — are out of scope by design, and neither
+# depth nor a link is the membership rule (see the notes inside the list, and after it).
 DOCS = [
     "README.md",
     "CONTRIBUTING.md",
@@ -82,16 +85,29 @@ DOCS = [
     ".github/PULL_REQUEST_TEMPLATE.md",
     ".github/ISSUE_TEMPLATE/bug.yml",
     ".github/ISSUE_TEMPLATE/feature.yml",
-    # Every doc the README links to, so a dead link one hop out is still caught — the
-    # docstring's promise is "every other doc a reader lands on from it".
+    # Linked straight from the README, so a dead link one hop out is still caught.
     "docs/network-guide.md",
     "docs/nocturne-design.md",
     "docs/deep-field-theme.spec.md",
+    "plugins/consolidate-memory/skills/consolidate-memory/SKILL.md",
+    "plugins/consolidate-memory/skills/consolidate-memory/references/harness-map.md",
+    "plugins/dream-beta-tester/docs/SPEC.md",
+    "plugins/dream-beta-tester/docs/CONTRACT.md",
+    # No markdown link reaches this one, anywhere in the tree — measured, not assumed. It is
+    # listed as the design record for the network map's selection, navigation and escape,
+    # which is the criterion this list actually applies: whether a reader lands on the doc.
     "docs/network-graph-interaction.spec.md",
     # Reached from SECURITY.md, which is itself in this list — so the chain README →
     # SECURITY.md → spec is walked, and the spec's own outbound links are checked too.
     "docs/redos-guard-linearity.spec.md",
 ]
+# The measured EDGE of this list, recorded so the next editor inherits it rather than
+# re-deriving it: `plugins/dream-beta-tester/docs/SPEC-A.md` and the repo-root `CLAUDE.md`
+# are each one hop PAST an entry above, and neither is listed. Depth is not the rule —
+# `docs/redos-guard-linearity.spec.md` above is also a 2-hop arrival and IS listed — and
+# neither is unreachability: both have markdown inlinks (from `SPEC.md` and `CONTRIBUTING.md`
+# respectively). Membership is a judgment about reader-facing-ness, and these two are where
+# that judgment was measured to stop, not a rule that derives it.
 
 # smoke.py pins these as the README's cross-project workflow; a restructure must not lose
 # them. Duplicated deliberately: this gate runs without smoke's fixtures, and the strings

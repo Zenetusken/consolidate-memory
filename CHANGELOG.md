@@ -5,6 +5,50 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.38] — 2026-09-19
+
+**Patch — two comments that were not true, closed by the one repair each class allows: a splice
+artifact repaired by deleting the DUPLICATE, and a registry repaired by naming its real boundary
+rather than by adding rows until a false universal came true.**
+
+Two comments sharing no root cause, chartered together because the first rides code v0.4.36
+introduces. Design and evidence: `docs/comment-and-registry-truth.spec.md`.
+
+1. **A doubled clause is repaired by deleting the duplicate, not the connective.** One comment
+   line in `render_html.py` ended on `…, which is why` and the next opened on `…which is why the
+   rendered identity is cwd-invariant` — **two overlapping copies of one clause**, so reading
+   either line alone looks almost right. The tail is the connective the sentence needs; the head
+   is the copy, so the repair removes `...which is why ` and nothing else. ⚠ Diagnosing the first
+   line's `, which is why` as *dangling* is a verdict read off the wrong instrument — a clause
+   whose consequent sits on the next line is what a **wrap** is — and that diagnosis drives a
+   repair that leaves behind the very consequent-less sentence this item exists to remove. The
+   clause is PR A's own new code, which is why it rides a later release instead of re-opening A's
+   measured gate. **No check**: nothing here verifies that a comment parses as prose, and
+   inventing a gate for a class observed once would be the same defect in a new place. Its only
+   observable is that the doubled clause is absent.
+
+2. **The `DOCS` registry states one rule in its header and a different one inside, and neither was
+   true of the list.** The header's `Templates are included because…` sentence states its own
+   exception, so it is scoped; the interior comment (`Every doc the README links to`) stated a
+   **false universal** and named no exception. MEASURED over the README's markdown link targets:
+   **12** `.md` files, of which **four are absent from the list** and all four exist — so those
+   four are added, and the interior comment is corrected to the header's rule **scoped to the
+   entries it heads** rather than restated (restating it would have duplicated the correct header
+   while leaving the false line standing). ⚠ The four entries a reader might reach for *instead* —
+   the list entries with **no** README arrival — are a **different** set of four, and conflating
+   them drives a wrong repair: three are the GitHub templates the header's own sentence covers,
+   and one is an entry no comment accounted for. ⚠ **No closure rule describes this list** — a
+   2-hop spec is listed while two other 2-hop docs are not — so the header now states the
+   principle **with its exclusions named**, and the list's measured edge is recorded after it,
+   because a rule that does not name its exclusions is a universal again one edit later.
+   **A REGRESSION GUARD, not a pin** — each added entry's links already resolve, so no check added
+   here can fail on pre-fix code. What it buys is that the four docs' own outbound links enter the
+   check. MEASURED: gate green, checked files **14 → 18**.
+
+**No check added or removed; D6 unchanged at 2177.** Verification: `smoke 2177 passed / 0 failed`
+· `docs_links rc=0` (**18 files link-checked**, 7 required strings unbroken) · `sim rc=0` ·
+`mypy rc=0` · `manifests rc=0`.
+
 ## [0.4.37] — 2026-09-19
 
 **Patch — prose stops asserting what nothing ties to the tree. Where v0.4.36 tied an identity to its
