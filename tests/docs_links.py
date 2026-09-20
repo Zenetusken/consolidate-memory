@@ -110,9 +110,10 @@ DOCS = [
 # re-deriving it: `plugins/dream-beta-tester/docs/SPEC-A.md` and the repo-root `CLAUDE.md`
 # are each one hop PAST an entry above, and neither is listed. Depth is not the rule —
 # `docs/redos-guard-linearity.spec.md` above is also a 2-hop arrival and IS listed — and
-# neither is unreachability: both have markdown inlinks (from `SPEC.md` and `CONTRIBUTING.md`
-# respectively). Membership is a judgment about reader-facing-ness, and these two are where
-# that judgment was measured to stop, not a rule that derives it.
+# neither is unreachability: both are linked from markdown in the tree — `SPEC-A.md`
+# from `SPEC.md` and `STATUS.md`, `CLAUDE.md` from `CONTRIBUTING.md`. Membership is a
+# judgment about reader-facing-ness, and these two are where that judgment was measured to
+# stop, not a rule that derives it.
 
 # smoke.py pins these as the README's cross-project workflow; a restructure must not lose
 # them. Duplicated deliberately: this gate runs without smoke's fixtures, and the strings
