@@ -241,7 +241,102 @@ _MARKERS = [
 # object (smoke-pinned identity across all three modules). Behavior unchanged.
 
 
-def _window_transcripts(proj_root: Path, since: str) -> list[Path]:
+def _transcript_cwd(path: Path, max_lines: int = 200) -> Path | None:
+    """v0.4.39: the `cwd` of the session that wrote `path` — the first entry carrying one, resolved.
+
+    CC writes metadata-only preamble lines (last-prompt / mode / permission-mode / atis-latch) before
+    the first message entry, so the field is NOT on line 0 and a one-line peek would miss it — measured
+    on `-home-you-project-Gats/d18895fa….jsonl`: lines 0–3 carry no `cwd`, line 4 does. Bounded both
+    ways: 200 lines, and a `"cwd"` substring pre-filter before `json.loads`, because a real transcript
+    is 22 MB here — this must never read one whole to learn where it ran. None = unknown, never a guess."""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for i, line in enumerate(fh):
+                if i >= max_lines:
+                    return None
+                if '"cwd"' not in line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                cwd = entry.get("cwd")
+                if isinstance(cwd, str) and cwd:
+                    try:
+                        return Path(cwd).resolve()
+                    except OSError:
+                        return None
+    except OSError:
+        return None
+    return None
+
+
+def _in_store_tree(cwd: Path, project_root: Path) -> bool:
+    """v0.4.39: does a session launched at `cwd` belong to the store rooted at `project_root`?
+
+    Mirrors the rule CC itself uses to pick a store: walk up from the cwd and stop at the first `.git`
+    ENTRY — a nested repo has its own store, so its sessions must not be pooled into this one. The test
+    is EXISTENCE, not validity, deliberately: it is CC's rule, and running a validator CC does not run
+    would admit transcripts CC files elsewhere and drop ones it files here (the same existence check
+    that lets an empty `.git` directory claim a root — the mechanism behind this whole defect)."""
+    try:
+        root, cur = project_root.resolve(), cwd.resolve()
+    except OSError:
+        return False
+    if cur == root or root not in cur.parents:
+        return False
+    # Walk from the cwd ITSELF up to the root: `cur.parents` alone would skip a `.git` sitting in the
+    # cwd (a session launched AT the top of a nested repo — the shape `~/project/NIM-er` has), and
+    # admit a session whose own store is a different one.
+    while cur != root and cur != cur.parent:
+        if (cur / ".git").exists():
+            return False
+        cur = cur.parent
+    return cur == root
+
+
+def _subdir_transcripts(proj_root: Path, project_root: Path | None,
+                        cutoff: float | None) -> list[Path]:
+    """v0.4.39: in-window transcripts of sessions launched in a SUBDIRECTORY of the store's root.
+
+    CC keys the STORE to the nearest `.git` ancestor but the TRANSCRIPT to the cwd, so a session
+    started in `<root>/sub` writes to `<store-slug>-sub` while the store's own slug holds only the
+    sessions started at the root — the two diverge whenever those rules disagree. Before this, such a
+    session was INVISIBLE to the dream: on the measured instance (`~/project/Gats`, memory at
+    `-home-you-project/memory`, transcripts at `-home-you-project-Gats`) the extractor reported a
+    quiet project on a session that plainly did work, and the pre-flight's counting-only probe agreed.
+
+    Candidates come from a slug PREFIX (`<store-slug>-*` — necessary, not sufficient: `Gats-old`
+    shares `Gats`'s prefix while being an unrelated directory), and each is admitted only when a
+    transcript's own `cwd` confirms membership (`_in_store_tree`). A candidate whose newest file falls
+    outside the window is dropped WITHOUT opening it — the mtime prune is what keeps this scan cheap."""
+    if project_root is None:
+        return []
+    try:
+        candidates = sorted(proj_root.parent.glob(proj_root.name + "-*"))
+    except OSError:
+        return []
+    out: list[Path] = []
+    for d in candidates:
+        try:
+            if not d.is_dir():
+                continue
+            files = sorted(d.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
+        except OSError:
+            continue
+        if not files:
+            continue
+        if cutoff is not None and files[-1].stat().st_mtime <= cutoff:
+            continue          # nothing in window: skip without a read (the cheap path)
+        cwd = _transcript_cwd(files[-1])
+        if cwd is None or not _in_store_tree(cwd, project_root):
+            continue
+        out.extend(files)
+    return out
+
+
+def _window_transcripts(proj_root: Path, since: str,
+                        project_root: Path | None = None) -> list[Path]:
     """v0.1.43: ALL transcripts in the dream window, not just the newest. A marker..HEAD window spans MANY
     sessions (each .jsonl == one session); reading only `ts[-1]` meant a fresh session opened JUST to run dream
     HID the heavy prior session's intent (the killer case the on-disk read was meant to defend). Glob all
@@ -250,15 +345,19 @@ def _window_transcripts(proj_root: Path, since: str) -> list[Path]:
     parse routes through `_parse_ts` (v0.1.58 — the shared parser: handles a bare `Z` [3.10 rejects it → the
     prune would silently no-op], a naive marker as UTC [else `.timestamp()` assumes LOCAL → a west-of-UTC TZ
     shifts the cutoff and wrongly DROPS a prior in-window session], AND a `±HHMM` no-colon offset). No marker /
-    unparseable → keep ALL (safe). Oldest-first (deterministic; per-line `since` + dedup handle overlap)."""
+    unparseable → keep ALL (safe). Oldest-first (deterministic; per-line `since` + dedup handle overlap).
+
+    v0.4.39: `project_root` (the StoreContext root PATH, not the slug dir) additionally admits the
+    transcripts CC filed under a SUBDIRECTORY slug of this store — see `_subdir_transcripts` for the
+    divergence it closes. The default None preserves the original single-directory behavior for callers
+    that hold no store context."""
     files = sorted(proj_root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
-    if not since:
-        return files
-    dt = _parse_ts(since)
-    if dt is None:
-        return files
-    cutoff = dt.timestamp()
-    return [f for f in files if f.stat().st_mtime > cutoff]
+    dt = _parse_ts(since) if since else None
+    cutoff = dt.timestamp() if dt is not None else None
+    if cutoff is not None:
+        files = [f for f in files if f.stat().st_mtime > cutoff]
+    files.extend(_subdir_transcripts(proj_root, project_root, cutoff))
+    return sorted(files, key=lambda p: p.stat().st_mtime)
 
 
 def _marker_ts(auto_mem: Path) -> str:
@@ -331,7 +430,7 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
     proj_root = _ctx.session_dir
     auto_mem = _ctx.native_memory_dir
     since = since or _marker_ts(auto_mem)
-    transcripts = _window_transcripts(proj_root, since)
+    transcripts = _window_transcripts(proj_root, since, _ctx.project_root)
     # v0.1.69/A1: parse the window ONCE — the per-line compare is instant-vs-instant (an offset
     # marker/--since vs CC's Z stamps mis-orders lexicographically; distill's v0.1.58 twin fix, now
     # ported). Unparseable since/ts fail OPEN — keep the line (recall-biased).
@@ -670,7 +769,7 @@ def recall_scan(project_dir: Path, since: str, before: str = "") -> dict:
                           key=len, reverse=True) if auto_mem.exists() else []
     mention_re = (re.compile(r"(?<![\w-])(" + "|".join(re.escape(s) for s in _mentionable) + r")(?![\w-])")
                   if _mentionable else None)
-    transcripts = _window_transcripts(proj_root, since)
+    transcripts = _window_transcripts(proj_root, since, _ctx.project_root)
     reads: dict = {}     # stem -> {"reads": n, "last": iso} — the UNCAPPED tally
     mentioned: set = set()   # v0.1.85: BINARY per window — a stem organically NAMED (0/1, never a count)
     excluded = 0

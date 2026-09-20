@@ -370,7 +370,8 @@ def _checked_texts(record: Any) -> Optional[list[tuple[str, str]]]:
     return out
 
 
-def _window_lines(session_dir: Path, since: str) -> tuple[list[dict], bool]:
+def _window_lines(session_dir: Path, since: str,
+                  project_root: Path | None = None) -> tuple[list[dict], bool]:
     """(kept_lines, unavailable). Reuses extract_signals._window_transcripts (glob + mtime-prune)
     and the SAME per-line keep-semantics (spec F-5): a parseable line with ts > since is kept;
     ts-less / unparseable-ts lines are kept too (never <= since); json-malformed lines are
@@ -378,7 +379,7 @@ def _window_lines(session_dir: Path, since: str) -> tuple[list[dict], bool]:
     seam's zero-content case — the verdict degrades, it never fires."""
     try:
         from extract_signals import _window_transcripts
-        files = _window_transcripts(Path(session_dir), since)
+        files = _window_transcripts(Path(session_dir), since, project_root)
     except Exception:
         return [], True
     if not files:
@@ -489,6 +490,7 @@ def _preview(text: str) -> str:
 
 
 def judge(record: Any, session_dir: Path, since: str,
+          project_root: Path | None = None,
           retry_delay: float = 0.5, sleep_fn: Callable[[float], None] = time.sleep,
           scan_fn: Optional[Callable[[], tuple[list[str], list[dict], bool]]] = None) -> dict:
     """The two-arm verdict (spec §2). Returns {"verdict": "verified"|"degraded"|"failed",
@@ -502,6 +504,10 @@ def judge(record: Any, session_dir: Path, since: str,
     fires only if the second read confirms — scoped to the sub-second same-message flush race
     (the 5-minute write-behind class is handled by persist-then-re-render, not by any in-call
     re-read). The retry recomputes EXT too — free and consistent.
+
+    v0.4.39: `project_root` (the store's root PATH) widens the transcript pool to sessions CC filed
+    under a SUBDIRECTORY slug — the same divergence `extract_signals._subdir_transcripts` closes.
+    None keeps the single-directory pool, so fixture callers are unaffected.
     """
     checked = _checked_texts(record)
     if checked is None:
@@ -522,7 +528,7 @@ def judge(record: Any, session_dir: Path, since: str,
     def _scan():
         if scan_fn is not None:
             return scan_fn()
-        lines, unavailable = _window_lines(session_dir, since)
+        lines, unavailable = _window_lines(session_dir, since, project_root)
         return _assistant_text_blocks(lines), lines, unavailable
 
     def _gaps(blocks):

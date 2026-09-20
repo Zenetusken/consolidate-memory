@@ -5,6 +5,35 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.39] — UNRELEASED
+
+**Patch — one defect on two arms: the dream read a project's transcripts from the STORE's slug only, so
+a session launched in a SUBDIRECTORY of the project root was invisible to it.**
+
+Claude Code keys the STORE to the nearest `.git` ancestor but the TRANSCRIPT to the cwd, so a session
+started in `<root>/sub` writes to `<store-slug>-sub` while the store's own slug holds only the sessions
+started at the root. Measured instance: a session that did a full day's work under `~/project/Gats`
+(store at `-home-you-project/memory`, transcripts at `-home-you-project-Gats`) reported `0 surfaced ·
+(no transcript)` — a structural blind spot read as a quiet session. The counting-only pre-flight agreed
+with it, which is why the wrong number went unquestioned for a whole cycle.
+
+1. **`extract_signals._window_transcripts` admits the subdirectory slugs — confirmed, never guessed.**
+   Candidates come from a slug PREFIX (`<store-slug>-*`), which is necessary and not sufficient: a
+   same-prefix sibling (`Gats-old` for `Gats`) and a nested repo (whose own `.git` gives it its own
+   store) both share it. Each candidate is therefore admitted only when a transcript's own `cwd`
+   confirms membership — the test mirrors CC's rule exactly, including its reliance on `.git`
+   EXISTENCE rather than validity, because running a validator CC does not run would admit transcripts
+   it files elsewhere and drop ones it files here. A candidate outside the window is dropped without
+   being opened, and `project_root=None` preserves the original single-directory behavior.
+
+2. **The narration arm reads the same pool.** `dream_procedure.judge` and `render_dashboard`'s
+   narration detector resolve their transcript pool through the same window, so NAR/EXT were blind to
+   exactly the sessions the extractor was; both now take the store's `project_root` and pool the
+   subdirectory sessions too. Fixture callers that pass nothing keep the single-directory pool.
+
+Evidence: `tests/smoke.py` v0.4.39 — 10 pins, deliberately including the two shapes a prefix alone
+would wrongly admit, plus the `project_root=None` no-regression default on both helpers.
+
 ## [0.4.38] — 2026-09-19
 
 **Patch — two defects, each closed by the one repair its class allows: a splice artifact repaired

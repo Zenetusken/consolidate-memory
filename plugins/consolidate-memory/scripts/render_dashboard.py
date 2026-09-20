@@ -663,6 +663,20 @@ def _narration_session_dir(store: Any) -> Any:
     return None
 
 
+def _narration_project_root(store: Any) -> Any:
+    """v0.4.39: the store's project ROOT path — the second input the narration pool needs.
+
+    `_narration_session_dir` resolves the SLUG dir, and `judge`'s window globs only that dir; but CC
+    keys the transcript to the cwd while the store keys to the nearest `.git` ancestor, so a session
+    started in a SUBDIRECTORY wrote to `-<store-slug>-sub` and no candidate could ever satisfy NAR on
+    it (`extract_signals._subdir_transcripts` is the same repair on the extractor's arm). Deliberately
+    a second `_context_for_store` call rather than a changed return contract: its sibling above has two
+    load-bearing fallbacks (cwd-resolves-to-this-store, default layout) not worth re-plumbing for one
+    optional argument. None → `judge` keeps the single-directory pool."""
+    _ctx = _context_for_store(store)
+    return getattr(_ctx, "project_root", None) if _ctx is not None else None
+
+
 def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = None) -> str:
     if not isinstance(record, dict):
         record = {}  # a non-dict record (JSON list/scalar from stdin) degrades — this is the runtime boundary
@@ -1948,11 +1962,12 @@ def main() -> int:
                 # window keys on the record's Phase-0-seeded value, never the state file).
                 _since = str(_dget(record, "marker").get("before_timestamp") or "")
                 _sess = _narration_session_dir(_store)
+                _root = _narration_project_root(_store)
                 if _sess is None:
                     narration = {"verdict": "degraded", "reason": "transcript unavailable",
                                  "gaps": [], "ext_unaccounted": False}
                 else:
-                    narration = _dp.judge(record, _sess, _since)
+                    narration = _dp.judge(record, _sess, _since, project_root=_root)
                 record["narration"] = cast(ms.Narration, _dp.narration_block(narration))
         except Exception as exc:
             print(f"render_dashboard: narration check skipped ({exc.__class__.__name__})",
