@@ -75,11 +75,11 @@ TEMPLATE = ROOT / "plugins" / "consolidate-memory" / "scripts" / "dashboard.temp
 PREVIEW = ROOT / "docs" / "previews" / "nocturne"
 PREVIEW_FILES = ("index.html", "sample.json")
 
-# Docs a reader can arrive at from the README. Templates are included because a broken link
-# in an issue form is invisible until someone opens the form. This is a CURATED set, not the
-# closure of the README's links: destinations that are not reader-facing documents — source
-# code, assets, the generated preview, `LICENSE` — are out of scope by design, and neither
-# depth nor a link is the membership rule (see the notes inside the list, and after it).
+# Docs a reader lands on. Templates are included because a broken link in an issue form is
+# invisible until someone opens the form. This is a CURATED set, not the closure of the
+# README's links: destinations that are not reader-facing documents — source code, assets,
+# the generated preview, `LICENSE` — are out of scope by design, and neither depth nor a link
+# is the membership rule (see the notes inside the list, and after it).
 DOCS = [
     "README.md",
     "CONTRIBUTING.md",

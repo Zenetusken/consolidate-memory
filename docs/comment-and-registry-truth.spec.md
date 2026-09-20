@@ -296,6 +296,16 @@ membership is a judgment about reader-facing-ness — and it is not even the clo
    contributor lands *in* and, where a reader is handed off, the design record they are handed to. A
    rule that does not name its exclusions is a universal again one edit later; the exclusions are
    measured above.
+   ⚠ **Appending the principle is not correcting the sentence it supersedes.** The first pass at this
+   added the bound *below* an opening sentence that still asserted *a reader can arrive at from the
+   README* — the one entry C4 measures it failing to cover — so the header then stated the false rule
+   and its own denial in consecutive sentences, and MEASURED it still did: **0** markdown inlinks to
+   `docs/network-graph-interaction.spec.md` (matcher: `](...)` destinations over every tracked `.md`,
+   doc-relative). ⚠ **A correction appended beside the claim it corrects leaves both standing** — the
+   same shape as item 4's finding (a restatement corrected while its source stood) and as item 2's
+   recorded near-miss (a restatement that would have duplicated the header while the false line
+   stood). Three instances inside one repair is why the rule is stated here rather than left to taste:
+   **fix the line, don't append below it.**
 2. **Correct or delete `:85-86`.** The rule it should state is the header's, scoped to the entries it
    heads. A false universal is not repaired by adding rows until it becomes true — that would drag the
    whole README closure (source files, assets, `LICENSE`) into a prose-link registry to satisfy a
