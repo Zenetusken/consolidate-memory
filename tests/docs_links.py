@@ -13,9 +13,14 @@ Invariants:
 1. **Badge ↔ manifest.** The shields version badge is a hand-written URL that nothing else
    reads, so it silently drifts from plugin.json. `release.sh` rewrites both in the same
    commit; this asserts they agree.
-2. **Every relative link resolves the way GitHub resolves it** — doc-relative with no
-   repo-root fallback, in the README and every other doc a reader lands on from it, raw
-   HTML `href`/`src` included.
+2. **Every relative link in the checked set resolves the way GitHub resolves it** —
+   doc-relative with no repo-root fallback, raw HTML `href`/`src` included. **The set is
+   `DOCS` below, which is a CURATED list and not the closure of the README's links** — two
+   docs a reader does land on from the README, `CLAUDE.md` and
+   `plugins/dream-beta-tester/docs/SPEC-A.md`, are deliberately absent and their links are
+   therefore unchecked. This invariant used to state the closure, and the comment inside
+   `DOCS` quoted it as its authority for a rule the list does not implement; the note after
+   the list now carries the boundary instead.
 3. **Manual anchors are balanced.** The README uses explicit `<a id="…">` markers because
    GitHub's auto-slugifier handles emoji-prefixed headings badly, which means a typo can
    silently orphan a section (or a link) with no error anywhere.

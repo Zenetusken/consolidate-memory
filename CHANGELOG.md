@@ -7,9 +7,9 @@ version changes on `main`.
 
 ## [0.4.38] — 2026-09-19
 
-**Patch — two comments that were not true, closed by the one repair each class allows: a splice
-artifact repaired by deleting the DUPLICATE, and a registry repaired by naming its real boundary
-rather than by adding rows until a false universal came true.**
+**Patch — two defects, each closed by the one repair its class allows: a splice artifact repaired
+by deleting the DUPLICATE, and a rule that was false in three places repaired by naming its real
+boundary rather than by adding rows until a false universal came true.**
 
 Two comments sharing no root cause, chartered together because the first rides code v0.4.36
 introduces. Design and evidence: `docs/comment-and-registry-truth.spec.md`.
@@ -34,7 +34,17 @@ introduces. Design and evidence: `docs/comment-and-registry-truth.spec.md`.
    **12** `.md` files, of which **four are absent from the list** and all four exist — so those
    four are added, and the interior comment is corrected to the header's rule **scoped to the
    entries it heads** rather than restated (restating it would have duplicated the correct header
-   while leaving the false line standing). ⚠ The four entries a reader might reach for *instead* —
+   while leaving the false line standing). ⚠ **The false rule had a SOURCE, and correcting the
+   restatement left it standing.** The interior comment did not invent its universal — it *cited*
+   one, naming its authority in the same sentence (`the docstring's promise is "…"`), and that
+   authority is the file's own invariant 2, which states the checked set as *every other doc a
+   reader lands on from the README*. One rule, three homes — the header (over-claiming about ONE
+   entry), the interior comment (corrected here), and the docstring: **the origin, corrected in the same
+   edit**, because a reader who fixed only the comment from the text in front of them would
+   regenerate it from the sentence it cites. Invariant 2 is now scoped to the set the check
+   actually walks and names the two docs its old form silently excluded (`CLAUDE.md`,
+   `plugins/dream-beta-tester/docs/SPEC-A.md`), which the list's own boundary note had already
+   measured. ⚠ The four entries a reader might reach for *instead* —
    the list entries with **no** README arrival — are a **different** set of four, and conflating
    them drives a wrong repair: three are the GitHub templates the header's own sentence covers,
    and one is an entry no comment accounted for. ⚠ **No closure rule describes this list** — a

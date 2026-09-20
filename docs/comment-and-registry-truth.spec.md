@@ -289,7 +289,7 @@ file actually documents.
 membership is a judgment about reader-facing-ness — and it is not even the closure of one hop (four
 1-hop docs are out, four unreachable docs are in), nor of two (a 2-hop spec is in, a 2-hop doc is out).
 
-### The repair — three parts, and the comments are the load-bearing one
+### The repair — four parts, and the comments are the load-bearing one
 
 1. **State the list's actual principle, with its bound, in one place.** Not a closure — a curated set of
    **reader-facing documents a reader lands on**, explicitly including the GitHub templates a
@@ -311,6 +311,16 @@ membership is a judgment about reader-facing-ness — and it is not even the clo
    templates take **none** — the header already names their class in its own second sentence, above —
    while `docs/network-graph-interaction.spec.md` needs the justification nothing in the file currently
    gives it.
+4. **Scope the module docstring's invariant 2 — the SOURCE of `:85-86`, not a separate finding.**
+   `:85-86` did not invent its rule; it **cited** one, naming its authority inside the same sentence
+   (`the docstring's promise is "…"`), and that authority is the second of the **eight** invariants
+   the file opens with — which states the checked set as the README *and every other doc a reader
+   lands on from it*. Correcting the comment therefore leaves the universal standing at its **origin**, one edit
+   from being re-derived off the same sentence, which is how `:85-86` was written to begin with.
+   Both counterexamples are already measured above (`CLAUDE.md`, `SPEC-A.md`), so this part adds no
+   measurement — only the site and its repair: state the set the check actually walks (`DOCS`), and
+   name the gap. The repair is the file's own idiom, which is invariant 6's: that invariant already
+   declares its own narrowness, by naming the counterexample that sat in its own doc set.
 
 ⚠ **The `SPEC-A.md` finding is why this section was rewritten twice.** The first repair was "add the
 four"; measuring what those four *lead to* found `SPEC-A.md` (23 KB, linked from `SPEC.md`) sitting one
