@@ -1,5 +1,14 @@
 # Deep Field — design-of-record
 
+> **Reading the citations.** Every `file:line` below is **`e15ac3e`-numbered** — with one exception, and
+> it is in *§11 How this document cites code*, where the account says why. The template coordinate
+> quoted inside that account is **the reading that pass took**, not a citation, and **no revision is
+> named for it because there is none to name**: measured 2026-09-19, that number resolves to a
+> different line at `v0.4.23`, at `v0.4.24`, at `e15ac3e^` and at `e15ac3e`, so it is a reading of a
+> working tree no commit preserves — testimony, quoted as it was read. Resolve everything else against
+> that commit — `git show e15ac3e:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status: implemented.** Target release: **v0.4.24 (patch)** — a new default colour theme
 for the HTML archive, the visual system behind the README art, and the maintainer capture
 path that keeps that art honest.
@@ -226,7 +235,7 @@ arithmetic:
   node (0 matches each), and neither string appears in either JS bundle. Both classes are **CSS
   with no emitter**. `draw()` writes `project-label` (`--ink`, the one class this bullet names
   correctly) and `project-meta`, whose fill resolves to **`--ink2`, not `--faint`** — two rules
-  set it (`dashboard.template.html:246` and `:375`), and **both carry `#network-blk` and score
+  set it (`dashboard.template.html:252` and `:381`), and **both carry `#network-blk` and score
   (1,1,0)**, so no specificity separates them: the later one wins on **source order**, in every
   theme, and there is no unprefixed competitor for specificity to decide against. **Corrected:**
   this sentence read *"the `#network-blk`-prefixed one wins on ID specificity"*, which is false for

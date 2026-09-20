@@ -1,5 +1,9 @@
 # SPEC — index usage instrumentation + the budget ladder (Phase A/B/C of the index lifecycle)
 
+> **Reading the citations.** Every `file:line` below is **`80fee17`-numbered**. Resolve it against
+> that commit — `git show 80fee17:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status:** **Phase A SHIPPED** (`main`, v0.1.63, PR #71). **Phase B SHIPPED** (`main`, v0.1.66,
 PR #75 — built to the 3-lens-gate-revised design below, then hardened by a max-effort code-review
 workflow: 3 confirmed findings, all fixed pre-merge). **Phase C SHIPPED** (`main`, v0.1.67, PR #76 —
@@ -68,12 +72,12 @@ The operator correctly read this as "something is wrong in the system or the ass
   lines of MEMORY.md, or the first 25KB, whichever comes first, are loaded at the start of every
   conversation. Content beyond that threshold is not loaded"* (code.claude.com/docs/en/memory; verified
   2026-07-04). No relevance filtering — verbatim inclusion to the cap, then silent data loss. Fleet
-  position: consolidate-memory 6,138 B / 27 ln = **25% / 14%** of the cliff; Doc-Flo 11,244 B / 46 ln =
-  **44% / 23%** of the cliff (CORRECTED 2026-07-04 spec-review gate — the original "107" was Doc-Flo's
-  *fact count*, mis-wired into the line-count slot; its real index is 46 lines, not 107); job-applicator
-  ≈8.8 KB / ~38 ln = **35% / 19%**. All three nodes are over the 1500 soft target (100.3% / 184% / 147%),
-  but **no real fleet store is anywhere near the 120-line cliff axis** — only synthetic QA fixtures are
-  (see Phase B's Honest Limits).
+  position (`cliff_pct`, `memory_status.py`): consolidate-memory 6,138 B / 27 ln = **24% / 14%** of the cliff;
+  Doc-Flo 11,244 B / 46 ln = **44% / 23%** of the cliff (CORRECTED 2026-07-04 spec-review gate — the
+  original "107" was Doc-Flo's *fact count*, mis-wired into the line-count slot; its real index is 46
+  lines, not 107); job-applicator ≈8.8 KB / ~38 ln = **35% / 19%**. All three nodes are over the 1500
+  soft target (100.3% / 184% / 147%), but **no real fleet store is anywhere near the 200-line cliff
+  axis** — only synthetic QA fixtures are (see Phase B's Honest Limits).
 - **Half the local overage is hook fat, not fact count.** Index lines average 57 est tok (mirrors 48,
   locals 83); the two fattest local hooks (`distill-feature-plan` 141, `consolidate-memory-roadmap` 116)
   are **17% of the whole budget in 2 lines** — status-content in the index, against the skill's own

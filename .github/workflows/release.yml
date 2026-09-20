@@ -9,9 +9,10 @@ name: Release gate
 #          a valid SSH signature from the committed public key (.github/release-tag.pub).
 #          Threat model: main is PR-only (branch ruleset) and the pubkey is committed —
 #          a tag the key didn't sign cannot pass.
-# provenance:  builds SLSA provenance, an SPDX SBOM, and SHA256SUMS and attaches all
-#          three to the GitHub Release (create-if-missing — `--finalize`'s
-#          `gh release create` may race it).
+# provenance:  builds SLSA provenance, an SPDX SBOM, and SHA256SUMS. `gh release upload`
+#          attaches the SBOM and SHA256SUMS to the GitHub Release (create-if-missing —
+#          `--finalize`'s `gh release create` may race it); the provenance reaches the
+#          attestations API instead, over the two plugin dirs as subjects — not an asset.
 
 on:
   workflow_dispatch:
@@ -27,7 +28,16 @@ jobs:
     name: verify candidate
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 is REQUIRED here for the SAME reason `ci.yml` sets it, and this job is the one
+      # where getting it wrong is invisible until a release is attempted. v0.4.37's citation/docket
+      # gates read history (`git ls-tree <sha>`, `git log --all`); at the default depth 1 they find
+      # nothing and fail by design — naming the remedy — rather than skipping. `provenance` has
+      # `needs: verify`, so a red here does not degrade the release, it CANCELS it. The suite is run
+      # by exactly two workflows; both must hand it the same history, or "green in CI" and "green at
+      # release" would be two different claims.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

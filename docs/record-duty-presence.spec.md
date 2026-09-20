@@ -1,5 +1,9 @@
 # Record duty presence — design-of-record
 
+> **Reading the citations.** Every `file:line` below is **`ee14ef7`-numbered**. Resolve it against
+> that commit — `git show ee14ef7:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status: implemented (revision 9) — shipped as v0.4.33.** Target release: **v0.4.33 (patch)** — an
 added terminal-gate clause and a new panel; no schema, flag, or install-contract change. Revisions
 4–9 were the adversarial passes and the `/code-review` round; the amend ledger at the foot records

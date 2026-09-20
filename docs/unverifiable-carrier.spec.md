@@ -1,5 +1,9 @@
 # Unverifiable-carrier — design-of-record
 
+> **Reading the citations.** Every `file:line` below is **`aabaedc`-numbered**. Resolve it against
+> that commit — `git show aabaedc:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status: review-to-zero CLEAN (amend-2 verified) → implementation.**
 Target release: **v0.4.22 (patch)** — one measured defect from the 2026-09-06 dream
 session, root-caused at its source with a discriminating pin per layer.
@@ -91,8 +95,8 @@ render unchanged). Implementation note (advisor A5): `entries` is currently firs
 extracted at render_dashboard.py:597, AFTER the VERIFIED block (:547-554) — hoist the
 extraction above it (`_lget(record, "entries")` is in scope); the `_ui.wrap` value
 column wraps on word boundaries so a 3-name join fits at realistic name lengths, and
-each name goes through `_clean`. HTML: both surfaces — `sections.js:269`'s assess warn
-item gains the same joined names, and `template.html:1096`'s KPI sub-label gains them
+each name goes through `_clean`. HTML: both surfaces — `dashboard.sections.js:269`'s assess warn
+item gains the same joined names, and `dashboard.template.html:1096`'s KPI sub-label gains them
 (the same join, the same fallback). **The KPI sub-label join escapes (review S4):**
 `kpi(n,k,d,cls)` escapes the key but injects the sub-label `d` raw — model-authored
 names carry angle-bracket content (the render-chain audit's `"<proj>"` pin documents

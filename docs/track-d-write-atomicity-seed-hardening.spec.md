@@ -1,5 +1,9 @@
 # Track D: global-store write atomicity + /tmp seed-path hardening — spec
 
+> **Reading the citations.** Every `file:line` below is **`ffbe1f3`-numbered**. Resolve it against
+> that commit — `git show ffbe1f3:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Provenance:** the 2026-07-05 four-lens audit's F-P2-7 (global-store write atomicity/
 locking) and F-P2-8 (`/tmp` seed-path hardening), explicitly deferred to Track D by
 `docs/audit-hygiene-remediation.spec.md`'s Non-goals ("`O_EXCL` would break the

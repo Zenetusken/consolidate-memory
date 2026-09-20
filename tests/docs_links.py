@@ -219,15 +219,181 @@ def check_anchors() -> None:
         err(f"README.md: <a id=\"{orphan}\"></a> is unreachable — no <a href=\"#{orphan}\"> links to it")
 
 
+def _ws_tolerant(needle: str) -> str:
+    """The needle as a pattern tolerating whitespace INSIDE it, for use against RAW text.
+
+    Built over the raw text deliberately. An earlier draft instead flattened the HAYSTACK and
+    applied these same boundary lookarounds to the result — which deletes the very characters
+    those boundaries read. MEASURED, and quoted in full because the figure IS the argument:
+    `"Run the /cm-\\nsync verb"` with its whitespace REMOVED is `"Runthe/cm-syncverb"` — the
+    space inside `Run the` dies with the line break, so a flattening cannot be quoted as though
+    only the break had gone. Against that haystack ``/cm-sync`` sits with a word character on
+    BOTH sides (`e` left, `v` right), so both lookarounds fail and a wrapped needle reads as
+    ABSENT. It passed its own mutation test only because every needle in `REQUIRED_IN_README`
+    carries PUNCTUATION on **at least one side** in README (`/cm-sync` by backticks,
+    `docs/network-guide.md` by parens, `/cm-connect` by a backtick and a SPACE) — a fixture green
+    for an AMBIENT reason, which this repo already records. ⚠ This clause read *"is delimited in
+    README by PUNCTUATION"* outright, which its own parenthetical already contradicted — it names
+    `/cm-connect` as *"a backtick and a space"* — and MEASURED, 5 of the 7 needles carry a
+    punctuation neighbour on BOTH sides while the other 2 carry a SPACE on the right, so the
+    unqualified form was false of them.
+
+    ⚠ A needle's OWN whitespace had to be MAPPED rather than escaped, and it is the one position the
+    join does not reach. `re.escape(" ")` is a backslash-space — a LITERAL space, since space sits
+    in `re`'s escape table — so the `\\s*` separators tolerate a dropped or doubled space BETWEEN
+    characters while the character that IS a space still demands a space character exactly there.
+    MEASURED: the needle `plugin marketplace add` against `run plugin marketplace` + a newline +
+    `add ./ now` read ABSENT, so `check_required_strings` reported a present string as gone AND
+    `check_contiguity` — the arm that owns precisely that shape — stayed silent: the pair's claimed
+    partition broke with NO message at all, in the direction that reads as a clean run. Every needle
+    in `REQUIRED_IN_README` is space-free and the case table's probe is `/cm-probe`, so the live file
+    cannot expose it. `isspace` rather than `== " "` so a tab in a future needle maps too.
+    """
+    return r"\s*".join(r"\s+" if c.isspace() else re.escape(c) for c in needle)
+
+
 def check_required_strings() -> None:
-    """The cross-project workflow the README must keep documenting."""
+    """The cross-project workflow the README must keep documenting.
+
+    Presence is whitespace-TOLERANT: a mention broken across a line is still a mention, so this
+    check's message ("no longer mentions") stays true of genuine absence only. Its companion
+    `check_contiguity` owns the broken-but-present case, and the two are a true PARTITION —
+    MEASURED over the full seven-case table (contiguous · wrapped in a table cell · wrapped in
+    prose · wrapped at line end · broken by a stray space · a longer token · genuinely absent):
+    never two messages for one break, and never none for a broken string — the `contiguous` row
+    correctly yields none, which is why the property is stated per row rather than as "never
+    none" over the whole table. Before this split the two matched the same regex over the same
+    haystack, so both always spoke, and the absence line was factually FALSE for a wrapped
+    string.
+    """
     readme = read("README.md")
     for needle in REQUIRED_IN_README:
         # Word-bounded, not a bare substring: renaming `/cm-network` to `/cm-network2`
         # leaves a superset that CONTAINS the needle, so a containment test keeps passing
         # while the documented command no longer exists. Found by mutation, not by review.
-        if not re.search(rf"(?<![\w/-]){re.escape(needle)}(?![\w-])", readme):
+        if not re.search(rf"(?<![\w/-]){_ws_tolerant(needle)}(?![\w-])", readme):
             err(f"README.md no longer mentions {needle!r} (smoke.py pins it as the documented workflow)")
+
+
+def check_contiguity() -> None:
+    """Every required string must be CONTIGUOUS in the file — a wrapped one is not an anchor.
+
+    **A REGRESSION GUARD, not a pin** — by this repo's own rule: no anchor rule existed before it,
+    so it cannot fail on pre-fix code.
+
+    The failure mode is measured, twice. BEFORE THIS SPLIT `check_required_strings` matched
+    `re.escape(needle)` over the whole RAW file, so a needle containing a space stopped matching
+    the moment the source wraps it: `" ".join(t.split())` in a reader crosses a newline, but the
+    raw file does not — and inside a COMMENT block it does not cross the `#` that leads the next
+    line either. (That function now runs the whitespace-TOLERANT pattern instead, so the strict
+    `re.escape` read is the FIRST ARM OF THIS CHECK and not a description of the other one; the
+    two remain a partition. An earlier draft stated it in the present tense, which described the
+    pre-image rather than the shipped pair.) The measured instance is PRE-FIX and is labelled so:
+    at `fbfe07e` `release.yml`'s comment wrapped as `attaches all` / `#          three to the
+    GitHub Release` — ten spaces after the `#`, quoted verbatim, where an earlier draft collapsed
+    them to three — and a matcher reading for the count phrase saw `all # three` and reported NO
+    CLAIM. ⚠ It has to stay labelled pre-fix, and that is not pedantry: v0.4.37's OWN Family 3
+    rewrote that comment, so "MEASURED in v0.4.37: it wraps as …" cited, as this release's own
+    evidence, a string this release deleted. A matcher fault wearing an absence's clothes — and
+    it was INVISIBLE, because a second arm of the same check still reddened. Only a single-arm
+    red would have exposed it, which is why this guard exists as its own check rather than as a
+    clause inside another.
+
+    **Scope: WHITESPACE breaks only.** The MESSAGE this check emits used to read "CONTIGUOUS",
+    which claims every separator while the matcher reaches exactly one; it now names whitespace
+    ("a line break, or a stray space inside it"). ⚠ Name which surface, because they disagree:
+    the docstring HEADLINE above still reads CONTIGUOUS and the function is still named
+    `check_contiguity` — both are scoped by this paragraph rather than replaced by it, so an
+    earlier draft's "the label now claims what the matcher tests" was false of each. A break
+    introduced by anything else (a Markdown table cell boundary splitting a token, a soft hyphen,
+    inline markup) is NOT covered. That is a stated boundary rather than a silent one because the
+    separator class is unbounded, and a guard that must be complete over an unbounded class has to
+    INVERT rather than enumerate — this repo's own rule.
+
+    A guard that has never fired is not a guard, so this one was mutation-verified: wrapping BOTH
+    of README's `docs/network-guide.md` occurrences reddens it (wrapping one does not — the raw
+    reader still matches the other, which is itself the lesson that a mutation's effect belongs to
+    the FIXTURE as much as to the code).
+
+    ⚠ That mutation is green for an AMBIENT reason, and it is worth naming because it hid a real
+    hole: MEASURED, every needle in `REQUIRED_IN_README` carries PUNCTUATION on **at least one**
+    side at every occurrence — **5 of the 7 on both sides, and 2 with a SPACE as the right
+    neighbour** — so not one is delimited by whitespace on both sides. ⚠ The head clause here used
+    to read "delimited by PUNCTUATION" outright, which this sentence's own parenthetical
+    contradicted: `/cm-connect` is named below as *"a backtick and a space"*, and a needle with a
+    space on one side is not delimited by punctuation. The qualified form is the true one and the
+    only one the argument needs. ⚠ **Named per needle — and now all SEVEN rather than four**, because the sentence read
+    *"Named per needle"* over a list holding four of them: a universal asserted over a set its own list
+    had sampled a fraction of, which is this check's defect class sitting inside its own justification.
+    MEASURED 2026-09-19 by reading the immediate neighbours of every occurrence in README.md —
+    **backtick on BOTH sides**: `/cm-sync` (3 occurrences), `/cm-network` (2), `/cm-domain` (3),
+    `/cm-group` (2), and `docs/network-guide.md` (2, `(` on the left at both and `)` on the right at
+    one, `#` at the other — the delimiter is the single `#`; an earlier draft wrote `#)`, and no `#)`
+    occurs there); **a backtick and a SPACE**: `/cm-connect` (2) and `/cm-share` (2), space on the right
+    at every occurrence. That is the **5 both-sides / 2 space-right** partition the sentence above
+    states — reached by naming each member rather than by counting them. So
+    the README fixture can only
+    ever exercise a needle with at least one PUNCTUATION boundary — never one whose every boundary
+    is whitespace — and it cannot reach the
+    PROSE case at all. The matcher pair therefore carries its own seven-case table, asserted at the
+    end of this function — contiguous · wrapped in a table cell · wrapped in prose · wrapped at
+    line end · broken by a stray space, plus two CONTROLS (a longer token, and genuine absence)
+    that neither matcher may call a break.
+
+    ⚠ Scope, and the reason: the REGISTRY, not the corpus. `CLAUDE.md:32-33` is the measured
+    instance — it splits `` `claude plugin validate `` / `` ./plugins/consolidate-memory --strict` ``
+    — and it is deliberately OUT of scope. The reason is the GUEST POSTURE, not a read-only
+    property, and an earlier draft of this paragraph got it backwards: the two-CLAUDE.md rule
+    makes the USER-GLOBAL file (`~/.claude/CLAUDE.md`) the strictly-read-only one, and a bare
+    `CLAUDE.md` coordinate resolves to the PROJECT file — which is the guest-WRITABLE half, edited
+    report-then-apply with each change gated by the user. So a gate that reddens on it would demand
+    an edit this pass is not entitled to make UNILATERALLY, not one it may never make at all. The
+    instance is NAMED here rather than read, and the distinction matters because the two halves of
+    the rule take different remedies: one wants a proposal, the other wants silence.
+    """
+    readme = read("README.md")
+    for needle in REQUIRED_IN_README:
+        # STRICT: present unbroken. A real anchor — nothing to guard.
+        if re.search(rf"(?<![\w/-]){re.escape(needle)}(?![\w-])", readme):
+            continue
+        # Present-but-broken, or absent? `check_required_strings` now runs this SAME tolerant
+        # matcher, so its silence here means whitespace-inside and its speech means genuine
+        # absence — a true partition, measured across the case table in the docstring. The
+        # message must name what THIS predicate tests: whitespace. It previously asserted "a line
+        # break", which a stray space satisfies just as well, sending the reader to reflow a line
+        # that was never wrapped.
+        if re.search(rf"(?<![\w/-]){_ws_tolerant(needle)}(?![\w-])", readme):
+            err(f"README.md's required string {needle!r} is present only BROKEN by whitespace "
+                f"(a line break, or a stray space inside it) — it matches with the whitespace "
+                f"removed but not in the raw file, so `grep -F` finds nothing and it is not an "
+                f"anchor. Restore it as one unbroken token")
+
+    # The matcher pair carries its OWN case table, because the README fixture cannot reach every
+    # shape the guard must handle — see the AMBIENT note in the docstring: every real needle here
+    # is punctuation-delimited, so a PROSE wrap (the motivating case) is unreachable from the live
+    # file. A guard whose only fixture is the file it guards cannot test its own matcher, so this
+    # supplies the input the file does not. Expected: strict False AND tolerant True on every
+    # broken shape — tolerant False would mean `check_required_strings` calls a present string
+    # absent (the false verdict this pair exists to prevent).
+    _p = "/cm-probe"
+    _head, _tail = _p[:-3], _p[-3:]
+    for _lbl, _txt, _want in (
+        ("contiguous",       f"run {_p} here",                 (True,  True)),
+        ("table-wrapped",    f"| {_head}\n{_tail} | x |",      (False, True)),
+        ("prose-wrapped",    f"run the {_head}\n{_tail} now",  (False, True)),
+        ("line-end-wrapped", f"use {_head}\n{_tail}\nhere",    (False, True)),
+        ("stray-space",      f"run {_head} {_tail} now",       (False, True)),
+        # Controls: neither is a break, so NEITHER matcher may claim one. A longer token is the
+        # superset case `check_required_strings` was already hardened against, and it must stay a
+        # genuine absence rather than being re-labelled a whitespace break by the tolerant form.
+        ("longer-token",     f"run {_p}2 here",                (False, False)),
+        ("absent",           "nothing here at all",            (False, False)),
+    ):
+        _got = (bool(re.search(rf"(?<![\w/-]){re.escape(_p)}(?![\w-])", _txt)),
+                bool(re.search(rf"(?<![\w/-]){_ws_tolerant(_p)}(?![\w-])", _txt)))
+        if _got != _want:
+            err(f"the contiguity matcher pair is wrong on the {_lbl!r} case: "
+                f"(strict, tolerant) = {_got}, expected {_want}")
 
 
 def _plain(cell: str) -> str:
@@ -445,6 +611,7 @@ def main() -> int:
     check_links()
     check_anchors()
     check_required_strings()
+    check_contiguity()
     check_themes()
     check_version_statements()
     plugin_rows = check_plugin_table()
@@ -455,8 +622,12 @@ def main() -> int:
             print(f"  - {e}")
         return 1
     version = json.loads(PLUGIN.read_text(encoding="utf-8"))["version"]
+    # The denominators are not decoration: without them a reader cannot tell "0 problems in 7
+    # required strings" from "0 problems in 0", and a check that has silently stopped examining
+    # anything prints exactly as green as one that examined everything.
     print(f"✓ docs valid (badge + {len(LIVE_DOCS)} live-doc statements at v{version}, "
-          f"{plugin_rows} plugin-table rows, {len(DOCS)} files link-checked, anchors balanced, "
+          f"{plugin_rows} plugin-table rows, {len(DOCS)} files link-checked, "
+          f"{len(REQUIRED_IN_README)} required strings unbroken, anchors balanced, "
           "preview current)")
     return 0
 

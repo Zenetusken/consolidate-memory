@@ -1,5 +1,9 @@
 # Cross-domain mirror key — the bare stem where the namespaced key belongs
 
+> **Reading the citations.** Every `file:line` below is **`2ee1ee9`-numbered**. Resolve it against
+> that commit — `git show 2ee1ee9:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Design-of-record for four sites on the write path and its accounting model — plus the
 `--gc` dead-probe, the same root cause reached from a reporting surface.**
 Status: drafted 2026-09-11 (UTC 09-12), adversarial review round 1 complete and folded.

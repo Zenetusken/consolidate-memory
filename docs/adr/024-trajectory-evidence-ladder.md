@@ -1,5 +1,14 @@
 # 024. Trajectory evidence ladder — sketch removal, deferred rebuild
 
+> **Reading the citations.** Every `file:line` below is **`526a80d`-numbered**. Resolve it against
+> that commit — `git show 526a80d:<path>` — and **never against the working tree**, which has moved
+> them. ⚠ `7f0483e` (the v0.4.0 commit this ADR names for the module deletion) is NOT the
+> coordinate base, and that was measured rather than assumed: it is the version in the Status line,
+> so it looks like the natural candidate, but `sync_global.py` has a different shape there — at
+> `7f0483e` the cited `:2995` is a CALL SITE of `_eval`, while at `526a80d` it is `def
+> fleet_workflows` itself and `:3153` is `def _eval`, which is exactly what the prose below says
+> they are.
+
 **Status:** Accepted (v0.4.0).
 
 ## Context

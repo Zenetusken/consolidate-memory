@@ -21543,11 +21543,1074 @@ with _tf36.TemporaryDirectory() as _td36w:
           "the subject is absent and this fails with the pin rather than passing vacuously",
           _fault27 == "no such column: display_name")
 
+    # ================= v0.4.37 — PR B's doc-coherence pins (the RC-6 families) ==================
+    # PR B's one rule: an assertion must be derivable from its SUBJECT, or gated so it cannot
+    # silently drift — and where it is gated, the gate names BOTH the source and the matcher it
+    # reads. Every check below therefore states its matcher and its scope on the check itself.
+    #
+    # ⚠ ONE RULE GOVERNING EVERY READ IN THIS BLOCK, stated here so it is checked rather than
+    # re-derived: a read is GUARDED iff this block is the FIRST STRICT reader of its input. An
+    # unguarded read aborts the suite where it stands, and every check after it — D6 included —
+    # never prints, so a read that nothing else would have failed on must report a verdict instead.
+    # Three reads here are therefore deliberately left raw — `cm`, `.github/workflows/release.yml`
+    # and `SECURITY.md` — because each is read STRICTLY and unconditionally far earlier in this same
+    # file: `SECURITY.md` and `cm` inside the `_live_docs` list literal, `release.yml` under
+    # `_wf_r5` and `_wf_cs`. An absent or undecodable one already aborts there, so guarding them
+    # here would print a verdict the suite can never reach — a worse lie than the abort it replaces.
+    # The ones this block IS first to read carry the guards: the ladder spec (nothing else reads it
+    # at all), the docket docs and `docs/**/*.md` (their earlier reader is TOLERANT —
+    # `errors="replace"` — and so is not a reader of the same inputs), and the `.github/workflows/
+    # *.yml` glob inside pin 10, which owns `ci.yml` and every workflow that is not `release.yml`.
+    # ⚠ Anchors, not line numbers, and this clause is why: its first draft cited four coordinates in
+    # this very file, and every one had already moved by the time the edit that wrote them landed.
+    # The re-check is one question per raw read: is there an earlier STRICT read of it?
+    import re as _re37
+
+    _ladder_spec37 = ROOT / "docs" / "index-usage-and-budget-ladder.spec.md"
+    # ⚠ GUARDED rather than assumed, for the reason the docket loop below already records at its own
+    # read: an unguarded read ABORTS the suite here, and this line sits BEFORE D6 — so a missing spec
+    # takes the pinned-surface pin down with it and nothing after it ever executes. MEASURED on a
+    # clone with this file removed: pins 1 and 2 never print, the summary line never prints, and D6 is
+    # absent from the output entirely. A missing FILE is a verdict naming the INPUT, so it is carried
+    # beside the count rather than raised — the same shape the docket loop uses for `no such doc`.
+    # ⚠ And `exists()` then `read_text()` leaves the OTHER half open, which the same reasoning
+    # reaches: `errors="replace"` at the `v0.1.69` sweep (`:5401`) makes that reader tolerant of
+    # bytes this one refuses, so a tracked `docs/*.md` that is not UTF-8 passes the sweep one
+    # screen up and dies HERE — a `UnicodeDecodeError` upstream of D6, which is the abort this
+    # guard exists to stop. MEASURED for the mechanism: on the same bytes, the strict read raises
+    # while `errors="replace"` returns 19 characters, so the two readers really do disagree about
+    # which inputs are readable. The catch is on the READ, not on a precondition about it, so both
+    # halves of "nothing to read" arrive as one verdict naming the INPUT.
+    _ladder_noread37 = False
+    try:
+        _ladder37 = _ladder_spec37.read_text(encoding="utf-8")
+        _ladder_fault37 = ""
+    except (OSError, UnicodeDecodeError) as _e37:
+        _ladder_noread37 = True
+        _ladder37 = ""
+        _ladder_fault37 = (f" ⚠ `docs/{_ladder_spec37.name}` could not be read "
+                           f"({_e37.__class__.__name__}), so there was nothing to read: "
+                           "the zero matched here is about the INPUT and not the corpus.")
+
+    # ---- Family 1: the budget-ladder trio's positions -------------------------------------------------
+    # The PRODUCER is `memory_status.cliff_pct` (`:918`), so the prose is checked against it rather
+    # than against a second hand-derivation — which is exactly the defect Family 1 measures: a
+    # percentage derived by hand at a precision the operand's own documented ambiguity does not
+    # permit (the same file records that "25KB is read as 25x1024 ... if the harness means 25,000
+    # the shift is <2.5%", and 2.5% is precisely enough to move 23.98 -> 24.55, i.e. 24 vs 25).
+    #
+    # ⚠ SCOPE, stated on the check rather than left to the reader: this gate verifies the
+    # ARITHMETIC and NOT the OPERANDS. The three nodes are other projects' stores, so `6,138 B /
+    # 27 ln` is not derivable from this tree and a wrong operand lies outside what any check here
+    # can see. What it catches is a figure disagreeing with the producer GIVEN its own stated
+    # inputs — which is how node 1 read 25 against the producer's 24.
+    #
+    # ⚠ The UNIT is the document's own (1 KB = 1024, matching the `25KB` = 25,600 cliff it names).
+    # That is load-bearing, not pedantic: reading `≈8.8 KB` as 8,800 B yields 34 where the
+    # producer's own convention yields 35 — the operand-convention error Family 1 is about.
+    _fleet_re37 = _re37.compile(
+        r"([\w-]+) ≈?([\d,]+(?:\.\d+)?) (KB|B) / ~?(\d+) ln = \*\*(\d+)% / (\d+)%\*\*")
+        # `≈?` sits OUTSIDE the capture: `≈8.8` must yield the number `8.8`, and a group that keeps
+        # the mark makes `float()` raise — a matcher bug that surfaces as a suite ERROR rather than
+        # as the red this check exists to produce.
+    _fleet37 = _fleet_re37.findall(_ladder37)
+    _fleet_bad37 = []
+    for _nm37, _amt37, _unit37, _ln37, _bp37, _lp37 in _fleet37:
+        _b37 = int(float(_amt37.replace(",", "")) * (1024 if _unit37 == "KB" else 1))
+        _l37 = int(_ln37)
+        if ms.cliff_pct(_b37, _l37) != int(_bp37) or abs(100 * _l37 / 200 - int(_lp37)) > 0.5:
+            _fleet_bad37.append((_nm37, _b37, _l37, _bp37, ms.cliff_pct(_b37, _l37), _lp37))
+    check("v0.4.37 pin 1 (PIN — RED on the pre-fix doc, MEASURED: node 1 read `25%` against the "
+          "producer's 24, so 25 != 24): every fleet position the budget-ladder spec states equals "
+          f"`cliff_pct` on that node's OWN stated inputs ({len(_fleet37)} matched, "
+          f"{_fleet_bad37 or 'none'} disagreeing). Matcher: the fleet-position regex over that "
+          f"spec; scope: its prose block only.{_ladder_fault37} The limit is stated rather than "
+          "implied — this "
+          "verifies the ARITHMETIC, not the OPERANDS (the three stores are other projects', so "
+          "`6,138 B / 27 ln` is not derivable from this tree), and the unit is the DOCUMENT's own, "
+          "1 KB = 1024, so `≈8.8 KB` is 9,011 B and not 8,800",
+          not _ladder_noread37 and len(_fleet37) == 3 and not _fleet_bad37)
+
+    # G-A3 (`:324`) asserts the SAME fixture's producer value, so prose and fixture are two
+    # assertions about ONE input and must agree. Pre-fix they did not: the prose said 25 while
+    # G-A3's own fixture said 24 — the document carried both answers, which is the checkable form
+    # of "nothing tied them together".
+    _ga3_re37 = _re37.compile(r"G-A3:\*\* fixture: ([\d,]+) B / (\d+) ln → `cliff_pct == (\d+)`")
+    _ga3_37 = _ga3_re37.search(_ladder37)
+    _n1_37 = next((t for t in _fleet37 if t[0] == "consolidate-memory"), None)
+    _gb37 = int(_ga3_37.group(1).replace(",", "")) if _ga3_37 else 0
+    _gl37 = int(_ga3_37.group(2)) if _ga3_37 else 0
+    _gv37 = int(_ga3_37.group(3)) if _ga3_37 else -1
+    check("v0.4.37 pin 2 (PIN — RED on the pre-fix doc: the prose read `25%` where `:324`'s own "
+          "G-A3 fixture asserts `cliff_pct == 24` for the very same inputs, so the document carried "
+          "both answers): the prose's node-1 figures and G-A3's fixture are the SAME fixture at the "
+          "SAME value, checked against the producer. ⚠ The amount is compared as a NUMBER rather "
+          "than as its rendered text: `6,138` and `6138` are ONE value, and MEASURED, the string "
+          "form reddened on the second while every numeric equality held — a separator is not a "
+          "disagreement this check has any claim about. This is the duplicate that could not "
+          "survive: "
+          "a percentage restated by hand and an assertion derived by fixture are two sites, and "
+          f"Family 1's whole finding is that nothing tied them together until this check did."
+          f"{_ladder_fault37}",
+          not _ladder_noread37 and _ga3_37 is not None and _n1_37 is not None
+          and int(float(_n1_37[1].replace(",", ""))) == _gb37 and int(_n1_37[3]) == _gl37
+          and int(_n1_37[4]) == _gv37 == ms.cliff_pct(_gb37, _gl37))
+
+    # ---- Family 2: `cm`'s usage block vs the parser that must accept it ------------------------------
+    # ⚠ THREE constraints, each measured, and none optional:
+    #
+    # (a) The flag is tested against the SUBCOMMAND's own subtree, never the top-level parser.
+    #     `--plan` is accepted GLOBALLY — `cm_ops.py` declares it on `migrate` AND on `data` — so a
+    #     gate asking only "does some parser accept `--plan`" reads GREEN on the pre-fix tree and
+    #     pins nothing at all. Pre-fix the heredoc advertised it under `local`, whose subtree
+    #     declares no `--plan`. This is the difference between a gate and a gate-shaped no-op.
+    # (b) argv construction is NOT the observable. Probing the heredoc's triples through argv,
+    #     positional artifacts false-RED 32 times where a genuine rejection occurs once. The
+    #     parser's own option table is the fact; that is what is read.
+    # (c) The subtree, not the subcommand: the usage block does not distinguish `cm project` from
+    #     `cm project enroll` (nor `journal cleanup` from `journal`), so the gate must not either.
+    #
+    # ⚠ SCOPE: only the cm_ops-backed subcommands HAVE a parser to be checked against. Lines like
+    # `cm beacon`, `cm render` and `cm calibration` are thin `exec` pass-throughs to their own
+    # scripts, so their flags are declared THERE and not in `build_parser()`. Naming the scope is
+    # what keeps this from false-REDding on the lines that are correct as written.
+    import cm_ops as _cmops37
+
+    def _options_under37(_parser: Any) -> set:
+        """Every option string reachable from `_parser`, nested sub-subparsers included (c)."""
+        _out: set = set()
+        for _act37 in getattr(_parser, "_actions", []):
+            _out |= set(getattr(_act37, "option_strings", None) or [])
+            _ch37 = getattr(_act37, "choices", None)
+            if isinstance(_ch37, dict):
+                for _sub37 in _ch37.values():
+                    _out |= _options_under37(_sub37)
+        return _out
+
+    def _choices37(_parser: Any) -> dict:
+        for _act37 in getattr(_parser, "_actions", []):
+            _ch37 = getattr(_act37, "choices", None)
+            if isinstance(_ch37, dict):
+                return _ch37
+        return {}
+
+    _top37 = _cmops37.build_parser()
+    _cmops_subs37 = set(_choices37(_top37))
+    _usage37 = (ROOT / "cm").read_text(encoding="utf-8").split("cat <<'EOF'", 1)[1].split("EOF", 1)[0]
+    # ⚠ The usage block WRAPS, so a read that sees only the lines opening `cm <sub>` reads a
+    # SUBSTRING of what the block advertises. MEASURED: `cm extract [--json]  … ; --recalls [--into
+    # SEED]` continues two lines further with `[--before SNAPSHOT]`, which the line-wise read never
+    # reached — a flag advertised on a CONTINUATION was unchecked, in the exact register this check
+    # exists to catch, since `--plan` was also advertised and unusable. ⚠ And it is not a small
+    # remainder: measured on this revision, the line-wise read gives 29 pairs across 6 subcommands
+    # and the widened one 43 across 9, with `data`, `group` and `journal` wholly invisible before.
+    # A continuation inherits the anchor above it; a BLANK line, or a `cm <verb>` outside the parser
+    # surface, ends that inheritance — so the header prose mentioning `cm project enroll` mid-sentence
+    # is never an anchor, the match being anchored at line start and that sentence beginning with a
+    # word.
+    _adv37 = []
+    _cur37 = ""
+    for _line37 in _usage37.splitlines():
+        _m37 = _re37.match(r"\s+cm (\S+)(.*)$", _line37)
+        if _m37:
+            _cur37 = _m37.group(1) if _m37.group(1) in _cmops_subs37 else ""
+            _body37 = _m37.group(2)
+        elif not _line37.strip():
+            _cur37 = ""
+            continue
+        elif _cur37:
+            _body37 = _line37
+        else:
+            continue
+        if _cur37:
+            for _f37 in _re37.findall(r"--[a-z][a-z0-9-]*", _body37):
+                _adv37.append((_cur37, _f37))
+    _advertised37 = sorted({_s37 for _s37, _f37 in _adv37})
+    _unaccepted37 = sorted(
+        (_s37, _f37) for _s37, _f37 in set(_adv37)
+        if _f37 not in _options_under37(_choices37(_top37)[_s37]))
+    check("v0.4.37 pin 3 (PIN — RED on the pre-fix heredoc, MEASURED: `cm local rebuild-index "
+          "--plan` is advertised, `local` declares no `--plan`, and the real invocation exits rc=2 "
+          "`unrecognized arguments: --plan` — the advertised flag was UNUSABLE, not merely "
+          f"undocumented): every flag `cm`'s usage block advertises under a parser-backed "
+          f"subcommand is accepted by THAT subcommand's subtree ({len(set(_adv37))} pairs across "
+          f"{len(_advertised37)} of the {len(_cmops_subs37)} parser-backed subcommands; "
+          f"{_unaccepted37 or 'none'} unaccepted). ⚠ The denominator is the whole parser surface and "
+          "the numerator is what the block ADVERTISES, since those are different sets and a flag "
+          "the block never mentions is out of this check's reach by construction. Continuation lines "
+          "inherit their anchor, so a wrapped advertisement is read rather than half-read. "
+          "The scope is the `build_parser()` surface — the `exec` pass-through lines declare their "
+          "flags in their own scripts — and the subtree walk is what stops `--plan` being found on "
+          "`migrate` while it is being advertised under `local`",
+          bool(_adv37) and not _unaccepted37)
+
+    # ---- Family 3: the packaging prose vs the workflow -------------------------------------------------
+    # THREE sites assert this, and the census is named because it took a third pass to find them:
+    # `release.yml`'s `provenance:` comment (over-claims — it attached provenance to the Release),
+    # `SECURITY.md` §Release integrity (mis-locates provenance AND omits SHA256SUMS), and
+    # `CHANGELOG.md`'s shipped `## [0.4.2]` entry, the phrase `publishes build provenance`
+    # (mis-locates, omits). All three
+    # agree on the one item they all get wrong, which is the finding: cross-reading any two
+    # REINFORCES the error. ⚠ The CHANGELOG site is deliberately OUT of the gate's scope — it is
+    # the dated record of a shipped release, so rewriting it would make the record disagree with
+    # what shipped — and that exclusion is stated here rather than left implicit.
+    #
+    # ⚠ And it is named by PHRASE, never by `:line`, because the coordinate this note first carried
+    # was decay wearing a handle's clothes: `CHANGELOG.md:2495-2496` reads a `## [0.4.5]` heading at
+    # this revision and older-release journal prose on the base, while the cited passage is
+    # byte-identical at both. A CHANGELOG grows from the TOP, so every coordinate below the newest
+    # entry shifts on each release — a line number here has a shelf life of one commit, which is the
+    # `v0.4.25` house rule's own motivating case.
+    def _uncomment37(_text: str) -> str:
+        """Flatten a COMMENT BLOCK: drop the line-leading marker, then normalize whitespace.
+
+        ⚠ `" ".join(t.split())` crosses a newline but NOT the `#` that leads the next line, so a
+        phrase wrapping inside a comment block keeps an interior marker. MEASURED — the pre-fix
+        `release.yml` comment wraps as `attaches all` / `#   three to the GitHub Release`, and a
+        count-claim matcher reading `all (two|three|…)` saw `all # three` and reported NO CLAIM.
+        That is a matcher fault wearing an absence's clothes, and on this check it was invisible:
+        the other arm still reddened, so only a single-arm red hid a dead arm. Strip, then flatten.
+        """
+        return " ".join(ln.strip().lstrip("#").strip() for ln in _text.splitlines() if ln.strip())
+
+    _rel37 = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    _sec37 = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    # TWO normalizations, and which one a read gets is not cosmetic — but the distinction that
+    # matters here is not plain-vs-stripped, and MEASURING that is what moved this read. With the live
+    # upload line commented out (2026-09-19; the line at `:133`), the pattern below still matches it
+    # under BOTH: `search` carries no `^` anchor, so a leading `#` is just another character, and
+    # `_uncomment37` KEEPS the line and drops only the marker. Plain flattening therefore did NOT
+    # deliver what an earlier version of this comment said it did — a commented-out upload DID still
+    # supply its filenames, and the pin would have asserted the prose against a line the workflow no
+    # longer runs. A green verdict about a dead line is this PR's own defect class, so the upload read
+    # now drops the COMMENT LINES outright: no live upload line ⇒ no names ⇒ red. The provenance read
+    # is the opposite case and keeps `_uncomment37`, because its subject IS comment prose and the
+    # interior markers have to come off. SECURITY.md is markdown, so it needs neither.
+    _code_flat37 = " ".join(ln for ln in _rel37.splitlines() if not ln.lstrip().startswith("#"))
+    _sec_flat37 = " ".join(_sec37.split())
+    # ⚠ The split FAILS OPEN, and that is not hypothetical. `[-1]` on a MISSING needle yields the
+    # whole flattened document, whose `.split("## ", 1)[0]` is the pre-heading PREAMBLE — so a
+    # renamed heading silently swaps the region for one holding NONE of the prose this check exists
+    # to read, and the check prints green about it. MEASURED over two copies of this tree: with the
+    # pre-fix over-claim restored under the intact heading, `pin 5: FAIL`; the same sentence with the
+    # heading renamed to `## Provenance and release integrity` gives `pin 5: PASS`. So the heading is
+    # asserted as the read's PRECONDITION rather than assumed by it — the same discipline the clause
+    # split below is given, since a matcher that cannot report its own failure to match is not a
+    # weaker check but a different one.
+    _sec_h37 = "## Release integrity"
+    _sec_rel37 = (_sec_flat37.split(_sec_h37, 1)[1].split("## ", 1)[0]
+                  if _sec_h37 in _sec_flat37 else "")
+    # The GROUND TRUTH: the filenames the upload line actually carries. Read from the workflow, not
+    # restated — a gate that hard-codes `sbom.spdx.json SHA256SUMS` would stay green through the
+    # very edit it exists to catch.
+    # ⚠ ALL matches, never the first, and the count is asserted in the predicate below. A first-match
+    # read of a set whose SIZE is not asserted is a partial census wearing a whole one's clothes:
+    # `release.yml` already carries a second `gh release upload` spelling inside the comment at its
+    # head. That one is excluded twice over — by the comment rule above, and by the `"$TAG"` …
+    # `--clobber` anchoring — and a check should not rest on WHICH of two independent exclusions
+    # happens to hold. Add a second LIVE upload line and a first-match read would silently gate the
+    # prose against whichever came first: green, against the wrong line, the arm reading exactly as
+    # it does now. ⚠ A comment at `:12` is not a counted upload line, so it is not a counterexample.
+    _uploads37 = _re37.findall(r'gh release upload\s+"\$TAG"\s+([^\n]*?)\s*--clobber', _code_flat37)
+    _assets37 = _uploads37[0].split() if _uploads37 else []
+    # ⚠ THE ANCHOR IS ASSERTED, not assumed — the SECOND of this check's two fail-open reads, and
+    # the one the earlier repair did not reach. The SECURITY.md read above carries it now; this one
+    # kept the same `[-1]`-on-a-missing-needle idiom, and its failure is worse than a wrong region,
+    # because its subject IS comment prose (see the normalization note above): when the `provenance:`
+    # comment that opens this prose is deleted the anchor does not vanish — it SLIDES to the
+    # `provenance:` JOB NAME below `jobs:`, and `.split("on:", 1)[0]` then cuts at `runs-on:` and
+    # returns a YAML fragment. MEASURED on a copy of this tree with that comment deleted: the
+    # extraction returns `name: provenance + SBOM `, whose non-emptiness makes the guard below return
+    # True — so an ABSENT claim and an UNREAD one share one representation, and pin 4 blames
+    # `SECURITY.md`'s prose (`unnamed ['sha256sums']`) while `SECURITY.md` still names `SHA256SUMS`.
+    # A fault reported as a verdict, in the check built to catch that. The prose lives in the
+    # workflow's HEADER, so the header is the scope and its anchor is the precondition: absent ⇒ the
+    # read says so, and pin 4 reddens on its own arm naming the subject it lost.
+    _provhead37 = _rel37.split("\njobs:", 1)
+    _provh_flat37 = _uncomment37(_provhead37[0])
+    _provhf37 = ""
+    if len(_provhead37) < 2:
+        _provhf37 = "release.yml declares no top-level `jobs:` key, so its header cannot be located"
+    elif "provenance:" not in _provh_flat37:
+        _provhf37 = ("release.yml's header carries NO `provenance:` prose block, so this read has no "
+                     "SUBJECT — a slid anchor here returns YAML, not prose")
+    _provc37 = (_provh_flat37.split("provenance:", 1)[1].split("on:", 1)[0]
+                if not _provhf37 else "")
+    # Each asset is named in BOTH live sites by a token derived from its FILENAME, so adding a third
+    # asset to the workflow reddens this until the prose names it too.
+    _toks37 = [a.split(".")[0].lower() for a in _assets37]
+    _named37 = [t for t in _toks37 if t not in _sec_flat37.lower() or t not in _provc37.lower()]
+    _countclaim37 = [w for w in _re37.findall(r"all\s+(two|three|four|five)\b",
+                                              _sec_flat37 + " " + _provc37)]
+    # ⚠ A FAULT STATES NO VERDICT — pin 8's arm, applied here: when the subject is missing, the
+    # token list is computed FROM the missing subject, so printing it would report a verdict derived
+    # from an input the check could not read. The fault replaces it rather than preceding it.
+    _provv37 = (f"FAULT — {_provhf37}; NO verdict about the prose is reported here. "
+                if _provhf37 else
+                f"unnamed {_named37 or 'none'}, count-claims {_countclaim37 or 'none'}, ")
+    _num37 = {"two": 2, "three": 3, "four": 4, "five": 5}
+    check("v0.4.37 pin 4 (PIN — RED on the pre-fix prose, MEASURED twice over: `release.yml`'s "
+          "`provenance:` comment claimed it \"attaches all three\", while `SECURITY.md` named an "
+          "SPDX SBOM and never mentioned SHA256SUMS): the live packaging prose names exactly the "
+          f"assets the workflow's upload line carries ({len(_assets37)}: {_assets37 or 'NONE'}); "
+          f"{_provv37}"
+          f"upload lines read {len(_uploads37)} (must be exactly 1). Matcher: the "
+          "upload line's own filename list for the ground truth, read from COMMENT-LINE-STRIPPED "
+          "workflow text — the lines are DROPPED, not merely un-marked, because a marker-stripped "
+          "read still matches a commented-out upload — so a commented-out upload cannot supply its "
+          "filenames, and a "
+          "filename-derived token for each site (so a THIRD asset reddens this until the prose "
+          "names it) over COMMENT-MARKER-STRIPPED text — `\" \".join(t.split())` crosses a newline "
+          "but not the `#` leading the next line, and the pre-fix comment wraps as `attaches all` / "
+          "`#   three to …`, so a plain flatten made the count arm read `none` while the other arm "
+          "still reddened and hid it. That is why the count arm also requires a NON-EMPTY "
+          "extraction: an absent claim and an unread one must not share a representation. ⚠ A "
+          "LIMIT, stated rather than closed: that arm's matcher is the literal `all <N>` wording, "
+          "so an over-claim phrased another way would evade it — the token arm and this one "
+          "together caught the real defect, and neither is a general counter. Scope: "
+          "`release.yml`'s `provenance:` comment and `SECURITY.md` §Release integrity — "
+          "`CHANGELOG.md`'s shipped `## [0.4.2]` entry — the phrase `publishes build provenance` — "
+          "asserts the same false claim but is a dated release record, so it is named here and "
+          "deliberately not gate-read, and named by PHRASE rather than by `:line` for a measured "
+          "reason this label is itself an instance of: its first coordinate, "
+          "`CHANGELOG.md:2495-2496`, resolves to a `## [0.4.5]` heading at this revision and to "
+          "older-release journal prose on the base, while the cited passage is byte-identical at "
+          "both — a CHANGELOG grows from the top, so a coordinate into one is decay, not a handle",
+          len(_uploads37) == 1 and len(_assets37) == 2 and not _named37 and bool(_provc37.strip())
+          and all(_num37[w] == len(_assets37) for w in _countclaim37))
+
+    # The DESTINATION half, and the half no check reached before this one: the workflow's attest arm
+    # was pinned as EXISTING (`tests/smoke.py`'s older release.yml reader), never as to WHERE its
+    # output goes — which is precisely the claim both prose sites got wrong.
+    #
+    # ⚠ The gate splits on `[.;—]` and not on `—` alone, and the difference is measured: the
+    # repaired `release.yml` comment is ONE em-dash-free run containing both "provenance" and
+    # "GitHub Release", so a coarser split would red the corrected text. Only a CLAUSE carrying
+    # both is the defect.
+    #
+    # ⚠ And a LIMIT, stated rather than implied: the attestations API destination is a property of
+    # `actions/attest-build-provenance`'s own behaviour and is NOT decidable from the tree. What
+    # this gate can assert is the fail-safe half — that no prose clause puts provenance on the
+    # Release, and that no provenance-shaped artifact rides the upload line.
+    def _bad_clause37(_text: str) -> list:
+        return [c.strip() for c in _re37.split(r"[.;—]", _text)
+                if "provenance" in c.lower() and "github release" in c.lower()]
+
+    _bad37 = _bad_clause37(_sec_rel37) + _bad_clause37(_provc37)
+    _prov_asset37 = [a for a in _assets37
+                     if "provenance" in a.lower() or "intoto" in a.lower() or "sigstore" in a.lower()]
+    check("v0.4.37 pin 5 (PIN — RED on the pre-fix prose, MEASURED: `SECURITY.md` read \"publishes "
+          "**SLSA build provenance** plus a **stdlib-generated SPDX SBOM** to the GitHub Release\", "
+          "and a clause carrying both `provenance` and `GitHub Release` is the defect in its "
+          f"checkable form): no prose clause places provenance on the Release ({_bad37 or 'none'}), "
+          "and no provenance-shaped artifact rides the upload line "
+          f"({_prov_asset37 or 'none'}). ⚠ The limit is stated on the check: the attestations-API "
+          "destination is the ACTION's own behaviour, not a property of this tree, so what is "
+          "asserted is the fail-safe half — provenance is not claimed as a Release asset and is not "
+          "uploaded as one. The clause split is on `[.;—]` rather than on the em dash alone, because "
+          "the corrected `release.yml` comment is one dash-free run containing both terms — and the "
+          f"section read is asserted to EXIST (`{_sec_h37}` in SECURITY.md), because a renamed "
+          "heading used to hand this check the preamble and a green with it",
+          _sec_h37 in _sec_flat37 and not _bad37 and not _prov_asset37)
+
+    # ---- Family 4: every citation resolves at the revision its doc declares ------------------------
+    # The corpus's unbound docs now declare a binding, and this is the gate. THREE identities,
+    # deliberately distinct because they take three different repairs: the doc must NAME a revision
+    # (check 6), the named revision must be PRESENT here so its citations can be read at all (check
+    # 7a — a fault about the CLONE, never a verdict about a doc), and the naming must be TRUE
+    # (check 7b). Before these, the census itself was the defect — the plan recorded "31 stale
+    # citations" and "289 across 19 files", and NEITHER number reproduced under any matcher, because
+    # neither was tied to the tree that produced it.
+    #
+    # ⚠ THE MATCHER IS THE GATE'S REACH, and every form it could not reach was a way to be uncited.
+    # MEASURED when the four gaps closed: `.js` was missing from the extension set (3 docs cite JS),
+    # the range separator took `-` only (so `smoke.py:1461–1462`'s EN DASH read as no citation at
+    # all), a comma list (`docs/SPEC.md:27,31-52`) matched nothing — 16 occurrences, SIX of them
+    # `dbt-truth-restoration`'s own evidence ledger, the one docket here whose binding was false —
+    # and the glob was `docs/*.md`, which put `docs/adr/` outside the gate entirely. The widening
+    # added 24 citations and exactly ONE true failure: `unverifiable-carrier.spec.md`'s
+    # `sections.js:269`, written `dashboard.sections.js:269` three lines earlier in the same doc.
+    # Every other one resolves; the defect was that nothing read them.
+    #
+    # ⚠ The SPEC grammar is a comma list of `N` or `N-M` (either dash), and EVERY number it names
+    # must be within the file. The first draft captured a range's end and never read it, so
+    # `path:10-500` in a 20-line file passed on the strength of its start — a claim wider than its
+    # matcher, which is the family this gate exists to close.
+    #
+    # ⚠ RESOLUTION IS BY LINE-FIT, NOT BY NAME — and this sentence said "by CONTENT" until the
+    # predicate was read against it, which it was not and never had been: resolution compares the
+    # cited line numbers against the cited file's LENGTH at the declared revision, and NO cited
+    # line's text is ever read, so a citation whose line holds unrelated prose resolves cleanly.
+    # The narrower claim is both true and the one worth keeping: a bare `SKILL.md:NNN` matches TWO
+    # files — the memory skill's and the beta-tester's — and MEASURED, all 29 bare `SKILL.md` cites
+    # in the corpus fit ONLY the memory skill, because the beta file is shorter than the cited line.
+    # So a citation resolves iff EXACTLY ONE admissible file can CARRY it: "ambiguous by name" is not
+    # the verdict
+    # "ambiguous", and only the second fails. A third verdict is the canary
+    # (`plugins/dream-beta-tester/fixtures/canary-v0.1.19/`), whose vendored copies are byte-faithful
+    # to ANOTHER version and whose line numbers are deliberately that version's — out of scope by
+    # construction, therefore EXCLUDED, never ABSENT.
+    #
+    # ⚠ This is the suite's FIRST history-reading check: `git ls-tree <sha>` needs the revision
+    # present, so its verdict depends on CLONE DEPTH (the other ~2170 checks read the live tree
+    # only). BOTH workflows that run this suite therefore set `fetch-depth: 0` — `ci.yml` on each of
+    # its two jobs, `release.yml` on `verify` — which pin 10 ASSERTS rather than assumes. ⚠ This
+    # sentence named `ci.yml` ALONE, and the naming is what let the defect through: a claim about a
+    # CLASS, scoped to the one member in front of its author, left the RELEASE runner at the default
+    # depth — where a red `verify` does not warn, it CANCELS (`provenance` declares `needs: verify`).
+    # `_MIN_DOCS47` is the anti-vacuity clause on BOTH
+    # halves — a corpus that stopped citing anything would otherwise pass check 6 with `0 unbound`,
+    # and a shallow clone would pass check 7b having resolved nothing.
+    _CITE47 = _re37.compile(
+        r"`([A-Za-z0-9_./-]+\.(?:py|md|json|html|sh|yml|js))"
+        r":(\d+(?:[-–—]\d+)?(?:\s*,\s*\d+(?:[-–—]\d+)?)*)`")
+    _CANON47 = _re37.compile(r"\*\*`([0-9a-f]{7,40})`-numbered\*\*")
+    _CAN47 = "plugins/dream-beta-tester/fixtures/canary-v0.1.19/"
+    _MIN_DOCS47 = 15           # the anti-vacuity floor, on citing docs NAMED (check 6) and RESOLVED
+                               # (7b) alike. MEASURED at the widened matcher: 23 of 81 files cite
+                               # and all 23 resolve, so 15 is a floor against a vacuous green, never
+                               # a tripwire on ordinary corpus drift.
+    _tree47: dict = {}
+    _len47: dict = {}
+
+    def _ls47(_sha):
+        if _sha not in _tree47:
+            _r = _sp53.run(["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", _sha],
+                           capture_output=True, text=True)
+            _tree47[_sha] = _r.stdout.splitlines() if _r.returncode == 0 else None
+        return _tree47[_sha]
+
+    def _nlines47(_sha, _path):
+        if (_sha, _path) not in _len47:
+            _r = _sp53.run(["git", "-C", str(ROOT), "show", f"{_sha}:{_path}"],
+                           capture_output=True, text=True)
+            _len47[(_sha, _path)] = len(_r.stdout.splitlines()) if _r.returncode == 0 else None
+        return _len47[(_sha, _path)]
+
+    def _spec_max47(_spec):
+        """The largest line number a citation's spec names — a range's END included.
+
+        The first draft captured the end and never read it, so `path:10-500` in a 20-line file
+        passed on the strength of its start alone: a claim wider than its matcher's reach, which
+        is the family this whole gate exists to close. Reading it costs nothing — MEASURED across
+        the corpus's bound docs at their declared revisions, 0 such failures — and closes the
+        class for the citations that arrive later.
+        """
+        _hi = 0
+        for _part in _spec.split(","):
+            for _num in _re37.split(r"[-–—]", _part.strip()):
+                if _num.strip().isdigit():
+                    _hi = max(_hi, int(_num))
+        return _hi
+
+    def _note_block47(_text):
+        """The markdown block holding the canonical binding — the doc's reading note.
+
+        Scoped to the BLOCK deliberately: a doc may legitimately `git show` an unrelated commit
+        elsewhere (an evidence ledger naming a historical revision), so what is asserted is that
+        the note's example command agrees with the note's own declaration.
+
+        ⚠ The block is delimited by BLANK LINES — and by a heading or a table row, either of which
+        opens a new block — and NOT by a leading `>`. It was `>`-delimited until the reach was
+        measured, and the difference is not cosmetic: a note written as a BOLD PARAGRAPH rather than
+        a blockquote collapsed to the ONE line carrying the token, so the `git show` on the next
+        line fell outside the join and the assertion was silently VACUOUS for that doc. MEASURED
+        over the 23 bound docs: **2 vacuous under the `>` rule, 0 under this one**, with `_self47`
+        empty either way — the widening reaches both docs and both AGREE with their own
+        declarations, so it adds reach without adding a red. A blockquote is a special case of this
+        rule rather than a different one (its `>` lines are non-blank and open no new block), which
+        is why the 21 docs that already asserted are untouched by the change.
+        """
+        def _cont47(_s):
+            """A line CONTINUES the block: non-blank, and not a heading or a table row."""
+            return bool(_s.strip()) and not _s.lstrip().startswith(("#", "|"))
+
+        _lines = _text.splitlines()
+        for _i, _l in enumerate(_lines):
+            if _CANON47.search(_l):
+                _lo = _hi = _i
+                while _lo > 0 and _cont47(_lines[_lo - 1]):
+                    _lo -= 1
+                while _hi + 1 < len(_lines) and _cont47(_lines[_hi + 1]):
+                    _hi += 1
+                return _lines[_lo:_hi + 1]
+        return None
+
+    # ⚠ THE MATCHER IS THE REACH, so the corpus's SECOND citation form is counted rather than
+    # assumed away. `_CITE47` above requires the file:line to sit in its OWN backticks; an
+    # ordinary bare `foo.py:12` in running prose is equally "a `file:line` citation" to a reader
+    # and is INVISIBLE to every arm of this check. MEASURED 2026-09-19 at this revision over the
+    # same `docs/**/*.md` scan — and the population is stated as a FOUR-WAY SPLIT rather than as a
+    # single pair of figures, because this comment's first draft paired one population's doc count
+    # with another's citation count, which is this release's own defect class arriving in its own
+    # audit surface. Of 81 scanned: 14 docs carry ONLY the backticked form, 9 carry BOTH, **9
+    # carry ONLY the bare form** (59 citations), 49 carry neither. The 9 ONLY-bare are the whole
+    # gap — `_CITE47`'s 14 plus the 9 BOTH are the 23 `citing` docs this check reports on, so the
+    # ONLY-bare are exactly the `absent from the 23 above` the label's reach clause names, and
+    # they are the population counted here and printed there. ⚠ The tempting WIDER read — bare
+    # form over EVERY doc — measures 18 docs / **135** citations, and that figure must NOT be used
+    # for that sentence: its 18 SUPERSETS the 9 with the 9 docs carrying BOTH forms, which this
+    # check does report on, so quoting it as "documents this check can never report on" would
+    # overstate the gap by precisely the population the check already covers. (The two reads are
+    # otherwise equivalent — measured, counting bare over raw text and counting bare AFTER
+    # stripping every backticked citation both give 18/135, because the lookarounds exclude the
+    # backtick, so this matcher is disjoint from `_CITE47` by construction.)
+    #
+    # The universal is scoped to the form the matcher tests, and the size of what that leaves out
+    # is named at the site where a reader would otherwise reconstruct it from a denominator that
+    # looks whole.
+    _BARE47 = _re37.compile(
+        r"(?<![\w`/.-])([A-Za-z0-9_./-]+\.(?:py|md|json|html|sh|yml|js))"
+        r":(\d+(?:[-–—]\d+)?(?:\s*,\s*\d+(?:[-–—]\d+)?)*)(?![\w`])")
+    _unbound47, _fail47, _unver47, _self47, _vac47, _bare47 = [], [], [], [], [], []
+    _unread47: list = []
+    _ran47 = _scan47 = _citing47 = 0
+    for _d47 in sorted((ROOT / "docs").rglob("*.md")):
+        _scan47 += 1
+        # ⚠ GUARDED, and the asymmetry IS the finding: the docket loop one screen down guards this
+        # identical read and its own comment cites the abort it prevents, while this one — which sits
+        # EARLIER, before D6 — did not. MEASURED on a clone with one `docs/*.md` made unreadable:
+        # pins 1–9 print, then the run ends in a traceback, and neither the summary line nor D6
+        # appears. A doc that cannot be READ also cannot be reported as scanning cleanly, so it is
+        # recorded by name and check 6 — which owns this census — asserts the list is empty rather
+        # than reporting a denominator that silently shrank under it.
+        try:
+            _t47 = _d47.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as _e47:
+            _unread47.append(f"{_d47.relative_to(ROOT)} ({_e47.__class__.__name__})")
+            continue
+        if not _CITE47.search(_t47):
+            _nb47 = len(_BARE47.findall(_t47))
+            if _nb47:
+                _bare47.append((str(_d47.relative_to(ROOT)), _nb47))
+            continue
+        _name47 = str(_d47.relative_to(ROOT))       # the relative path: `docs/adr/` names would
+        _citing47 += 1                              # collide with `docs/` ones as bare basenames
+        _m47 = _CANON47.search(_t47)
+        if not _m47:
+            _unbound47.append(_name47)
+            continue
+        _sha47 = _m47.group(1)
+        _note47 = _re37.findall(r"git show ([0-9a-f]{7,40})",
+                                "\n".join(_note_block47(_t47) or []))
+        if not _note47:
+            _vac47.append(_name47)          # a bound doc this assertion never reaches — counted
+        for _s47 in _note47:                # rather than skipped in silence; see the label below
+            if not (_sha47.startswith(_s47) or _s47.startswith(_sha47)):
+                _self47.append(f"{_name47}: declares {_sha47} but its note runs "
+                               f"`git show {_s47}`")
+        _paths47 = _ls47(_sha47)
+        if _paths47 is None:
+            _unver47.append(f"{_name47}@{_sha47}")
+            continue
+        _ran47 += 1
+        for _ln47, _line47 in enumerate(_t47.splitlines(), 1):
+            for _b47, _spec47 in _CITE47.findall(_line47):
+                _need47 = _spec_max47(_spec47)
+                _by47 = [_p for _p in _paths47 if _p == _b47 or _p.endswith("/" + _b47)]
+                if not _by47:
+                    _fail47.append(f"{_name47}:{_ln47} absent {_b47}:{_spec47}")
+                elif all(_p.startswith(_CAN47) for _p in _by47):
+                    continue                             # EXCLUDED — out of scope, not absent
+                else:
+                    _ad47 = [_p for _p in _by47 if not _p.startswith(_CAN47)]
+                    # ⚠ A FAILED READ and a genuinely short file must not share a representation.
+                    # `_nlines47` returns `None` when `git show` exits non-zero, and the `or 0` that
+                    # used to sit here folded that into a count of 0 — so a FAULT was reported as
+                    # `out-of-range`, a verdict about a DOCUMENT from an instrument that could not
+                    # read it, the precise conflation pin 7a/7b exist to keep apart. MEASURED with a
+                    # synthetic gitlink entry (listed by `git ls-tree`, `git show <sha>:sub` exits
+                    # 128 `fatal: bad object`): the citation read `out-of-range`, word for word the
+                    # message a short file yields. No such entry exists in this repo today, which is
+                    # why the arm is latent rather than absent. The fault goes to pin 7a's register
+                    # — "a revision this clone cannot answer for" — and the verdict arm is SKIPPED
+                    # rather than made to speak about it.
+                    _lens47 = {_p: _nlines47(_sha47, _p) for _p in _ad47}
+                    _nolen47 = [_p for _p, _n47 in _lens47.items() if _n47 is None]
+                    if _nolen47:
+                        _unver47.append(f"{_name47}@{_sha47}: {_nolen47[0]} unreadable there")
+                        continue
+                    _fit47 = [_p for _p, _n47 in _lens47.items() if _n47 >= _need47]
+                    if not _fit47:
+                        _fail47.append(f"{_name47}:{_ln47} out-of-range {_b47}:{_spec47}")
+                    elif len(_fit47) > 1:
+                        _fail47.append(f"{_name47}:{_ln47} ambiguous {_b47}:{_spec47}")
+
+    check("v0.4.37 pin 6 (PIN — RED on the pre-fix corpus, MEASURED: of the citing docs at "
+          "`fbfe07e`, ONE carries the canonical binding, so this reddens the other 20): every "
+          "`docs/**/*.md` whose `file:line` citation is written in the CANONICAL BACKTICKED form "
+          f"declares the revision its coordinates resolve on ({_citing47} citing docs of "
+          f"{_scan47} scanned, {len(_unbound47)} unbound"
+          f"{': ' + ', '.join(_unbound47[:4]) if _unbound47 else ''}). "
+          f"⚠ {len(_unread47)} doc(s) could not be READ at all and so sit in NEITHER population "
+          f"({'; '.join(_unread47) if _unread47 else 'none'}) — a scan that drops what it cannot "
+          "read reports a smaller corpus as a clean one, so this is ASSERTED rather than skipped. "
+          f"⚠ REACH, printed rather than inferred: {len(_bare47)} further doc(s) carry "
+          f"{sum(_c47 for _n47, _c47 in _bare47)} `file:line` citation(s) in a BARE form — not "
+          f"backticked — which `_CITE47` cannot see, so they are absent from the {_citing47} "
+          f"above and no arm of this check can ever report on them"
+          f"{': ' + ', '.join(_n47 for _n47, _c47 in _bare47) if _bare47 else ''}. The universal "
+          "is scoped to the matcher's form for exactly that reason, and the gap is stated here "
+          "because a denominator that looks whole is how an uncovered population goes unnoticed. "
+          f"⚠ `{_MIN_DOCS47} <= citing` is the anti-vacuity clause, and the denominator is printed "
+          "for the same reason: without either, a corpus that stopped citing anything prints "
+          "`0 unbound` — a green over an empty set, which is the exact shape this family exists to "
+          "kill (the plan's own census was one). "
+          "⚠ The matcher is the CANONICAL form `**`<sha>`-numbered**`, and the canonical form was "
+          "not invented here — `refusal-verdict-parity.spec.md`, the corpus's best-complying doc, "
+          "arrived at that exact idiom independently. Two docs that comply in their OWN words "
+          "(`render-declaration-parity`, `dream-teeth-coverage`) do not match it, and they were "
+          "given the canonical line rather than the matcher widened: a phrase family over three "
+          "incompatible forms cannot be gated, and `dream-teeth-coverage`'s per-citation "
+          "annotations leave its UNannotated cites unbound regardless, so it was never compliant "
+          "at document level.",
+          not _unread47 and not _unbound47 and _citing47 >= _MIN_DOCS47)
+
+    # ⚠ REGRESSION GUARD, NOT A PIN — and the distinction is the repo's own rule, measured: on the
+    # pre-fix corpus every declared revision is PRESENT (there is only one bound doc, and its
+    # revision is in the clone), so this arm is green before the fix and cannot fail on it. What it
+    # closes is the FAULT the old single check conflated with its verdict: a shallow clone printed
+    # "every `file:line` resolves at its doc's declared revision" while nothing had been resolved.
+    check("v0.4.37 pin 7a (REGRESSION GUARD — green on the pre-fix corpus by construction, since "
+          "every revision it then declared was present): every revision a citing doc declares is "
+          "PRESENT in this clone, so the citation verdict beside this has something to resolve "
+          f"against ({len(_unver47)} of {_citing47} citing docs name a revision this clone cannot "
+          f"answer for{': ' + ', '.join(_unver47[:3]) if _unver47 else ''}). "
+          "⚠ This is the FAULT half, split out because a fault and a verdict must not share a "
+          "message: one check carrying both sent the reader to inspect citations whose only problem "
+          "was that nobody could read them. The remedy for THIS arm is a FULL clone — "
+          "`fetch-depth: 0`, which every workflow that runs this suite sets (pin 10 asserts the "
+          "class) — never a doc edit. A missing revision FAILS rather than "
+          "skipping: 'too shallow' is a fault, and a check that skips is a check that measures "
+          "nothing while printing green.",
+          not _unver47)
+
+    check("v0.4.37 pin 7b (PIN — RED on the pre-fix corpus: with the corpus unbound there is no "
+          "revision to resolve against, so the floor alone reddens it, and the genuine defects this "
+          "found redden it too): every `file:line` resolves at its doc's declared revision — the "
+          "path exists there and every line number the citation names, a range's END included, is "
+          "within it — resolving by LINE-FIT where the name is ambiguous, so a name shared by two "
+          "files is no defect while only ONE of them is long enough to carry the cited lines. ⚠ No "
+          "cited line's TEXT is read, and the label says so rather than claiming more: this arm is "
+          "a range check, and a citation whose line holds unrelated prose passes it. "
+          f"{_ran47} of {_citing47} citing docs resolved, {len(_unbound47)} unbound, "
+          f"{len(_fail47)} failing"
+          f"{': ' + '; '.join(_fail47[:3]) if _fail47 else ''}. "
+          f"⚠ `{_MIN_DOCS47} <= resolved` is the anti-vacuity clause: without it a clone that could "
+          "answer for one doc and not the next prints a green proportional to how little it read.",
+          not _fail47 and _ran47 >= _MIN_DOCS47)
+
+    # ---- Family 4, the RULE: a defect docket binds to the parent of its FIXING commit -------------
+    # The binding table was DERIVED by probe, not chosen — and the derivation is the interesting part,
+    # because it is what separates a defect docket from a design record. Probing
+    # `audit-hygiene-remediation`'s A4 row across three revisions found the DEFECT at one
+    # (`except …: return ""`), its FIX at the next (`_GIT_WARNED`, `global _GIT_WARNED`), and an
+    # unrelated region at the third: the row describes the revision its fix landed AGAINST, so a
+    # docket binds to that fix's PARENT. A design record binds to its own last commit instead.
+    #
+    # Check 6 asserts a revision is named; check 7 asserts the naming is TRUE. Neither can tell a
+    # derived binding from a plausible-looking constant — this is the third claim, and the only one
+    # that makes the binding re-derivable by a reader rather than trusted. It reads history, so it
+    # inherits check 7's clone-depth dependency.
+    #
+    # ⚠ Scope: the SEVEN dockets below — a set of VERIFIED bindings, not a clause over a class.
+    # MEASURED 2026-09-19 over `_CANON47`'s OWN scan — `docs/**/*.md`, recursive, 81 files — **23**
+    # carry a `**`X`-numbered**` note, and only these seven have had their fixing commit's subject
+    # phrase derived and measured unique. ⚠ The figure is SCOPE-BOUND: 22 is what a NON-recursive
+    # `docs/*.md` returns, because `docs/adr/024-trajectory-evidence-ladder.md` is the 23rd — and a
+    # numeral about a scan that names no scope is a claim about the matcher, not about the tree, which
+    # is how this one first shipped a digit low. This read
+    # "the FIVE dockets are the corpus's ONLY docs whose base revision is DERIVABLE", which the
+    # sweep falsifies — `dbt-truth-restoration` and `signal-pipeline-hardening` pass the same test.
+    # The needle is a phrase from the FIXING COMMIT's own subject, so this matches history, never
+    # the document's prose — the point, since the family is about prose asserting what nothing ties
+    # to the tree. A docket whose fix commit is reworded reddens this, and that is a true red: the
+    # binding has stopped being re-derivable.
+    #
+    # ⚠ The table listed TWO of the five when this first shipped, so the check's universal named a
+    # class it sampled a third of — the same defect as the census it replaces, one layer down. All
+    # seven were verified to satisfy the rule before being added, and the child counts are MEASURED
+    # rather than assumed, because they say which part of the derivation is load-bearing: for THREE
+    # of them the binding has two children — the fix, and the merge that brought it in (PR #222,
+    # #230, #228) — so the child relation alone does not pick the fix and the needle is what
+    # discriminates. The other FOUR have ONE child each, the fix itself, so there the needle's work
+    # is uniqueness rather than discrimination. The two added 2026-09-19 (`6ac5380`, `ceaccc0`) are
+    # both in that four, which is why the check's own message could move with the scope without
+    # changing what the needles are doing.
+    #
+    # ⚠ The needle must match EXACTLY ONE commit, and that was measured for all seven before the
+    # table grew — but the loop below originally took the FIRST match and stopped, so a needle that
+    # later collided would have silently re-targeted this check at a different commit while still
+    # printing green. Uniqueness is now asserted rather than trusted.
+    _DOCKET47 = {"audit-hygiene-remediation": "audit-hygiene remediation",
+                 "track-c-ci-docs-hygiene": "repo-doc hygiene",
+                 "dream-teeth-coverage": "make every gate mean what it claims",
+                 "refusal-verdict-parity": "a refusal stops being spelled like a verdict",
+                 "render-declaration-parity": "the dashboard reads the data, not the label",
+                 "dbt-truth-restoration": "truth restoration (Track B)",
+                 "signal-pipeline-hardening": "signal-pipeline hardening"}
+    _rule_ok47, _rule_bad47 = [], []
+    # ⚠ THE FAULT ARM. This check reads the TREE'S OWN history, so a tree that cannot answer for it
+    # — no readable `.git`, or a truncating shallow clone — yields a log in which EVERY needle
+    # matches 0 commits, and the check then prints a VERDICT about the DOCUMENTS from an instrument
+    # that could not read. That is `a-fault-and-a-verdict-must-not-share-a-message`, the conflation
+    # pin 7a/7b already split for citations, and it is one of the three lies the spec's Verification
+    # table records the archive tree telling. Detected the way `_ls47` detects an unanswerable
+    # revision — by the command's own RETURN CODE, never by an empty result — PLUS the one case a
+    # return code cannot see: a shallow clone answers rc=0 with a truncated log, so that fault is
+    # claimed only when the truncation actually BIT (a needle went short). A fault FAILS rather than
+    # skipping, since a check that skips measures nothing while printing green; its remedy is a FULL
+    # clone (`fetch-depth: 0`, which every workflow that runs this suite sets — pin 10) and never a
+    # doc edit.
+    _r47 = _sp53.run(["git", "-C", str(ROOT), "log", "--all", "--format=%H%x09%s"],
+                     capture_output=True, text=True)
+    _sh47 = _sp53.run(["git", "-C", str(ROOT), "rev-parse", "--is-shallow-repository"],
+                      capture_output=True, text=True)
+    _log47 = _r47.stdout.splitlines()
+    # ⚠ The fault's SCOPE travels with the fault, because the three arms do not reach equally far
+    # and one clause cannot be true of all three. This replaces a discriminator that inferred reach
+    # from `not _log47` — a question about whether a LOG existed, answered as one about whether the
+    # walk FINISHED — which is the same defect this check was repaired to stop, one register across:
+    # a fault arm that overstates its own reach tells the reader no document was examined, when the
+    # truth is that some were. The loop below can now stop partway (a failed `rev-parse`, a docket
+    # doc it cannot read), and that arm is neither of the two the old clause could express.
+    _fault47 = ""
+    _faultscope47 = ""
+    if _r47.returncode != 0:
+        _fault47 = "this tree cannot be asked for its own history (no readable `.git`)"
+        _faultscope47 = "No needle was searched, so **no document is reported on**"
+    elif not _r47.stdout.strip():
+        _fault47 = "this tree's history is EMPTY"
+        _faultscope47 = "No needle was searched, so **no document is reported on**"
+    for _dn47, _needle47 in _DOCKET47.items():
+        # ⚠ GUARDED rather than assumed, because an unguarded read here ABORTS the suite at this
+        # line — and this line sits BEFORE D6, so a missing docket doc takes the pinned-surface pin
+        # down with it and nothing after it ever executes. MEASURED 2026-09-19 on a clone at
+        # v0.4.37: with `docs/dream-teeth-coverage.spec.md` removed, pins 1–9 print, then
+        # FileNotFoundError, no summary line, and D6 absent from the output. And ABSENCE is only
+        # half of "nothing to read": the `exists()` this guard grew from handed the other half to a
+        # raw `read_text`, which the `errors="replace"` sweep at `:5401` does not share — that
+        # reader takes bytes this one refuses, so an undecodable file reached a strict read here and
+        # aborted exactly as an absent one used to. MEASURED for the mechanism, on one byte string:
+        # the strict read raises while `errors="replace"` returns 19 characters. The two outcomes
+        # are DIFFERENT claims and must not print as one — an ABSENT doc is a verdict about the
+        # corpus (the docket named is not in the tree, so it belongs beside `unbound`, not in a
+        # traceback), while a doc that cannot be READ is a fault about the instrument.
+        _doc47 = ROOT / "docs" / f"{_dn47}.spec.md"
+        try:
+            _t47d = _doc47.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            _rule_bad47.append(f"{_dn47}: no such doc")
+            continue
+        except (OSError, UnicodeDecodeError) as _e47d:
+            _fault47 = f"`docs/{_dn47}.spec.md` could not be READ here ({_e47d.__class__.__name__})"
+            _faultscope47 = ("The walk STOPPED before reaching every docket, so **no document is "
+                             "reported on**")
+            break
+        _m47b = _CANON47.search(_t47d)
+        if not _m47b:
+            _rule_bad47.append(f"{_dn47}: unbound")
+            continue
+        _bind47 = _m47b.group(1)
+        _hits47 = [_l47 for _l47 in _log47 if _needle47.lower() in _l47.partition("\t")[2].lower()]
+        if len(_hits47) != 1:
+            _rule_bad47.append(f"{_dn47}: the needle matches {len(_hits47)} commits, not 1")
+            continue
+        _h47 = _hits47[0].partition("\t")[0]
+        # ⚠ rc-checked, like its `_ls47` and `_nlines47` siblings. Unchecked, a failed `rev-parse`
+        # hands back an empty stdout that simply misses the `startswith` below and prints "is no
+        # fixing commit's parent" — a verdict about a DOCUMENT from a call that never ran, which is
+        # the very conflation this check was repaired to stop. Latent by construction (it needs a
+        # matched needle whose commit has no resolvable parent), so the arm is stated rather than
+        # demonstrated. The fault register is the shallow arm's, since it is the same claim: this
+        # clone cannot answer, and the walk STOPS rather than reporting on documents it could not
+        # check — the verdict arm's own rule, applied inside the loop.
+        _par47r = _sp53.run(["git", "-C", str(ROOT), "rev-parse", f"{_h47}^"],
+                            capture_output=True, text=True)
+        if _par47r.returncode != 0:
+            _fault47 = (f"`git rev-parse {_h47[:7]}^` failed here "
+                        f"({_par47r.stderr.strip().splitlines()[0] if _par47r.stderr.strip() else 'no stderr'})")
+            _faultscope47 = ("The walk STOPPED before reaching every docket, so **no document is "
+                             "reported on**")
+            break
+        _par47 = _par47r.stdout.strip()
+        if _par47.startswith(_bind47):
+            _rule_ok47.append(f"{_dn47} -> {_bind47} = {_h47[:7]}^")
+        else:
+            _rule_bad47.append(f"{_dn47} -> {_bind47} is no fixing commit's parent")
+
+    # ⚠ The second fault shape, and the reason a return code alone is not enough: a SHALLOW clone
+    # answers rc=0 with a TRUNCATED log, so a needle can go short because the commit is older than
+    # the truncation point rather than because the binding is wrong. The fault is claimed only when
+    # the truncation actually BIT — a shallow clone deep enough to contain all SEVEN needles is not
+    # faulted, so this arm cannot manufacture a red. Where it does bite, the two causes are
+    # indistinguishable and the honest verdict is about the INSTRUMENT.
+    if not _fault47 and _rule_bad47 and _sh47.returncode == 0 and _sh47.stdout.strip() == "true":
+        _fault47 = "this clone is SHALLOW, so the needles may name commits it cannot see"
+        _faultscope47 = ("Every needle WAS searched, against a history this clone cannot vouch for, "
+                         "so **documents were examined and none can be reported on**")
+
+    if _fault47:
+        _msg47 = ("v0.4.37 pin 8 (PIN): ⚠ **A FAULT, and NOT a verdict — "
+                  f"{_fault47}.** {_faultscope47}: the "
+                  "zero this check would otherwise print is about the INSTRUMENT, not the corpus. "
+                  "⚠ MEASURED on an archive tree, this check used to call the one correctly-bound "
+                  "docket BAD — a verdict about a DOCUMENT from an instrument that could not read, "
+                  "which is `fault == absence` arriving in the check that guards against it, and "
+                  "why the citation analogue is split into pin 7a (fault) and 7b (verdict). The "
+                  "remedy is a FULL clone — `fetch-depth: 0`, which every workflow that runs this "
+                  "suite sets (pin 10 asserts the class) — and never a doc edit. A fault FAILS "
+                  "rather than skipping: a check that skips "
+                  "measures nothing while printing green.")
+    else:
+        _msg47 = ("v0.4.37 pin 8 (PIN — RED on the pre-fix corpus, where six of the seven dockets "
+                  "declare no binding at all, so the rule has nothing to hold): a defect docket's "
+                  "binding is the PARENT of the commit that FIXED its rows — re-derived from history "
+                  f"rather than trusted from the table ({len(_rule_ok47)}/{len(_DOCKET47)}: "
+                  f"{'; '.join(_rule_ok47) or 'none'}"
+                  f"{'; BAD: ' + '; '.join(_rule_bad47) if _rule_bad47 else ''}). "
+                  "⚠ This is the third and last claim about a binding, and the other two cannot "
+                  "stand in for it: check 6 asserts a revision is NAMED and check 7b that the naming "
+                  "is TRUE, but a plausible constant passes both. Only this one makes the binding "
+                  "RE-DERIVABLE — the reader can run the same two git commands and get the same "
+                  "number. The needle is a phrase from the fixing commit's SUBJECT, so the matcher "
+                  "reads history and never the document's prose, which is what keeps it out of the "
+                  "family it is checking. A docket whose fix commit is reworded reddens this, and "
+                  "that red is true: the binding stopped being re-derivable. "
+                  "⚠ The universal here is only as wide as the TABLE, and the table is hand-reviewed "
+                  "by necessity: MEASURED, the discriminating fact (a docket asserts pre-state; a "
+                  "design record does not) is not in the `file:line` token — three docs are "
+                  "syntactically identical and semantically opposite — and two needle-free "
+                  "structural predicates failed to separate them (0 docs fail both, the mis-bound "
+                  "docket included). So this gates the seven that were hand-adjudicated, and a docket "
+                  "outside the table is outside the check.")
+    check(_msg47, not _fault47 and not _rule_bad47 and len(_rule_ok47) == len(_DOCKET47))
+
+    check("v0.4.37 pin 9 (REGRESSION GUARD, NOT A PIN — MEASURED green on BOTH corpora: pre-fix "
+          "`2131 passed, 46 failed` with this check green, live `2177 passed, 0 failed`. ⚠ Green at "
+          "each revision for a DIFFERENT reason, and an earlier label of this check got the pre-fix "
+          "one wrong: it read that the pre-fix corpus's ONE bound doc left this `VACUOUS`, because "
+          "the walk was `>`-delimited, that doc's note opens `**H` rather than `>`, and the "
+          "blockquote returned the token line alone so the loop compared nothing. MEASURED over the "
+          "23 bound docs: **2 were vacuous under the `>` rule and 0 are under the blank-line rule "
+          "now in `_note_block47`**, with `_self47` empty either way — the widening reaches both "
+          "docs and both AGREE with their own declarations. So pre-fix this now asserts on its one "
+          "bound doc instead of skipping it, and is green because that doc's declaration and its "
+          "`git show` agree rather than because nothing was read. It remains a GUARD by this repo's "
+          "rule — the property cannot fail on pre-fix code for want of an anchor rule to violate — "
+          "and it is a guard on MEASUREMENT, not on the absence this label used to claim): a bound "
+          "doc's reading note agrees "
+          "with ITSELF — the example command it hands the reader uses the revision it declares "
+          f"({len(_self47)} disagree"
+          f"{': ' + '; '.join(_self47) if _self47 else ''}). "
+          f"⚠ REACH, ASSERTED and not merely printed: {len(_vac47)} bound doc(s) contribute NO "
+          f"assertion at all{': ' + ', '.join(_vac47) if _vac47 else ''} — the note block yields no "
+          "`git show`, so the walk above has nothing to compare and skips them. ⚠ Until that count "
+          "was ASSERTED the guard carried the same gap its own label describes one layer up — "
+          "announced rather than enforced: MEASURED on a corpus whose every bound doc is vacuous, "
+          "`_vac47 = 23` with `_self47 = 0` and this check printed PASS with the 23 sitting in this "
+          "very sentence, so the vacuous class could swallow the WHOLE binding corpus in silence. "
+          "This count IS the check's boundary, and the boundary MOVED when the walk was widened: it "
+          "printed **2** on the 23 bound docs under the `>` rule and prints **0** here, so the "
+          "guard's reach is now the WHOLE bound corpus rather than the SUBSET the sentence this one "
+          "replaces claimed — a reach that is now both printed and asserted, because a reader "
+          "cannot reconstruct a boundary from a count nobody prints, and a run cannot enforce one "
+          "that nobody reads. "
+          "⚠ The note declares its revision TWICE — the canonical token this gate reads, and the "
+          "literal `git show <sha>:<path>` one line later — and only the first was ever checked. "
+          "MEASURED, the rebindings that repaired the token and left the command produced THREE "
+          "docs in one session, each GREEN on checks 6, 7a and 7b while instructing the reader to "
+          "resolve every citation against the very revision the repair had just moved away from. "
+          "That is this family's thesis one layer down: the check read the token it could match, "
+          "and the reader runs the token it could not. The assertion is scoped to the DECLARATION's "
+          "own BLOCK — its paragraph, never the whole file — because a doc may legitimately `git "
+          "show` an unrelated historical commit in its evidence ledger. ⚠ The block is delimited by "
+          "BLANK LINES rather than by a leading `>`, and that is the 2-to-0 measurement above "
+          "arriving in the scope: a note written as bold prose rather than a blockquote collapses "
+          "to its token line under the `>` rule, which is exactly how two docs came to assert "
+          "nothing. A blockquote remains a special case of this rule rather than a different one, "
+          "since its `>` lines are non-blank and open no new block.",
+          not _self47 and not _vac47)
+
+    # ---- v0.4.37 pin 10: every workflow JOB that runs the suite also hands it HISTORY. ----
+    # ⚠ This closes a precondition the suite ALREADY asserted in prose, scoped to the wrong member.
+    # Check 6's comment and the D6 ledger both said the citation gate's verdict "depends on CLONE
+    # DEPTH" and that "`ci.yml` sets `fetch-depth: 0` for it" — true of the workflow a DEVELOPER
+    # runs, silent about the one that PUBLISHES. MEASURED at the base `fbfe07e`: all THREE jobs that
+    # run this suite read False, because `fetch-depth` occurs ZERO times in either workflow there,
+    # and this branch — the very change that introduced the dependency — added it to `ci.yml`'s two
+    # jobs and not to `release.yml`'s `verify`. `provenance` declares `needs: verify`, so that is not
+    # a degraded release but a CANCELLED one, and it is the worst shape a silent failure takes here:
+    # CI is green either way, so only an actual release can reveal it. A claim about the harness's
+    # own input is the class this PR exists to gate, so it is gated rather than left in the comment.
+    #
+    # MATCHER, stated because the check is only as wide as it: the 2-space-indented blocks under a
+    # top-level `jobs:` key, per `.github/workflows/*.yml` and `*.yaml` (both legal Actions
+    # extensions, and the repo has only `.yml` today); each block containing the literal
+    # `tests/smoke.py` must also contain a LINE DECLARING `fetch-depth: 0` as its key. ⚠ It read
+    # "must also contain `fetch-depth: 0`" until the substring was measured against the mutation it
+    # exists for — the matcher note above records the measurement. It is TEXT and not a YAML parse —
+    # the same reading this suite's two existing `release.yml` readers use — so it pins the REMEDY
+    # the suite's own fault message names, NOT the depth actually fetched: a job could satisfy it and
+    # still clone shallow. It is here because the alternative was the comment.
+    # Annotated because this accumulator's ONLY write is a `setdefault(...).append(...)`, and mypy
+    # cannot infer a container's type from `setdefault`'s return — unlike the sibling accumulators it
+    # was modelled on, which write with a plain `.append` and need no hint.
+    # ⚠ THE REMEDY IS READ AS A KEY, NOT AS A MENTION — and the first cut was the mention, which
+    # this branch's own repair then defeated. The substring `"fetch-depth: 0" in <job text>` reads
+    # the job's RAW lines, and the fix for the release-path defect opened `release.yml`'s `verify`
+    # with a seven-line comment that names the remedy three lines above the key it explains. So the
+    # COMMENT satisfied the check. MEASURED: deleting the `with:` block alone leaves the suite at
+    # `2177 passed, 0 failed` — the pin is green through the exact edit it exists to catch, which is
+    # the worst shape a pin can take because the file still LOOKS right. The matcher now requires a
+    # LINE that DECLARES the key, `^\s*fetch-depth:\s*0\s*(?:#.*)?$`: a whole-line comment cannot
+    # match it (its `#` sits exactly where the key would), while `test-macos`'s key carrying a
+    # trailing comment still does. TEXT still, and not a YAML parse — the same limit as before,
+    # stated in the label rather than fixed here.
+    _fdkey47 = _re37.compile(r"^\s*fetch-depth:\s*0\s*(?:#.*)?$")
+    _sw47: dict[str, list[tuple[str, bool]]] = {}
+    # ⚠ The one glob of this directory in the whole suite, so THIS read is the only thing that can
+    # report on a workflow it cannot decode — nothing earlier is even looking. An unguarded read
+    # would abort upstream of D6, and worse for this check than for its siblings: the file would
+    # simply not appear in `_sw47`, so a third workflow that vanished this way would leave the
+    # anti-vacuity clause below satisfied by the two known runners and the check GREEN over a
+    # directory it had stopped reading. The fault is carried, not skipped.
+    _swf47: list = []
+    # ⚠ BOTH legal workflow extensions, not just the one in use: `.yaml` is equally valid to
+    # GitHub Actions and the repo has none today (MEASURED: `ls-tree -r` names `ci.yml`,
+    # `codeql.yml`, `release.yml`), so this closes a latent hole rather than a live one. A
+    # `.yaml` with no top-level `jobs:` key is skipped below like any other non-workflow.
+    for _wfp47 in sorted(list((ROOT / ".github" / "workflows").glob("*.yml"))
+                         + list((ROOT / ".github" / "workflows").glob("*.yaml"))):
+        try:
+            _wls47 = _wfp47.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as _e47f:
+            _swf47.append(f"{_wfp47.name} ({_e47f.__class__.__name__})")
+            continue
+        _jkey47 = [_i for _i, _s in enumerate(_wls47) if _s.rstrip() == "jobs:"]
+        if not _jkey47:
+            continue
+        _jst47 = [_i for _i, _s in enumerate(_wls47)
+                  if _i > _jkey47[0] and _re37.match(r"^  [A-Za-z0-9_-]+:\s*$", _s)]
+        for _jx47, _jb47 in enumerate(_jst47):
+            _jend47 = _jst47[_jx47 + 1] if _jx47 + 1 < len(_jst47) else len(_wls47)
+            _jtxt47 = "\n".join(_wls47[_jb47:_jend47])
+            if "tests/smoke.py" in _jtxt47:
+                _sw47.setdefault(_wfp47.name, []).append(
+                    (_wls47[_jb47].strip(),
+                     any(_fdkey47.match(_jline47) for _jline47 in _wls47[_jb47:_jend47])))
+    _sbad47 = [f"{_f}:{_j}" for _f, _js in _sw47.items() for _j, _ok in _js if not _ok]
+    check("v0.4.37 pin 10 (PIN — MEASURED RED at the base `fbfe07e`, where ALL THREE jobs that run "
+          "`tests/smoke.py` read False, because `fetch-depth` occurs zero times in either workflow "
+          "there): every workflow JOB that runs this suite must also give it HISTORY, because the "
+          "citation and docket gates resolve against revisions a depth-1 checkout does not contain — "
+          "and on the release path a red `verify` CANCELS the release (`provenance` declares "
+          "`needs: verify`) rather than degrading it, while CI stays green either way. MATCHER: the "
+          "2-space-indented blocks under a top-level `jobs:` key, per `.github/workflows/*.yml` "
+          "and `*.yaml`; a block containing the literal `tests/smoke.py` must also contain a LINE "
+          "DECLARING the key — `^\\s*fetch-depth:\\s*0\\s*(?:#.*)?$` — because a whole-line "
+          "COMMENT naming the remedy hands the job no history, and this job's own header comment "
+          "does name it. ⚠ TEXT, not a YAML parse — so it "
+          "pins the remedy the suite's own fault message names, not the depth actually fetched. "
+          "⚠ ANTI-VACUITY: this also asserts BOTH known suite-runners are still MATCHED — MEASURED "
+          f"{sorted(_sw47)}, since a rename that dropped one would otherwise leave a check about a "
+          "workflow it no longer reads — and it asserts the directory was READABLE, because a "
+          "workflow this loop could not decode is a file the check never examined rather than a "
+          "runner that is absent, and the two must not print as one."
+          + (f" ⚠ FAILING: {', '.join(_sbad47)}" if _sbad47 else "")
+          + (f" ⚠ UNREADABLE: {', '.join(_swf47)}" if _swf47 else ""),
+          {"ci.yml", "release.yml"} <= set(_sw47) and not _sbad47 and not _swf47)
 
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 7 + 18 + 5 + 4 + 31 + 5 + 6 + 4 + 8 + 2 + 1 + 1 + 3)
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 7 + 18 + 5 + 4 + 31 + 5 + 6 + 4 + 8 + 2 + 1 + 1 + 3
+                            + 5 + 2 + 1 + 1 + 1
+                            + 1)
+                                                        # +1: v0.4.37 PR B pin 10 — every workflow
+                                                        #     JOB that runs the suite also gives it
+                                                        #     HISTORY. A PIN rather than a guard:
+                                                        #     MEASURED RED at the base, where all
+                                                        #     three such jobs read False. It is the
+                                                        #     gate for the precondition check 6's
+                                                        #     comment states, which is the whole
+                                                        #     reason it exists as a check rather
+                                                        #     than as one more sentence.
+                                                        # +1: v0.4.37 PR B pin 9 — the reading
+                                                        #     note's SECOND declaration site. A
+                                                        #     REGRESSION GUARD, not a pin: the
+                                                        #     pre-fix corpus has no such token to
+                                                        #     disagree with. Found live, three
+                                                        #     instances, all GREEN on 6/7a/7b while
+                                                        #     telling the reader to resolve against
+                                                        #     the superseded revision.
+                                                        # +1: v0.4.37 PR B pin 8 — the DOCKET rule:
+                                                        #     a defect docket's declared binding must
+                                                        #     be the PARENT of the commit that fixed
+                                                        #     it, so a reader lands on the tree the
+                                                        #     spec describes instead of on the repair.
+                                                        #     These seven dockets' base revisions are
+                                                        #     DERIVABLE rather than chosen, which is
+                                                        #     what makes
+                                                        #     the rule checkable at all: a binding
+                                                        #     that merely RESOLVES is satisfied by a
+                                                        #     post-fix commit, and landing on the fix
+                                                        #     is the failure this pin names. ⚠ This
+                                                        #     annotation is why the ledger's terms
+                                                        #     and the region's checks are equal —
+                                                        #     MEASURED 2026-09-19: the block from the
+                                                        #     `v0.4.37 — PR B's doc-coherence pins`
+                                                        #     banner to D6 holds ELEVEN `check(` calls,
+                                                        #     and the v0.4.37 blocks above bump
+                                                        #     +1/+1/+1/+3/+5 = 11. ⚠ Count them with a
+                                                        #     literal `check("v0.4.37` and you get
+                                                        #     ELEVEN — ten calls, plus THIS ANNOTATION
+                                                        #     matching the token it quotes. Drop the
+                                                        #     self-match and the literal read is ten,
+                                                        #     and pin 8 is STILL not among them: its
+                                                        #     label is built in `_msg47`. So that
+                                                        #     matcher lands on eleven by counting the
+                                                        #     wrong thing and missing the right one —
+                                                        #     the same total reached by the wrong
+                                                        #     route. The count is a claim about the
+                                                        #     MATCHER until the matcher is stated.
+                                                        # +3: v0.4.37 PR B, Family 4 — the citation
+                                                        #     gate, which is THREE checks because it
+                                                        #     is three claims taking three different
+                                                        #     repairs: pin 6 asserts the revision is
+                                                        #     NAMED (RED on 20 of `fbfe07e`'s 21
+                                                        #     citing docs), pin 7a that it is
+                                                        #     PRESENT — a REGRESSION GUARD, green
+                                                        #     pre-fix by construction since every
+                                                        #     revision then declared was in the
+                                                        #     clone — and pin 7b that the naming is
+                                                        #     TRUE. The split is the repo's own
+                                                        #     fault-vs-verdict rule: one identity
+                                                        #     carrying both sent the reader to
+                                                        #     inspect citations nobody could read,
+                                                        #     and the remedy is `fetch-depth: 0`.
+                                                        #     ⚠ This is the suite's FIRST
+                                                        #     history-reading gate — its verdict
+                                                        #     depends on clone depth, so EVERY
+                                                        #     workflow running it carries
+                                                        #     `fetch-depth: 0` (pin 10), and
+                                                        #     7b's label carries the anti-vacuity
+                                                        #     clause that stops a shallow clone
+                                                        #     printing a green that measured nothing.
+                                                        # +5: v0.4.37 PR B, Families 1–3 — the two
+                                                        #     budget-ladder positions (arithmetic +
+                                                        #     the G-A3 agreement), the `cm`
+                                                        #     usage-block parser gate, and Family 3's
+                                                        #     two packaging-prose arms (the asset
+                                                        #     census and the destination clause).
+                                                        #     All five are PINs and all five are RED
+                                                        #     on `fbfe07e`: 25 != 24, the prose read
+                                                        #     25 against G-A3's own 24, `--plan` was
+                                                        #     advertised under `local`, the comment
+                                                        #     claimed it "attaches all three" while
+                                                        #     SECURITY.md never named SHA256SUMS,
+                                                        #     and SECURITY.md put provenance and
+                                                        #     "to the GitHub Release" in ONE clause.
                                                         # +3: pin 27, the BOUND — an unusable
                                                         #     `--store` no longer RESOLVES a row.
                                                         #     One is the pin, one is its CONTROL,

@@ -5,6 +5,307 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.37] — 2026-09-19
+
+**Patch — prose stops asserting what nothing ties to the tree. Where v0.4.36 tied an identity to its
+subject, this ties an assertion to its subject: give it a producer, gate it, or label it a guard.**
+
+The second of the two cycles staged under the F2 charter — the half that reads the *world* wrong.
+Five families were docketed; **three closed, two were refuted as posed and are recorded as refuted
+rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree.spec.md`.
+
+1. **A figure stops being hand-derived — it cites its producer.** `docs/index-usage-and-budget-ladder.spec.md`
+   stated three fleet positions, and the byte figures **reconstruct from two different operands in
+   one sentence** (node 1 needs 25,000, node 2 needs 25,600) while the document's own fixture asserted
+   `cliff_pct == 24` for the very inputs the prose called 25%. A **second** bad figure was found by
+   re-measure: the closing sentence named the *ceiling* axis (0.6 × 200 = 120 lines) where the cliff
+   is 200. The root cause is not sloppiness — the producer rounds 25 KB as 25×1024 and *documents*
+   the shift as immaterial to an 80% alarm, which is sound for an alarm and exactly enough to move
+   23.98 → 24.55. A producer already existed, so the spec now **cites** it instead of restating its
+   output, and the dated duplicate collapses to one home.
+
+2. **`cm`'s usage block is gated against its parser.** The heredoc advertised
+   `[--plan|--apply --confirm rebuild-local-index]`, and the shared `local` subparser declares no
+   `--plan` at all — MEASURED, `./cm local rebuild-index --plan` exits **2** with *"unrecognized
+   arguments: --plan"*, so the advertised flag was unusable rather than merely undocumented. The
+   obvious gate had a hole (the existing doc-flag sweep **carves `cm_ops.py` out** and reads only
+   bash-fenced blocks, while the heredoc is in neither), so this one reads the heredoc directly.
+
+3. **The packaging prose is corrected at BOTH sites, and the reason is that they lie in opposite
+   directions.** `release.yml` over-claimed *"attaches all three"*; `SECURITY.md` put provenance
+   *to the Release* and omitted `SHA256SUMS` entirely. Ground truth: **two** assets are attached
+   (`sbom.spdx.json`, `SHA256SUMS`) and provenance reaches a verifier through the **attestations
+   API**, not as an asset. **The one item the two pages agree on is the false one**, so cross-reading
+   them reinforces the error — which is why fixing one site alone leaves the defect alive.
+
+4. **The citation rule is made enforceable — REFUTED as posed, and the refutation is the
+   deliverable.** The docket claimed stale citations; measured, six hand-read samples were **all in
+   range** — every line number resolves cleanly, which is why no check could ever have found them.
+   One is not drift but **inversion**: a doc reports that `CLAUDE.md` claims *"byte-pinned copies"*
+   while `CLAUDE.md` now says the opposite. The adopted rule — *a `file:line` is legitimate iff the
+   doc declares the revision its coordinates resolve on* — is therefore shipped as **binding plus a
+   resolution check**, with the phrase half **refuted by measurement**: over 494 citations, **313
+   (63%)** carry no extractable identifier on their citing line, so a corpus-wide phrase gate would
+   fire on correct content. The census that motivated the docket is itself an instance of the class
+   it measures: three reasonable matchers over one tree returned a **1.66× spread**, so the
+   deliverable is **the matcher, stated**, not the number. The check's own reach is now **printed
+   rather than inferred**: `_CITE47` requires the citation to sit in its own backticks, so a bare
+   `foo.py:12` in running prose is invisible to every arm. MEASURED over 81 scanned docs, the
+   corpus splits four ways — 14 backticked-only · 9 carrying both · **9 bare-only, 59 citations** ·
+   49 neither — and the label names the **bare-only 9**, which are exactly the docs `_CITE47`
+   cannot reach. The wider read an unguarded census would take (bare form over *every* doc)
+   measures 18 docs / 135 citations, and using it would have **overstated the gap by precisely the
+   population the check already covers**: its 18 supersets the 9 with the 9 docs carrying both.
+
+5. **The wrapped anchors — REFUTED as posed; shipped as a REGRESSION GUARD.**
+   `CLAUDE.md:32-33` contains a phrase a contiguous `grep -c` returns **0** for, because the source
+   wraps it. The contiguity requirement arrives WITH the anchor rule, and the pre-fix reader shows why
+   it had to: `check_required_strings` matched its needles literally, so a wrap did fail it — as
+   *`README.md no longer mentions '<needle>'`*, a verdict naming the wrong defect for a phrase still
+   present one line down. **An anchor that wraps is not greppable, therefore not an anchor.** A ninth
+   `docs_links` check matches a needle across a wrap by interleaving `\s*` through it and reading the
+   **raw** file —
+   normalizing the haystack instead would delete the very neighbours its boundaries read. It **cannot
+   fail on pre-fix code**, so by this repo's own rule it is labelled a guard, never a pin.
+
+6. **The release's own new content was itself reviewed, and the defects found in it are fixed here
+   rather than shipped.** The opening round found three; each later round — adjudicating the previous
+   round's own docket — found more, **most of them in this release's own new prose and labels**,
+   which is the cleanest evidence that the rule is a rule rather than a theme. ⚠ **No count is
+   claimed here**, and that is deliberate rather than coy: a count in this position was falsified by
+   the very next round, twice. The rounds are enumerated below in the order they landed. (a) The D6 ledger's provenance note carried a **superseded numeral**:
+   it read *"RED on 18 of `fbfe07e`'s citing docs"*, the pre-widening figure — the spec beside it
+   records *"`18 of 19` became `20 of 21` when it was widened"*, and the check's own printed label
+   says *"reddens the other 20"*. The ledger contradicted both. (b) An **unguarded `read_text`** in
+   the docket loop sat *before* D6, so deleting a single docket doc aborted the suite with a
+   `FileNotFoundError` and **D6 never ran** — the *"an orphaned section can never print green"*
+   guarantee defeated upstream of the counter that guarantees it. It now reports a verdict
+   (`no such doc`) and D6 still evaluates; **mutation-verified: 2177 passed / 0 failed with the doc,
+   2176 / 1 without it.** (c) Pin 9's reach is **the whole bound corpus, 23 of 23**, and it is
+   **printed, not inferred**. Two rounds were needed to get there. The first disclosed that **21 of
+   the 23** asserted and two were skipped in silence: a reading note authored as a bold paragraph
+   rather than a blockquote returned its token line alone, so the walk found no `git show` to
+   compare — and the label explained that gap with a reason **false at both revisions**, since the
+   one bound pre-fix doc *does* carry a `git show e5cce77`, one line beneath a token opening `**H`
+   rather than `>`. The second round then **widened the walk** itself, from a `>`-delimited block to
+   a blank-line-delimited one — a blockquote is a special case of the latter, not a different rule —
+   and MEASURED **2 docs vacuous under the old rule against 0 under this one**, with **0
+   disagreements either way**. The two docs were therefore not merely *disclosed* as unreachable;
+   they were **reachable**, and the guard now asserts on every doc it binds. (d) Pin 4's **third-site
+   coordinate pointed at the claimed text at no revision**: it named `CHANGELOG.md:2495-2496` as a
+   third place asserting the false packaging claim, and that resolves to a `## [0.4.5]` heading at
+   this revision and to older-release journal prose on the base — while the cited passage is
+   **byte-identical at both**. A CHANGELOG grows from the top, so a coordinate into one is decay
+   rather than a handle; it is now named by **phrase**, per this repo's own `v0.4.25` rule, and the
+   label records the measurement that forbids a line number returning. (e) The spec **misquoted the
+   measurement it cites**: two sentences said the helper's docstring measures a flatten into
+   `Run the/cm-syncverb`, which is the flatten of nothing — whitespace-removed it reads
+   `Runthe/cm-syncverb`, because the space inside `Run the` dies with the break. The *conclusion*
+   survives (the needle's neighbours are word characters under either string), so this was a
+   misquote of a cited source and not a false claim — corrected at both sites rather than argued
+   away. (f) And the reach comment itself, first drafted for item 4, **paired one population's doc
+   count with another's citation count** — 18 docs / 135 citations against the printed 9 / 59. It
+   was caught by running the check and comparing the two figures, which is the whole argument for
+   printing a reach instead of inferring one. (g) The spec's **row 7 quoted its own subject wrongly,
+   and the misquote made the row argue itself out of its own example**: it called the second
+   `SKILL.md` *"the beta-tester's **vendored** copy"*, while the canary directory under
+   `fixtures/canary-v0.1.19/` vendors **no `SKILL.md` at all** (six `.py` files, `README.md`,
+   `SHA256SUMS`) — the second file is the beta-tester's **own** skill. The distinction is
+   load-bearing, not pedantic: **EXCLUDED** is that row's verdict for a vendored copy, so a vendored
+   second file could not have produced the ambiguity the row reports. The row named it correctly one
+   clause later, so the document disagreed with itself. (h) **The needle registry is delimited by
+   punctuation *on at least one side*, not by punctuation** — the qualifier was already in the
+   sentence while the head clause over-claimed, and MEASURED **2 of the 7** needles (`/cm-connect`,
+   `/cm-share`) carry a SPACE as the right neighbour at every occurrence, so the head clause was
+   false of them. Corrected at both sites — the helper's docstring and the spec — to the form the
+   argument actually rests on. (i) **A reading note declared a coordinate convention its own document
+   does not keep, and this one misdirects the reader.** `render-declaration-parity.spec.md`'s note —
+   added by this release — read *"every `file:line` below is `1d97f54`-numbered"*. Measured:
+   `render_dashboard.py:1249` is `def _persist(...)` at `1d97f54` but `_shown_b = min(len(_blocked),
+   _REG_BLOCKED_CAP)` at `60a03b4`, and `smoke.py:4451` is an unrelated comment at the base but the
+   `_ceilRecB` fixture at `60a03b4` — and `60a03b4` is a **descendant** of the declared base, so
+   following the note lands the reader on unrelated content rather than a near-miss. The note's
+   stated exception was too narrow (it named bare *identifier anchors* as the shipped-tree system,
+   when a shipped-describing **sentence** may cite a coordinate too); the discriminator is now the
+   **sentence**, not the citation form, with both instances hand-verified and **no count asserted** —
+   the automatic screen flags nine more but keys on ordinary words like `rem` and `over`, so that
+   figure is a screen and not a verdict. (j) The spec's row 9 referred to *"the label"* in a table
+   that **has a `label` column** whose own row-9 value is `**GUARD**`; it now names the **message**
+   the check emits, which is the surface that actually changed. (k) **A second adversarial round was
+   delegated against the frozen branch, and its six findings were adjudicated by re-measurement rather
+   than accepted on delivery — five confirmed and repaired, one refuted, and the refutation is the one
+   worth keeping.** A sweep reported `render-declaration-parity.spec.md`'s `render_dashboard.py`
+   coordinate as stale; it is exactly what the citing sentence claims the **shipped** line shows, and
+   that document's reading note declares and hand-verifies a shipped-tree coordinate class the sweep
+   had not read. The five repairs share this release's shape — **a claim about the tree that its own
+   document already contradicted.** (1) `deep-field-theme.spec.md`'s note declared *every* `file:line`
+   below `e15ac3e`-numbered, and two are not: that commit **inserted six CSS lines** in
+   `dashboard.template.html`, shifting every coordinate ≥125 by `+6`, and the doc was edited *inside*
+   the commit that moved it. MEASURED at `e15ac3e` — `:246`/`:375` hold `.core{fill:var(--accent)}` and
+   `#net-groups{display:block…}`, while the two rules the sentence is about (both
+   `#network-blk .domain-count,.project-meta`, one `--faint` and the later one `--ink2`) sit at
+   `:252`/`:381` — and the note now carves out the one coordinate belonging to a later pass's own
+   reading. (2) `_DOCKET47`'s scope claimed its **five** dockets were *"the corpus's ONLY docs whose
+   base revision is DERIVABLE"*: a universal over an unestablished class, since **23** of the 81 docs
+   under `docs/**/*.md` (`_CANON47`'s own scan, recursive) carry a `` **`X`-numbered** `` note, and
+   **seven** of them have a fixing commit whose subject
+   phrase is derived and measured unique. Two were added (`dbt-truth-restoration` → `6ac5380`,
+   `signal-pipeline-hardening` → `ceaccc0`), each with **one** child, the fix itself — as do two of
+   the other five, while the remaining three have two (the fix and the merge that brought it in,
+   PRs #222/#230/#228) and there the needle is what picks the fix. Six numeral sites moved with the
+   scope, the check's own printed message among them. (3) The spec's stated **two-part rule** still
+   carried the phrase half its own row 7 refutes by measurement; what PR B adopts is the resolution
+   half, and it now says so where the rule is stated rather than only where it was refuted. (4) Item 5
+   above said the ninth check *"normalizes whitespace before matching"* — the draft the helper's own
+   docstring records as **measured wrong**: it interleaves `\s*` through the needle and reads the
+   **raw** file, because flattening the haystack deletes the neighbours its boundaries read. (5)
+   `refusal-verdict-parity.spec.md` asserted that *"on every commit of the branch"* line 830 holds
+   `ACTION_WRITES`; measured, it holds an unrelated `return` at both branch heads, and `ACTION_WRITES`
+   is what it holds at the doc's **declared base** `e5cce77` — a true statement about the base, in a
+   sentence that asserted it of the branch. (l) **Pin 4's ground truth stated a property of its own
+   matcher that the matcher did not have — in three homes at once.** The upload line's filename list
+   was read from **plainly** flattened workflow text, and the code comment, the check's printed label
+   and the spec's row 4 all justified that with one clause: *"so a commented-out upload cannot still
+   supply its filenames."* MEASURED 2026-09-19 with the live upload line commented out, the pattern
+   matches it under **both** normalizations — `search` carries no `^` anchor, so a leading `#` is just
+   another character, and `_uncomment37` **keeps** the line, dropping only the marker. The pin would
+   therefore have gone on asserting the prose against a line the workflow no longer runs: a green
+   verdict about a dead line, which is this release's defect class arriving in the release's own gate.
+   The read now **drops the comment lines** — which is what makes the clause true — and it asserts
+   there is exactly **one live** upload line, the same defect's second half, since a first-match read
+   of an unasserted set is a partial census wearing a whole one's clothes. Measured in all three
+   directions rather than argued: live → `count=1`, green; commented out → `count=0`, **red**;
+   duplicated → `count=2`, **red**. The new conjunct also holds on pre-fix code, so it cannot flip
+   the pin's RED. (m) **A reading note carved one coordinate out of its binding and named no revision
+   for it** — `deep-field-theme.spec.md`'s note, the surface (k)(1) repaired, whose exception read
+   *"the reading that pass took on the tree it ran against"* and left the reader to go find that tree.
+   There is none to find: MEASURED, that number resolves to a different line at each of four
+   revisions — `#network-blk .hierarchy-branch.grant-edge` at `v0.4.23`, the reduced-motion `@media`
+   block at `v0.4.24`, `.record-detail{…}` at `e15ac3e^`, `.arch-tools select{…}` at `e15ac3e` —
+   because the pass read a **working tree no commit preserves**. The note now names that tier
+   (testimony, quoted as it was read) rather than dressing the number as a citation, and its
+   **self-coordinate** into the same document is replaced by the heading it points at: a line number
+   into a document that grows is the very decay that note warns about. (n) **A green `smoke` count is
+   not a green gate** — the release says so, and then this round paid for it. Pin 10 is uncommitted
+   work, and when the full gate was finally taken on the tree that *contains* it, `mypy` failed on
+   that pin's accumulator, `Need type annotation for "_sw47"`. Its only write is
+   `setdefault(...).append(...)`, a return mypy cannot infer a value type from — unlike the sibling
+   accumulators it was modelled on, which write with a plain `.append` and need no hint. So the Gate
+   line below is stated for **one** revision, all five legs taken on that same content. (o) **The
+   abort class (b) opened was closed the only way a class closes — by asking its question instead of
+   enumerating its members**, and the answer is a criterion now stated in the block's own preamble so
+   the next editor checks it rather than re-derives it: **a read is GUARDED iff this block is the
+   FIRST STRICT reader of its input.** Three reads are therefore deliberately left raw — `cm`,
+   `release.yml` and `SECURITY.md` are each read strictly and unconditionally far earlier in the same
+   file, so a guard here would print a verdict the suite can never reach. The four this block IS
+   first to read carry one now: the ladder spec (nothing else reads it at all), the docket docs and
+   `docs/**/*.md` (whose earlier reader is TOLERANT — `errors="replace"` — and so is not a reader of
+   the same *inputs*), and the workflow glob, which owns `ci.yml` and every workflow that is not
+   `release.yml`. ⚠ **At one of those sites an unguarded read is not an abort but a GREEN:** a
+   workflow the glob cannot decode never enters the mapping, so pin 10's anti-vacuity clause would be
+   satisfied by the two known runners and the check would pass over a directory it had stopped
+   reading. MEASURED with three mutations, one per guard, on a tree that is otherwise this content —
+   the ladder spec removed, then a docket doc and `ci.yml` each replaced by a directory — the suite
+   prints **2172 passed / 5 failed** with **D6 evaluated**: pins 1 and 2 carry the new input clause,
+   pin 8 its FAULT with its own scope, pin 10 the file it could not read, pin 6 asserts the
+   unreadable doc rather than dropping it, and nothing aborts. Two further repairs are not about
+   guards at all. **A fault's scope now travels with the fault:** pin 8's fault arms do not reach
+   equally far, so one clause cannot be true of all of them, and the scope is set at each arm rather
+   than computed once from `not _log47` — which answered a question about whether a LOG existed as if
+   it were one about whether the walk FINISHED. And **the resolution rule was described as CONTENT
+   while the predicate compares a line COUNT** — the spec's rule statement, its row-7 detail and the
+   check's own comment all said *content*, no cited line's text is ever read, and the row's own
+   parenthetical had defined it line-fit all along, so the document contradicted itself and the
+   correction reached the rule statement last. (p) **The contiguity helper's own needle space was the
+   one position its join could not reach** — `re.escape(" ")` is a backslash-space, a LITERAL space,
+   so the `\s*` separators tolerated a dropped or doubled space *between* characters while the
+   character that IS a space still demanded one exactly there. MEASURED, a space-bearing needle set
+   against wrapped text reads ABSENT: `check_required_strings` reported a present string as gone
+   **and** `check_contiguity` — the arm that owns exactly that shape — stayed silent,
+   so the pair's claimed partition broke with no message at all, in the direction that reads as a
+   clean run. Whitespace inside a needle is now mapped rather than escaped. (q) **The `/code-review`
+   stage was run**, in the shape the sibling release used: four lenses over a clean clone, each told
+   to treat its own findings as hypotheses to verify before reporting them. Three delivered reports;
+   the fourth — `cr-b-pins` — **executed and delivered nothing**, which is recorded as a statement
+   about DELIVERY rather than about execution, since this cycle has published each of those two
+   errors in turn. Adjudicating at the head rather than at the binding, every finding in those
+   reports is either **repaired** or **refuted by measurement**, and the refutations carry the
+   lesson. A `release.yml` finding reached **independently by two lenses** describes the BASE's
+   state as the head's: `fetch-depth` occurs **zero** times at `fbfe07e` and is present in the very
+   job the finding names, so the defect is real, it is caught by pin 10, and the fix and the check
+   rode the same commit. Every report's own head-status line used a `rev-parse <rev>:<path>`
+   comparison, which answers *did this file change* and not *is the defect in it*. The second
+   refutation is sharper still, because it is the one no blob test can ever see: a finding can cite
+   a line that **is** byte-identical while the read AROUND it changed — the continuation-line blind
+   spot's matcher is unchanged to the byte, its loop now carries its anchor across continuations,
+   and the report's own "widened" experiment reproduces the SHIPPED read exactly. MEASURED with a
+   mutation placing `--domains` on a continuation line and nowhere else: **2176 passed, 1 failed**,
+   pin 3 the **only** red, D6 evaluated — while the pre-fix read prints `unaccepted: none` on the
+   same text. **And one defect was found here rather than by any lens, in the table that says what
+   the checks ARE:** row 10 was committed with a prose fragment for a first cell, the paragraph
+   below it resuming mid-sentence. Repaired, and swept for siblings — one site.
+
+⚠ **This release adds the suite's first check that reads the tree's own git history**, so **every
+workflow that runs the suite** sets `fetch-depth: 0` — `ci.yml` on both of its jobs, and
+`release.yml`'s `verify`, the one such job the first cut left at the default depth. That gap is
+material rather than tidy, and it is this release's own defect arriving in its own harness: the
+comment recording the dependency named the file in front of its author, and `verify`'s stake is
+categorically higher — `provenance` declares `needs: verify`, so a red there does not warn, it
+cancels the release. Pin 10 asserts the class now rather than the instance. A shallow clone makes
+two of these checks report **verdicts about the
+corpus** rather than name a missing input — measured, an archive tree and a `--depth 1` clone are
+indistinguishable: the fault arm advises deepening a clone that does not exist, and the verdict arm
+prints *"0 failing"* from an instrument that cannot read. **The third is repaired here rather than
+disclosed:** the history arm used to call the one correctly bound docket BAD, and it now claims its
+two faults — a tree that cannot be asked for its own history, by the command's own **return code**,
+and a **shallow clone whose truncation actually BIT**, the one shape a return code cannot see — and
+on either it fails naming the INSTRUMENT (`this clone is SHALLOW`) instead of reporting on
+documents. MEASURED on a `--depth 1` clone: **2174 passed / 3 failed**, pin 8 RED with that fault
+message.
+
+   (r) **A final pass over the pins' own predicates, and every defect it found was one shape — an
+   instrument reading something other than its subject.** (i) **Pin 10's predicate was satisfied by the
+   comment beside it.** The check tested whether the job's text contained the string `fetch-depth: 0`,
+   and the same commit that added the remedy also added a seven-line comment NAMING the remedy — so the
+   explanatory prose satisfied the check, and a mutation deleting the `with:` block would have gone
+   green on it. It now requires a **line declaring the key** (`^\s*fetch-depth:\s*0\s*(?:#.*)?$`), which
+   a whole-line comment cannot match because its `#` sits exactly where the key would, while a key
+   carrying a trailing comment still does. MEASURED: `ci.yml`'s comment line `False` and its key `True`;
+   `release.yml`'s comment `False` and its key `True`. The glob was `.yml`-only while `*.yaml` is
+   equally legal to Actions; widened — recorded as closing a **latent** hole, since the repo carries no
+   `.yaml` workflow today. (ii) **Pin 4 read its prose through a sliding anchor.** Splitting on
+   `provenance:` and then on `on:` does not go empty when the `provenance:` comment that OPENS the prose
+   is deleted: the anchor re-binds to the `provenance:` **job name** and cuts at `runs-on:`, returning
+   the YAML fragment `name: provenance + SBOM `. Truthy — so a fault and an absence shared one
+   representation, and the check answered a missing subject with a verdict about `SECURITY.md`'s prose.
+   The anchor is now asserted and scoped to the workflow header, and a missing subject is a **FAULT that
+   states no verdict**, the arm pin 8 already established. MEASURED as a pair on one tree and one
+   mutation — the header prose deleted, the tabulation unmoved and only the report changed: pre-repair
+   **`2176 / 1`**, pin 4 the single red, reading *"unnamed `['sha256sums']`, count-claims none"*, a
+   verdict computed FROM the absent subject; post-repair the same **`2176 / 1`**, reading *"FAULT —
+   release.yml's header carries NO `provenance:` prose block, so this read has no SUBJECT"*, and the
+   derived list is withheld rather than prefixed to it. (iii) **The spec's own numerals, re-measured
+   with their matchers now stated.** Its `git` census read *36 / exactly four resolve against `ROOT` /
+   the other 32*; under the matcher — the argv[0] literal `"git"` — the head reads **39 / five / 34**
+   and the base `fbfe07e` reads **34 / 0**, so PR B adds five invocations and every one of them reads
+   `ROOT`, and the set is named by a greppable anchor rather than by a line list. The paragraph
+   recording what the instrument repair moved still carried *45 / 37+8* as a live figure, superseded by
+   pin 10's addition; it now states which correction it is about, and the reconciliation
+   (`2131 + 45 = 2176`, `2131 + 46 = 2177`) makes pin 10 precisely the one red that separates them. The
+   `DOCS` bullet held a base-bound **79** against a live **81** — the **+2 being exactly the two specs
+   this stack adds**, one per PR. (iv) **The `DOCS` decision that spec asked to have recorded is
+   recorded, and it is NOT to add it:** README does not mention this document, so it is not
+   README-reachable, and **its own outbound links are therefore not link-checked by the gate it
+   describes**. (v) **`check_contiguity`'s justification said "Named per needle" and named four of
+   seven** — a universal asserted over a fraction of its own set. All seven are named now, and the
+   partition the sentence states (**5 both-sides / 2 space-right**) reproduces member by member.
+   (vi) **And row 10 was still outside the checks table**, a blank line above it splitting the table in
+   two — the same row that this release first committed with a prose fragment for a first cell. **Both
+   are one defect: a row the reader's parser cannot reach.** No check was added or removed; the
+   self-counting pin is unchanged at **2177**.
+
+Gate: smoke **2177** passed / 0 failed · docs_links · sim · mypy (42 source files) · manifests.
+
 ## [0.4.36] — 2026-09-19
 
 **Patch — an identity stops being taken from the room. The archive's masthead was read from whatever

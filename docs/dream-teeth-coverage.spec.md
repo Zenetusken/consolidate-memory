@@ -1,5 +1,9 @@
 # Dream-teeth coverage — design-of-record
 
+> **Reading the citations.** Every `file:line` below is **`308e15b`-numbered**. Resolve it against
+> that commit — `git show 308e15b:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status: draft for adversarial review.** Target release: **v0.4.29 (patch)** — additive
 strictness on gates that were *supposed* to fire; no schema, flag, or install-contract change.
 

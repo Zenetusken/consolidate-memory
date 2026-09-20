@@ -1,4 +1,8 @@
 # dream-beta-tester truth restoration (Track B) — spec DRAFT
+
+> **Reading the citations.** Every `file:line` below is **`6ac5380`-numbered**. Resolve it against
+> that commit — `git show 6ac5380:<path>` — and **never against the working tree**, which has moved
+> them.
 <!-- Materializes as docs/dbt-truth-restoration.spec.md on branch fix/dbt-truth-restoration.
      SEQUENCING: branch AFTER PR-1 (fix/cm-audit-hygiene) merges — B9 widens the smoke genericity
      pin that PR-1 introduces (same tests/smoke.py region; no stacking per the PR-flow rule). -->
