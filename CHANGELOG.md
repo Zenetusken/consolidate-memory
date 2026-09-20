@@ -32,9 +32,13 @@ introduces. Design and evidence: `docs/comment-and-registry-truth.spec.md`.
    exception, so it is scoped; the interior comment (`Every doc the README links to`) stated a
    **false universal** and named no exception. MEASURED over the README's markdown link targets:
    **12** `.md` files, of which **four are absent from the list** and all four exist — so those
-   four are added, and the interior comment is corrected to the header's rule **scoped to the
-   entries it heads** rather than restated (restating it would have duplicated the correct header
-   while leaving the false line standing). ⚠ **The false rule had a SOURCE, and correcting the
+   four are added. The interior comment's false universal is not restated but **replaced by the
+   entry's own justification**: the clause a restatement would have carried (`the criterion this
+   list actually applies`) is a **rule**, and a rule stated below the header that already states
+   one puts the list's criterion in **two places** — the defect this item removes, rebuilt by its
+   own repair. So the criterion moved **into** the header, which now also carries the principle's
+   second inclusion (*the design record a reader is handed off to*), and the comment keeps only
+   the measured fact and the entry's reason. ⚠ **The false rule had a SOURCE, and correcting the
    restatement left it standing.** The interior comment did not invent its universal — it *cited*
    one, naming its authority in the same sentence (`the docstring's promise is "…"`), and that
    authority is the file's own invariant 2, which states the checked set as *every other doc a
@@ -47,7 +51,8 @@ introduces. Design and evidence: `docs/comment-and-registry-truth.spec.md`.
    measured. ⚠ The four entries a reader might reach for *instead* —
    the list entries with **no** README arrival — are a **different** set of four, and conflating
    them drives a wrong repair: three are the GitHub templates the header's own sentence covers,
-   and one is an entry no comment accounted for. ⚠ **No closure rule describes this list** — a
+   and the fourth is the design record that made the header false about **one** member — the entry
+   the header's second inclusion now names. ⚠ **No closure rule describes this list** — a
    2-hop spec is listed while two other 2-hop docs are not — so the header now states the
    principle **with its exclusions named**, and the list's measured edge is recorded after it,
    because a rule that does not name its exclusions is a universal again one edit later.

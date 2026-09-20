@@ -76,7 +76,8 @@ PREVIEW = ROOT / "docs" / "previews" / "nocturne"
 PREVIEW_FILES = ("index.html", "sample.json")
 
 # Docs a reader lands on. Templates are included because a broken link in an issue form is
-# invisible until someone opens the form. This is a CURATED set, not the closure of the
+# invisible until someone opens the form, and the same goes for a design record a reader is
+# handed off to rather than linked to. This is a CURATED set, not the closure of the
 # README's links: destinations that are not reader-facing documents — source code, assets,
 # the generated preview, `LICENSE` — are out of scope by design, and neither depth nor a link
 # is the membership rule (see the notes inside the list, and after it).
@@ -98,9 +99,9 @@ DOCS = [
     "plugins/consolidate-memory/skills/consolidate-memory/references/harness-map.md",
     "plugins/dream-beta-tester/docs/SPEC.md",
     "plugins/dream-beta-tester/docs/CONTRACT.md",
-    # No markdown link reaches this one, anywhere in the tree — measured, not assumed. It is
-    # listed as the design record for the network map's selection, navigation and escape,
-    # which is the criterion this list actually applies: whether a reader lands on the doc.
+    # No markdown link reaches this one, anywhere in the tree — measured, not assumed: it is
+    # listed as the design record for the network map's selection, navigation and escape — the
+    # doc a reader is handed off to.
     "docs/network-graph-interaction.spec.md",
     # Reached from SECURITY.md, which is itself in this list — so the chain README →
     # SECURITY.md → spec is walked, and the spec's own outbound links are checked too.

@@ -97,8 +97,12 @@ what makes the sequencing rule above apply. ⚠ The first draft measured this as
 the uncommitted diff"* — true when taken, and meaningless once A committed. **`git log -S` is the
 durable form of the same claim**: a working-tree diff answers about *now*, and a history read answers
 about the tree. ⚠ **That retired reading was file-scoped, and the scope is load-bearing**: the same
-pattern over the same range **unscoped** returns **38** added lines, so a re-runner who drops it
-concludes the measurement was wrong rather than that it was narrow.
+pattern over the same range **unscoped** returns **25** added lines over `fbfe07e..475af7b` — A's
+**38** over `fbfe07e..9585b10`, while the **scoped** arm reads **2** at both and
+**1** at this branch's head, where item 1 has deleted exactly the copy. A re-runner who drops the
+scope and lands on a nearby range concludes the measurement was wrong rather than that it was
+narrow; one who keeps the scope but reads the head finds item 1's own observable rather than a
+drift.
 
 **The intended sentence**, recoverable from the parts: the template supplies only the environment and
 the two fields no row carries, **and that is why** the rendered identity is cwd-invariant.
@@ -256,9 +260,11 @@ the `16` is measured against.
 `.github/ISSUE_TEMPLATE/feature.yml`, and `docs/network-graph-interaction.spec.md`. Checked against
 every link form, not just the one the extractor sees. The two **issue forms are mentioned nowhere else
 in the tree at all** — a strictly stronger unreachability than the other two. Those two do surface as
-backticked prose, and their mention sets are **measured rather than generalised**, because they are not
-the same size: `.github/PULL_REQUEST_TEMPLATE.md` is named in **one** file (`CHANGELOG.md`), while
-`docs/network-graph-interaction.spec.md` is named in **four** — `CHANGELOG.md`,
+backticked prose, and their mention sets are **measured rather than generalised** — operand: backticked
+prose in tracked files, this document excluded as the one doing the counting — because they are not the
+same size: `.github/PULL_REQUEST_TEMPLATE.md` is named in **two** (`CHANGELOG.md`, and
+`check_links`' docstring in `tests/docs_links.py`), while `docs/network-graph-interaction.spec.md` is
+named in **four** — `CHANGELOG.md`,
 `deep-field-theme.spec.md`, `fleet-topology-ui.spec.md` and `redos-guard-linearity.spec.md`. A prose
 mention is not an arrival either way: the reader must copy a path out of a sentence.
 
