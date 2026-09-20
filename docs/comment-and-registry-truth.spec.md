@@ -18,9 +18,9 @@ it and five lines below**: the upper one over-claims about a single entry, the l
 >   arriving in a reading note.
 > - **Subject 2** (the registry comments) is **pre-existing** — present at the base revision and
 >   unmoved there, so the bare ranges this document quotes for it are the base's own numbering and
->   a coordinate for it resolves at the base. ⚠ **The head is the one revision it does not resolve
->   at**: this branch's own item 2 rewrites that comment, so what the repair moves is exactly the
->   numbers a coordinate would name.
+>   a coordinate for it resolves at the base. ⚠ **They resolve to that comment at the base, and at
+>   none of the commits this branch adds**: item 2, the first of them, rewrites that comment, so
+>   what the repair moves is exactly the numbers a coordinate would name.
 >
 > The document nonetheless cites by **greppable anchor** throughout — but after the correction the
 > reason is a **choice, not a constraint**, and the difference is stated because the first draft got it
