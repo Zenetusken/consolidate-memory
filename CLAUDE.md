@@ -1,6 +1,6 @@
 # consolidate-memory — project conventions
 
-**v0.4.39.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
+**v0.4.40.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
 Claude Code's built-in Auto Dream (per-project consolidation), adding a governed cross-project store +
 verification against the live code. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -187,16 +187,21 @@ the `## [X.Y.Z]` CHANGELOG entry first (using the policy above), then release in
 phases with a human merge between them (GitHub requires PRs to `main`):
 - `./release.sh` — **dry-run**: prints current→target, the computed bump type, the tag,
   and the notes. No writes.
-- `./release.sh --stage` — guards (clean tree, tag free), bumps `plugin.json` if needed
-  (`release: vX.Y.Z`), validates (manifests + smoke + sim), pushes
-  `release/vX.Y.Z`, and opens the release PR. Re-running reuses the branch/PR.
+- `./release.sh --stage` — guards (clean tree, tag free), then **VERIFIES, never
+  authors**: it asserts `plugin.json` already equals the CHANGELOG version (hand-bumped
+  on your feature branch) and refuses otherwise, then runs the four validators
+  (manifests + docs_links + smoke + sim). It edits no file, commits nothing, pushes
+  nothing, and opens no PR — the bump rides your feature PR. (It does still `git fetch`
+  on the way in, so it is not a read-only command.)
 - `./release.sh --finalize` — fetches, verifies `main`'s `plugin.json` equals the
-  CHANGELOG version (the merge must have landed the bump), tags the release PR's merge
-  commit, pushes the tag, and cuts the GH Release. Re-running reports already-done.
-- **Pre-bump preferred:** if `plugin.json` already equals the CHANGELOG version
-  (pre-bumped on the feature branch, as for v0.3.0), `--stage` is a no-op that says so,
-  and `--finalize` alone tags the merged HEAD — the bump rides your feature PR, zero
-  release PRs. The release-PR path is the fallback for a last-minute bump.
+  CHANGELOG version (the merge must have landed the bump), tags `origin/main` (the
+  pre-bumped path) or the release PR's merge commit if one exists, pushes the tag, and
+  cuts the GH Release. Re-running reports already-done.
+- **Pre-bump REQUIRED:** `plugin.json` must already equal the CHANGELOG version on your
+  feature branch (as for v0.3.0) before `--stage` will pass — the bump rides your
+  feature PR, so there are zero release PRs. There is no last-minute-bump fallback:
+  `--stage` refuses when `plugin.json` is behind the CHANGELOG, and the remedy it
+  prints is the hand-bump.
 - `./release.sh --expect patch|minor|major [--stage|--finalize]` — also **asserts** the
   computed bump matches your intent (a second guard; aborts on mismatch).
 

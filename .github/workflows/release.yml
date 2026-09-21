@@ -1,7 +1,8 @@
 name: Release gate
 
 # The release VERIFY + PROVENANCE teeth (R5, v0.4.2). The two-phase flow:
-# ./release.sh --stage opens the release PR → YOU merge it → ./release.sh --finalize
+# the bump is hand-authored on your feature branch; ./release.sh --stage VERIFIES it, you
+# merge the feature branch, then ./release.sh --finalize
 # signs the tag (SSH, `user.signingkey`) and cuts the GitHub Release.
 #
 # verify:  the candidate tree must pass smoke/sim/manifests, the strict plugin

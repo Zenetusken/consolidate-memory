@@ -22577,13 +22577,95 @@ with _tf36.TemporaryDirectory() as _td36w:
           + (f" ⚠ UNREADABLE: {', '.join(_swf47)}" if _swf47 else ""),
           {"ci.yml", "release.yml"} <= set(_sw47) and not _sbad47 and not _swf47)
 
+# v0.4.40 — the date axis's discriminating pair, IN-TREE.
+#
+# The rule these pin lives in `tests/docs_links.py`, a separate validator that no other check here
+# reads (MEASURED before this block: `grep -n docs_links tests/smoke.py` = one hit, a comment), so
+# the axis's only evidence that it did anything was a rehearsal harness in a gitignored maintainer
+# directory — nothing in the public artifact showed it firing at all. These two checks are the
+# positive/negative pair, and they read the LIVE release pair rather than a frozen one, so they
+# re-arm at every release instead of decaying at the next bump.
+#
+# A PIN, not a guard: `check_currency_dates` does not exist on the pre-fix revision (MEASURED —
+# `git show HEAD:tests/docs_links.py | grep -c check_currency_dates` = 0), so pre-fix this reports
+# RED rather than passing quietly. The GUARD half of the same defect — a manifest naming a section
+# the CHANGELOG never dated, which DISARMS the axis without reddening anything — is not provable
+# from inside the thing that is supposed to fire, so it is measured by contrast off-tree instead.
+#
+# ⚠ `sys.path` is extended explicitly rather than relying on `sys.path[0]` being the script's own
+# directory. That happens to be true for CI's `python3 tests/smoke.py`, but it is a property of the
+# INVOCATION rather than of the tree, and a pin that silently stops resolving under a different
+# entry point would report as an instrument fault.
+# ⚠ The whole exercise is wrapped: a gate module that fails to import, or an axis whose function
+# has been deleted, must report as two RED checks rather than as a traceback that takes the other
+# 2187 down with it — an abort upstream of a counter defeats the counter.
+try:
+    import json as _json40
+    sys.path.insert(0, str(ROOT / "tests"))
+    import docs_links as _dl40
+    _ver40 = _json40.loads(
+        (ROOT / "plugins" / "consolidate-memory" / ".claude-plugin" / "plugin.json")
+        .read_text(encoding="utf-8"))["version"]
+    _date40 = _dl40.changelog_date(_ver40)
+    _n40 = len(_dl40.errors)
+    # NEGATIVE arm: the line names the current release and dates it with a year the CHANGELOG
+    # contradicts. Expected: one eligible statement, one comparison PERFORMED (`checked` counts
+    # comparisons, not comparisons that passed — so a red still reads 1), and exactly one error.
+    _eA40, _cA40 = _dl40.check_currency_dates(
+        "AGENTS.md", ":4", _ver40, f"**v{_ver40}** (1999-01-01) — synthetic line")
+    _reds40 = list(_dl40.errors[_n40:])
+    # POSITIVE arm: the release's own date, and the same call must say nothing at all. This is the
+    # half that keeps the rule from being "any date is wrong", which would red every correct doc.
+    _eB40, _cB40 = _dl40.check_currency_dates(
+        "AGENTS.md", ":4", _ver40, f"**v{_ver40}** ({_date40}) — synthetic line")
+    _extra40 = len(_dl40.errors) - _n40 - len(_reds40)
+    del _dl40.errors[_n40:]              # leave the gate module exactly as this pin found it
+    _a40 = (_date40 is not None and _eA40 == 1 and _cA40 == 1 and len(_reds40) == 1
+            and "1999-01-01" in _reds40[0])
+    _b40 = _eB40 == 1 and _cB40 == 1 and _extra40 == 0
+    _msg40 = (f"live pair v{_ver40} / {_date40}: wrong date -> {len(_reds40)} error, "
+              f"release's own date -> {_extra40} error")
+except Exception as _x40:                                    # a broken gate is RED, not a traceback
+    _a40 = _b40 = False
+    _msg40 = f"could not exercise it: {type(_x40).__name__}: {_x40}"
+
+check("v0.4.40 pin (PIN — MEASURED RED on pre-fix code, not inferred: with the committed "
+      "`c63a45a:tests/docs_links.py` restored into an otherwise identical tree, this suite reads "
+      "`2187 passed, 2 failed` and BOTH failures are this pair — `check_currency_dates` does not "
+      "exist there at all, so the axis cannot be said to have passed): the date axis FIRES on a "
+      "currency line carrying a date the CHANGELOG contradicts. That is the D3 leave-behind — a "
+      "version moved without its date — checked in-tree rather than only in a rehearsal. "
+      f"⚠ {_msg40}", _a40)
+check("v0.4.40 pin (the CONTROL for the check above: the same axis stays SILENT when the line "
+      "carries the release's own date, so a red is the axis discriminating rather than a rule "
+      "that flags every date)", _b40)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
       passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 7 + 18 + 5 + 4 + 31 + 5 + 6 + 4 + 8 + 2 + 1 + 1 + 3
                             + 5 + 2 + 1 + 1 + 1
                             + 1
-                            + 10)
+                            + 10
+                            + 2)
+                                                        # +2: v0.4.40 pin — the date axis's
+                                                        #     discriminating PAIR, in-tree. Both
+                                                        #     are PINs (pre-fix has no
+                                                        #     `check_currency_dates` at all), and
+                                                        #     they are counted separately on
+                                                        #     purpose: the negative arm alone is
+                                                        #     satisfied by a rule that flags every
+                                                        #     date, and the positive arm alone by
+                                                        #     one that flags none. Neither is
+                                                        #     padding for the other.
+                                                        #     ⚠ They read the LIVE release pair,
+                                                        #     not a frozen one, so a bump re-arms
+                                                        #     them rather than decaying them — and
+                                                        #     they assert `checked` counts
+                                                        #     COMPARISONS performed, not
+                                                        #     comparisons that passed, which is
+                                                        #     what makes the printed denominator a
+                                                        #     vacuity signal instead of a score.
                                                         # +1: v0.4.37 PR B pin 10 — every workflow
                                                         #     JOB that runs the suite also gives it
                                                         #     HISTORY. A PIN rather than a guard:
