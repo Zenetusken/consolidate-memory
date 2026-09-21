@@ -2279,6 +2279,51 @@ with _tf43.TemporaryDirectory() as _twd43:
           [p.name for p in es._window_transcripts(_wpr43, "2026-06-22T00:00:00Z")] == ["new.jsonl"])
     check("v0.1.43/A: _window_transcripts NAIVE marker treated as UTC not LOCAL (Gate-2: no wrong prior-session drop)",
           [p.name for p in es._window_transcripts(_wpr43, "2026-06-22T00:00:00")] == ["new.jsonl"])
+# --- v0.4.39: the store-slug / cwd-slug divergence. CC keys the STORE to the nearest `.git` ancestor but
+# the TRANSCRIPT to the cwd, so a session launched in a SUBDIRECTORY of the store's root writes to
+# `<store-slug>-sub` — the store's own slug then holds no transcript, and the dream read a session that
+# plainly did work as quiet (measured on ~/project/Gats: memory at -home-you-project/memory, transcripts
+# at -home-you-project-Gats). The repair admits such dirs by slug PREFIX, confirmed by each transcript's
+# own `cwd`; these pins deliberately include the two shapes a prefix alone would WRONGLY admit.
+with _tf43.TemporaryDirectory() as _td39d:
+    _root39 = Path(_td39d) / "root"; (_root39 / "sub" / "nested").mkdir(parents=True)
+    _proj39 = Path(_td39d) / "projects"
+    for _d39 in ("store", "store-sub", "store-old", "store-nested"):
+        (_proj39 / _d39).mkdir(parents=True)
+    (_root39 / "sub" / "nested" / ".git").mkdir()      # the nested repo's own marker
+
+    def _tl39(_cwd: Path) -> str:
+        # line 0 is CC's metadata preamble (no `cwd` — the reason a one-line peek fails);
+        # line 1 carries it, exactly as measured on a real transcript.
+        return (_json43.dumps({"type": "last-prompt", "sessionId": "s"}) + "\n"
+                + _json43.dumps({"type": "user", "cwd": str(_cwd),
+                                 "message": {"role": "user", "content": "x"}}) + "\n")
+
+    (_proj39 / "store" / "at-root.jsonl").write_text(_tl39(_root39))
+    (_proj39 / "store-sub" / "s1.jsonl").write_text(_tl39(_root39 / "sub"))
+    (_proj39 / "store-old" / "s2.jsonl").write_text(_tl39(_proj39 / "store-old"))       # shares the prefix
+    (_proj39 / "store-nested" / "s3.jsonl").write_text(_tl39(_root39 / "sub" / "nested"))
+    check("v0.4.39: _transcript_cwd reads PAST CC's metadata preamble (cwd is not on line 0)",
+          es._transcript_cwd(_proj39 / "store-sub" / "s1.jsonl") == (_root39 / "sub").resolve())
+    check("v0.4.39: _transcript_cwd honours its line budget → None, never a guess",
+          es._transcript_cwd(_proj39 / "store-sub" / "s1.jsonl", max_lines=1) is None)
+    check("v0.4.39: _in_store_tree admits a subdirectory of the store's root",
+          es._in_store_tree(_root39 / "sub", _root39))
+    check("v0.4.39: _in_store_tree rejects the root itself (the primary dir, never a candidate)",
+          not es._in_store_tree(_root39, _root39))
+    check("v0.4.39: _in_store_tree rejects a nested repo's root (its own .git ⇒ its own store)",
+          not es._in_store_tree(_root39 / "sub" / "nested", _root39))
+    check("v0.4.39: _in_store_tree rejects a path outside the root entirely",
+          not es._in_store_tree(_proj39 / "store-old", _root39))
+    check("v0.4.39: _subdir_transcripts admits ONLY the cwd-confirmed subdirectory session",
+          [p.name for p in es._subdir_transcripts(_proj39 / "store", _root39, None)] == ["s1.jsonl"])
+    check("v0.4.39: _subdir_transcripts is INERT without a project_root (the no-regression default)",
+          es._subdir_transcripts(_proj39 / "store", None, None) == [])
+    check("v0.4.39: _window_transcripts pools root + subdirectory sessions (same prune, oldest-first)",
+          [p.name for p in es._window_transcripts(_proj39 / "store", "", _root39)]
+          == ["at-root.jsonl", "s1.jsonl"])
+    check("v0.4.39: _window_transcripts with no project_root keeps the single-directory pool",
+          [p.name for p in es._window_transcripts(_proj39 / "store", "")] == ["at-root.jsonl"])
 with _tf43.TemporaryDirectory() as _td43:
     _home43 = Path(_td43); _proj43 = _home43 / "proj"; _proj43.mkdir()
     _pr43 = _home43 / ".claude" / "projects" / es.slug_for(_proj43); _pr43.mkdir(parents=True)
@@ -22537,7 +22582,8 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
       "ADD checks, and it must equal the reported count)",
       passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 7 + 18 + 5 + 4 + 31 + 5 + 6 + 4 + 8 + 2 + 1 + 1 + 3
                             + 5 + 2 + 1 + 1 + 1
-                            + 1)
+                            + 1
+                            + 10)
                                                         # +1: v0.4.37 PR B pin 10 — every workflow
                                                         #     JOB that runs the suite also gives it
                                                         #     HISTORY. A PIN rather than a guard:
