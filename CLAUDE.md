@@ -194,9 +194,11 @@ phases with a human merge between them (GitHub requires PRs to `main`):
   nothing, and opens no PR — the bump rides your feature PR. (It does still `git fetch`
   on the way in, so it is not a read-only command.)
 - `./release.sh --finalize` — fetches, verifies `main`'s `plugin.json` equals the
-  CHANGELOG version (the merge must have landed the bump), tags `origin/main` (the
-  pre-bumped path) or the release PR's merge commit if one exists, pushes the tag, and
-  cuts the GH Release. Re-running reports already-done.
+  CHANGELOG version (the merge must have landed the bump), then **runs the same four
+  validators on the revision it is about to tag** — so a red one stops the release here
+  rather than shipping — tags `origin/main` (the pre-bumped path) or the release PR's
+  merge commit if one exists, pushes the tag, and cuts the GH Release. Re-running reports
+  already-done.
 - **Pre-bump REQUIRED:** `plugin.json` must already equal the CHANGELOG version on your
   feature branch (as for v0.3.0) before `--stage` will pass — the bump rides your
   feature PR, so there are zero release PRs. There is no last-minute-bump fallback:

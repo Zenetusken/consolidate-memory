@@ -239,8 +239,9 @@ design.
   file, commits nothing, pushes nothing, and opens no PR — though it does still `git
   fetch`) → push your feature branch and merge it →
   `./release.sh --finalize` (verifies `main`'s `plugin.json` == the CHANGELOG version,
-  tags `origin/main` — or the release PR's merge commit, if one exists — pushes the tag,
-  cuts the GH Release; re-runnable, reports already-done).
+  re-runs the same four validators on the revision it is about to tag, tags `origin/main`
+  — or the release PR's merge commit, if one exists — pushes the tag, cuts the GH Release;
+  re-runnable, reports already-done).
   **Pre-bump REQUIRED:** `plugin.json` must already equal the CHANGELOG version, so
   `--finalize` alone tags the merged HEAD (the bump rides the feature PR — zero release
   PRs). There is no last-minute-bump fallback: `--stage` refuses when `plugin.json` is

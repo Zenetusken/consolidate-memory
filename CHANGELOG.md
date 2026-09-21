@@ -54,6 +54,22 @@ person typing a version is exactly as likely to leave its date behind as a scrip
    otherwise, and runs the validators. No gate reads this prose, which is why it drifted: the
    tool changed in a gitignored file, and the committed docs describing it did not follow.
 
+4. **Three coverage gaps on the release path, closed.** The first two are the same gap in two
+   places: `docs_links.py` ran in `ci.yml` and **nowhere else** — the `release.yml` verify job ran
+   smoke, the accumulation sim and the manifest validator, and `./release.sh --finalize` ran no
+   validator at all, so the one path that *tags and ships* validated no bytes. Both now run it, and
+   neither call repeats `ci.yml`: that job judges the PR's **head**, and the tag goes on the
+   **merge commit**, which a conflict resolution or an "Update branch" can change after CI last
+   said green. The third is a claim with no reader: `plugins/dream-beta-tester/docs/STATUS.md:1`
+   states `dream-beta-tester v0.1.8`, and the doc was in neither `DOCS` nor `LIVE_DOCS` — both
+   measured 0 — so its links went unchecked and its version unread. It cannot simply join the
+   currency sweep either, which is keyed to *this* plugin's manifest: the sibling's own `v0.1.8`
+   and the `v0.1.85` it cites as provenance are both "wrong" against `0.4.40`. So
+   `check_plugin_status_docs` pairs each discovered `plugins/*/` manifest with the `docs/STATUS.md`
+   beside it — discovered the way the plugin-table rows are, so a third plugin is covered the day
+   it lands — and the boundary is stated rather than implied: one site, the doc's opening line,
+   the way the badge and the table are one site each.
+
 Evidence: the date gate caught a real defect before it ever shipped — the `v0.4.39` bump left
 both paired dates at `2026-09-19` against a `## [0.4.39] — 2026-09-20` section, and it was the
 only instrument that could: `ci.yml` runs the committed `docs_links.py`, which is blind to
@@ -69,9 +85,12 @@ discrimination was previously unprintable — the pair went out only beside the 
 and the failing path now carries it too, as a parenthesized aside rather than a `- ` line. Three
 in-tree pins in `tests/smoke.py` cover the axis: the first pair reads `check_currency_dates`'
 return directly and is RED against the pre-arc `docs_links.py`, where it does not exist; the third
-drives `main()` down its failure path and reads its stdout, RED against the committed revision —
-same fixture, one file different, `2189 passed, 1 failed` there and `2190 passed, 0 failed` with
-this gate.
+drives `main()` down its failure path and reads its stdout. Each is measured as a contrast, not
+asserted: an earlier gate restored into a `cp -a` copy of the tree, `diff -rq` showing the copy
+and the original differ in exactly one file, and the two runs differing by exactly the pins that
+are red. Two further pins cover item 4's sibling header and fail the same way — RED *by absence*,
+since a gate that predates `check_plugin_status_docs` cannot run it, which the arm reports as the
+`AttributeError` it is rather than as a traceback out of the suite.
 
 ## [0.4.39] — 2026-09-20
 

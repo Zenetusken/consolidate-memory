@@ -22685,6 +22685,74 @@ check("v0.4.40 pin (PIN — the failure path prints the dated-statement pair too
       "one distinction it exists to draw unobservable, and every red run reported no counts): "
       f"⚠ {_cmsg40}", _c40)
 
+# ── and the SIBLING plugin's STATUS header, which no gate read at all ─────────────────────────
+# Found 2026-09-21 while closing this arc's own coverage gaps. `plugins/dream-beta-tester/docs/
+# STATUS.md:1` states `dream-beta-tester v0.1.8`, and the doc was in NEITHER `DOCS` nor
+# `LIVE_DOCS` — both measured 0 — so nothing read the claim. It cannot simply be added to the
+# currency sweep either: that sweep is keyed to THIS plugin's manifest, and the sibling's doc
+# carries two version statements (its own `v0.1.8` and the `v0.1.85` it cites as provenance, a
+# consolidate-memory release) — neither equals `plugin.json`'s, so listing it there reds on both.
+# The manifest a doc tracks is the one beside it, so the check discovers it the way the
+# plugin-table check discovers its rows.
+# ⚠ TWO ARMS, and they are not two copies of one. The live arm is the VACUITY floor: a glob that
+# stops matching reads `0 headers` and prints exactly as green as a check that examined the tree,
+# which is the shape of the gap being closed. The firing arm is the DISCRIMINATION: a manifest
+# moved out from under its header must be red, naming both versions.
+# ⚠ The firing arm repoints `docs_links.ROOT`, and `PLUGIN` is bound at IMPORT — it does NOT move
+# with it. So this arm doubles as the control for that trap: a repoint that no-opped would leave
+# the function reading the LIVE manifest against the LIVE header, which agree, and the arm would
+# go GREEN — failing the pin rather than quietly proving nothing.
+try:
+    import json as _jsonpsd40
+    import shutil as _shpsd40
+    import tempfile as _tfpsd40
+    _psdroot40 = _dl40.ROOT                     # the live tree, captured before anything moves
+    _psdn40 = len(_dl40.errors)
+    _psdlive40 = _dl40.check_plugin_status_docs()
+    _psdliveerr40 = len(_dl40.errors) - _psdn40
+    del _dl40.errors[_psdn40:]
+    _psda40 = _psdlive40 >= 1 and _psdliveerr40 == 0
+    _psdamsg40 = f"live tree: {_psdlive40} header(s) checked, {_psdliveerr40} error(s)"
+
+    _psdtmp40 = Path(_tfpsd40.mkdtemp(prefix="smoke-docs-status-"))
+    try:                                        # ── the firing arm, on a two-file tree ────────
+        _psdart40 = _psdtmp40 / "plugins" / "dream-beta-tester"
+        (_psdart40 / ".claude-plugin").mkdir(parents=True)
+        (_psdart40 / "docs").mkdir(parents=True)
+        (_psdart40 / ".claude-plugin" / "plugin.json").write_text(
+            _jsonpsd40.dumps({"name": "dream-beta-tester", "version": "0.1.9"}), encoding="utf-8")
+        (_psdart40 / "docs" / "STATUS.md").write_text(
+            "# Dream Beta-Harness — STATUS (dream-beta-tester v0.1.8 · built 2026-06-21)\n",
+            encoding="utf-8")
+        _dl40.ROOT = _psdtmp40
+        _psdn40b = len(_dl40.errors)
+        _psdret40 = _dl40.check_plugin_status_docs()
+        _psderr40 = _dl40.errors[_psdn40b:]
+        del _dl40.errors[_psdn40b:]
+    finally:
+        _dl40.ROOT = _psdroot40                 # restored even if the arm itself blew up
+        _shpsd40.rmtree(_psdtmp40, ignore_errors=True)
+    # Both operands named, and NOT truncated: the manifest's version must be the one the line was
+    # measured against, and the line's own stated versions must appear as they are — a cut message
+    # hides exactly the operand a reader needs to adjudicate a red.
+    _psdtext40 = " ".join(_psderr40)
+    _psdb40 = (_psdret40 == 0 and len(_psderr40) == 1
+               and "v0.1.9" in _psdtext40 and "['0.1.8']" in _psdtext40)
+    _psdbmsg40 = f"bumped manifest: ret={_psdret40}, errors={len(_psderr40)} — {_psdtext40}"
+except Exception as _psdx40:                    # a broken gate is RED, not a traceback
+    _psda40 = _psdb40 = False
+    _psdamsg40 = _psdbmsg40 = f"could not exercise it: {type(_psdx40).__name__}: {_psdx40}"
+
+check("v0.4.40 pin (PIN — the sibling plugin's STATUS header is READ AT ALL; pre-fix this fails "
+      "by ABSENCE, the committed gate has no `check_plugin_status_docs`, so the assertion can only "
+      "have been satisfied by the function it is about): "
+      f"⚠ {_psdamsg40}", _psda40)
+check("v0.4.40 pin (the CONTROL for the check above: the same check FIRES on a manifest moved out "
+      "from under its header — exactly one error, naming both the manifest's version and what the "
+      "line states. Without this arm the one above is satisfied by a glob that matches nothing, "
+      "which is the gap it was written to close): "
+      f"⚠ {_psdbmsg40}", _psdb40)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
@@ -22693,7 +22761,20 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                             + 1
                             + 10
                             + 2
-                            + 1)
+                            + 1
+                            + 2)
+                                                        # +2: v0.4.40 pin — the SIBLING plugin's
+                                                        #     STATUS header, in-tree. ⚠ Counted
+                                                        #     separately from the +2 above, which is
+                                                        #     this plugin's DATE axis: that one reads
+                                                        #     a date beside a version, this one
+                                                        #     reads another manifest's version with
+                                                        #     no date axis at all (its doc says the
+                                                        #     plugin has no CHANGELOG). A pin and
+                                                        #     its CONTROL: the live arm is the
+                                                        #     vacuity floor, the firing arm the
+                                                        #     discrimination, and neither
+                                                        #     substitutes for the other.
                                                         # +1: v0.4.40 pin — the FAILURE path's
                                                         #     readout, added the day the gap was
                                                         #     found. `main` printed the pair only

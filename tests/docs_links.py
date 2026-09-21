@@ -72,6 +72,15 @@ Invariants:
    not dated — precisely the pair `--stage` verifies and `--finalize` tags — the gate is red.
    Without the second, the first prints a green success line over an axis that examined nothing,
    because the `— UNRELEASED` window is the state this repo authors its releases in.
+10. **Each plugin's `docs/STATUS.md` opens on its OWN manifest's version.** Invariant 6 is keyed to
+   ONE manifest, so a doc whose opening statement is about a *different* plugin is not merely
+   unchecked — listed there it would be checked *wrongly*. Measured on this tree: putting
+   `plugins/dream-beta-tester/docs/STATUS.md` into `LIVE_DOCS` reds on **two** of its statements
+   (`v0.1.8`, its own manifest's — `0.1.8` — and `v0.1.85`, a consolidate-memory release the doc
+   cites as provenance, which lives in *this* CHANGELOG), because neither equals `plugin.json`'s.
+   So the sibling's header is checked against the manifest BESIDE it, discovered the way invariant
+   7's rows are rather than named — a third plugin's STATUS.md is covered the day it lands. ⚠ One
+   site, pinned like the badge, and the boundary is stated in the function rather than implied.
 
 Run:  python3 tests/docs_links.py   (exit 0 = clean)
 """
@@ -122,6 +131,11 @@ DOCS = [
     "plugins/consolidate-memory/skills/consolidate-memory/references/harness-map.md",
     "plugins/dream-beta-tester/docs/SPEC.md",
     "plugins/dream-beta-tester/docs/CONTRACT.md",
+    # The sibling plugin's own status doc. It sat in NEITHER this set NOR `LIVE_DOCS` — both
+    # measured 0 — while its opening line stated `dream-beta-tester v0.1.8`, so no gate read that
+    # claim and none of its outbound links were checked. Listed here for the links (invariant 2);
+    # its version is read by `check_plugin_status_docs` (invariant 10).
+    "plugins/dream-beta-tester/docs/STATUS.md",
     # No markdown link reaches this one under the matcher this gate walks — `](...)`
     # destinations in tracked files, doc-relative — measured, not assumed. ⚠ The bound is
     # that matcher and not the tree, and the difference is a DIRECTORY link, which the walk
@@ -138,7 +152,9 @@ DOCS = [
 # are each one hop PAST an entry above, and neither is listed. Depth is not the rule —
 # `docs/redos-guard-linearity.spec.md` above is also a 2-hop arrival and IS listed — and
 # neither is unreachability: both are linked from markdown in the tree — `SPEC-A.md`
-# from `SPEC.md` and `STATUS.md`, `CLAUDE.md` from `CONTRIBUTING.md`. Membership is a
+# from `SPEC.md` and `STATUS.md`, `CLAUDE.md` from `CONTRIBUTING.md`. ⚠ Both of those
+# linkers are listed ABOVE, and listing a linker lists nothing it points at: `check_links`
+# iterates this list, it is not the closure of it. Membership is a
 # judgment about reader-facing-ness, and these two are where that judgment was measured to
 # stop, not a rule that derives it. ⚠ The EDGE is the edge of THIS WALK, not of arrival: the
 # walk follows markdown destinations from a linking `.md` and filters to tracked `.md`, so a
@@ -761,6 +777,56 @@ def check_plugin_table() -> int:
     return len(manifests)
 
 
+def check_plugin_status_docs() -> int:
+    """Each plugin's `docs/STATUS.md` opens on its OWN manifest's version, and nothing read it.
+
+    Returns the number of headers checked, so `main` can report the coverage instead of implying it.
+
+    Invariant 6, one manifest out. `check_version_statements` walks `LIVE_DOCS` against `PLUGIN` —
+    consolidate-memory's manifest — so a doc opening on a DIFFERENT plugin's version is not only
+    unchecked, it is checked *wrongly* if listed there (measured: two errors, invariant 10). The
+    manifest such a doc tracks is the one beside it, so this discovers it the way
+    `check_plugin_table` discovers its rows rather than naming it: `plugins/*/.claude-plugin/
+    plugin.json`, paired with `plugins/<name>/docs/STATUS.md`. A third plugin is covered on landing.
+
+    ⚠ THE SITE IS THE OPENING LINE, and that is a boundary rather than a claim of coverage. The
+    sibling's own line 6 restates the same figure as a bare `**0.1.8**`, which carries no `v` and
+    so is not a currency statement under `_CURRENCY` — this check does not read it. One site, pinned
+    the way the badge and the plugin table are, and the class is not offered.
+
+    ⚠ Paths are built from `ROOT` AT CALL TIME, never from the module-level `PLUGIN` constant. That
+    is not style: `PLUGIN` is bound at import, so a caller that repoints `ROOT` — the in-tree pin in
+    `tests/smoke.py` does exactly that, to exercise this check against a two-file fixture — would
+    still have it reading the live manifest, and the pin would pass on a tree that never changed.
+    """
+    plugins = ROOT / "plugins"
+    checked = 0
+    for manifest in sorted(plugins.glob("*/.claude-plugin/plugin.json")):
+        name = manifest.parent.parent.name
+        rel = f"plugins/{name}/docs/STATUS.md"
+        path = ROOT / rel
+        if not path.is_file():
+            continue                        # optional per plugin — the printed count is the coverage
+        version = json.loads(manifest.read_text(encoding="utf-8")).get("version", "")
+        if not version:
+            err(f"{rel} tracks {name!r}'s manifest, which carries no version — the check cannot run")
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+        first = lines[0] if lines else ""
+        if f"v{version}" not in first:
+            err(f"{rel}:1: the opening line is this plugin's currency statement and must carry "
+                f"v{version}, {name!r}'s manifest version; it states "
+                f"{_CURRENCY.findall(first)!r} — a header that outlives its manifest is the same "
+                "drift invariant 6 catches, one plugin out")
+        elif name not in first:
+            err(f"{rel}:1: the line carries v{version} but never names {name!r} — this check pairs "
+                "each manifest with the header beside it, so a header naming no plugin cannot be "
+                "attributed to one")
+        else:
+            checked += 1
+    return checked
+
+
 def check_preview() -> None:
     """The committed preview is byte-identical to a fresh render of its own fixture.
 
@@ -819,6 +885,7 @@ def main() -> int:
     check_changelog_dated()
     dated_eligible, dated_checked = check_version_statements()
     plugin_rows = check_plugin_table()
+    status_headers = check_plugin_status_docs()
     check_preview()
     if errors:
         print("✗ documentation gate FAILED:")
@@ -842,6 +909,7 @@ def main() -> int:
     print(f"✓ docs valid (badge + {len(LIVE_DOCS)} live-doc statements at v{version}, "
           f"{dated_checked} of {dated_eligible} dated statements checked, "
           f"{plugin_rows} plugin-table rows, "
+          f"{status_headers} plugin STATUS headers, "
           f"{len(DOCS)} files link-checked, "
           f"{len(REQUIRED_IN_README)} required strings unbroken, anchors balanced, "
           "preview current)")
