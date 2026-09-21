@@ -20,11 +20,13 @@ person typing a version is exactly as likely to leave its date behind as a scrip
    `check_currency_dates` runs *from* the existing first-`vX.Y.Z` walk rather than getting a
    sweep of its own — that loop already has the claim's line in hand, and a second sweep would
    be a second copy of the rule. A doc that dates its statement must carry the CHANGELOG's date
-   for the version it names. The success line reports that as a **pair** — *"2 of 2 dated
-   statements checked"* — and the pair is the instrument rather than a flourish: the first
-   number counts comparisons **performed**, so a skipped statement shows as one number falling
-   while the other holds, and a single count could not separate *"nothing was dated"* from
-   *"everything dated was skipped"*. Scope is the claim's own physical line, deliberately: the
+   for the version it names. The gate reports that as a **pair** — *"2 of 2 dated statements
+   checked"* — and the pair is the instrument rather than a flourish: the first number counts
+   comparisons **performed**, so a skipped statement shows as one number falling while the other
+   holds, and a single count could not separate *"nothing was dated"* from *"everything dated
+   was skipped"*. The **failing** path prints it too, and has to: a skipped statement forces a
+   red run, so a readout that existed only beside the ✓ could never have shown the fall it
+   describes. Scope is the claim's own physical line, deliberately: the
    spec's ops-HOLD line carries a **historical** `v0.4.2` beside a `2026-08-31` date while the
    CHANGELOG dates `0.4.2` at `2026-09-03`, so a file-wide sweep would redden a correct tree.
    The blind spot that buys — a reflow separating a version from its date — is recorded in the
@@ -34,8 +36,7 @@ person typing a version is exactly as likely to leave its date behind as a scrip
 2. **An undated release section is refused, not tolerated.** `check_changelog_dated` closes a
    hole the check above cannot close from inside: `changelog_date` returns `None` both for a
    version the CHANGELOG never dated and for one it never mentions, and on `None` the date axis
-   **skips** every statement it was about to compare — silently, with every other check still
-   green. Measured, the state is reachable and is the state this repository releases from: a
+   **skips** every statement it was about to compare, with every other check still green. Measured, the state is reachable and is the state this repository releases from: a
    CHANGELOG whose top section reads `— UNRELEASED` with real notes passed `--stage`, passed
    `--finalize`, and shipped — nothing stamped the heading, and nothing required it: the
    convention had no producer anywhere in the tooling. The discriminator is `plugin.json` —
@@ -56,13 +57,21 @@ person typing a version is exactly as likely to leave its date behind as a scrip
 Evidence: the date gate caught a real defect before it ever shipped — the `v0.4.39` bump left
 both paired dates at `2026-09-19` against a `## [0.4.39] — 2026-09-20` section, and it was the
 only instrument that could: `ci.yml` runs the committed `docs_links.py`, which is blind to
-dates. Six mutation arms run on a copy of this tree, one mutation each: the leave-behind drives
-the gate red on each live pair (1 and 2 errors respectively) while the version axis stays green
-throughout, the `— UNRELEASED` window and a broken heading matcher each drive it red through the
-guard — both were green blind spots before it existed — and the reflow remains the single
-recorded blind spot, green at `1 of 1`. The axis also carries an in-tree pin in `tests/smoke.py`:
-with the committed `docs_links.py` restored into an otherwise identical tree, the suite reads
-`2187 passed, 2 failed`, and both failures are that pair.
+dates. Six mutation arms run on a copy of this tree — one is a no-mutation control, and one edits
+both live sites in a single arm: the leave-behind drives the gate red on each live pair, one
+error apiece (the two-site arm reports their sum) while the version axis stays green throughout,
+the `— UNRELEASED` window and a broken heading matcher each drive it red through the guard — both
+were green blind spots before it existed — and the reflow remains the single recorded blind spot,
+green at `1 of 1`. The arms are separated by the pair each red now prints: a real date divergence
+leaves the axis running (`2 of 2 dated statements checked`), a disabled one reads `0 of 2`. That
+discrimination was previously unprintable — the pair went out only beside the ✓, and
+`checked != eligible` is reachable ONLY in a red run — so every red reported no counts at all,
+and the failing path now carries it too, as a parenthesized aside rather than a `- ` line. Three
+in-tree pins in `tests/smoke.py` cover the axis: the first pair reads `check_currency_dates`'
+return directly and is RED against the pre-arc `docs_links.py`, where it does not exist; the third
+drives `main()` down its failure path and reads its stdout, RED against the committed revision —
+same fixture, one file different, `2189 passed, 1 failed` there and `2190 passed, 0 failed` with
+this gate.
 
 ## [0.4.39] — 2026-09-20
 

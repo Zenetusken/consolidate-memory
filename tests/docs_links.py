@@ -229,7 +229,8 @@ def changelog_date(version: str) -> str | None:
     """The date the CHANGELOG pairs with `version`, or None when it makes no date claim.
 
     Deliberately uncached: one full scan costs ~1.4 ms (measured, n=20, on the ~500 KB
-    CHANGELOG), so the calls a full pass makes — one per dated statement, two today — add ~3 ms
+    CHANGELOG), so the calls a full pass makes — one per dated statement (two today), plus
+    `check_changelog_dated`'s own probe of the manifest's version, three measured — add ~4 ms
     to a gate that runs in ~100 ms. Cheaper than the mutable module state a cache would need,
     and it keeps this a pure function.
 
@@ -566,9 +567,12 @@ def check_currency_dates(rel: str, where: str, stated: str, line: str) -> tuple[
 
     Returns (eligible, checked): `eligible` is 1 when the line carries a date at all, `checked`
     is 1 when that date was actually compared against the release's. They differ in exactly one
-    state — the CHANGELOG has not dated the version the statement names — and `main` prints both,
-    because a single number reads the same whether the axis examined both sites or skipped both.
-    "0 of 2" is the skip; "0 of 0" is a tree with nothing dated.
+    state — the CHANGELOG has not dated the version the statement names — and that state is
+    ALWAYS a red one, because a green run requires every statement to name the manifest's version
+    and the undated case is the one `check_changelog_dated` refuses. So `main` prints the pair on
+    the failing path as well: a single number reads the same whether the axis examined both sites
+    or skipped both, and the only run that can tell them apart is the one that never reached the
+    ✓. "0 of 2" is the skip; "0 of 0" is a tree with nothing dated.
 
     Four of the six live docs put no date on their statement, which is why the denominator is not
     `len(LIVE_DOCS)`: reporting six would claim coverage this check does not have.
@@ -703,7 +707,9 @@ def check_changelog_dated() -> None:
     if changelog_date(version) is None:
         err(f"plugin.json is {version}, but CHANGELOG.md dates no `## [{version}]` section — "
             "that pair is what ships, and an undated section leaves every dated currency "
-            "statement with nothing to check against (stamp the section)")
+            "statement with nothing to check against (stamp the section if it exists, author it "
+            "if it does not — `changelog_date` returns None for both, so this message cannot tell "
+            "you which and names both remedies rather than the wrong one)")
 
 
 def check_plugin_table() -> int:
@@ -818,13 +824,21 @@ def main() -> int:
         print("✗ documentation gate FAILED:")
         for e in errors:
             print(f"  - {e}")
+        # ⚠ THE PAIR PRINTS ON THIS PATH TOO, and it is not decoration. `checked != eligible` is
+        # reachable ONLY here: a green run requires every statement to name the manifest's version,
+        # and the undated case is exactly what `check_changelog_dated` refuses — so printing the
+        # pair only beside the ✓ made the one distinction it exists to draw unobservable, since
+        # every run that reaches the ✓ has the two numbers equal by construction. It prints as a
+        # parenthesized aside rather than a `  - ` line, so it is never read as another error.
+        print(f"  ({dated_checked} of {dated_eligible} dated statements checked)")
         return 1
     version = json.loads(PLUGIN.read_text(encoding="utf-8"))["version"]
     # The denominators are not decoration: without them a reader cannot tell "0 problems in 7
     # required strings" from "0 problems in 0", and a check that has silently stopped examining
     # anything prints exactly as green as one that examined everything. The date axis prints a
     # PAIR for the same reason: those two numbers differ exactly when a dated statement was
-    # found and then skipped, which is the one failure a single count cannot express.
+    # found and then skipped, which is the one failure a single count cannot express — and since
+    # that state is always a RED one, the pair is printed on the failing path above as well.
     print(f"✓ docs valid (badge + {len(LIVE_DOCS)} live-doc statements at v{version}, "
           f"{dated_checked} of {dated_eligible} dated statements checked, "
           f"{plugin_rows} plugin-table rows, "

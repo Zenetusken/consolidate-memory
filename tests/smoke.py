@@ -22640,6 +22640,51 @@ check("v0.4.40 pin (the CONTROL for the check above: the same axis stays SILENT 
       "carries the release's own date, so a red is the axis discriminating rather than a rule "
       "that flags every date)", _b40)
 
+# ── and the FAILING path's readout, which is where the pair was missing entirely ─────────────
+# The two arms above exercise `check_currency_dates` directly and read its RETURN VALUE — the
+# function whose semantics are correct. The defect this arm exists for is one level up, in
+# `main`'s control flow: the pair was printed only beside the ✓, and `checked != eligible` is
+# reachable only in a RED run, so the one distinction the pair was built to draw — "a dated
+# statement was found and then skipped" versus "there was nothing dated to skip" — could not be
+# printed at all. Every red run reported no counts. This drives the real `main()` down its failure
+# branch (one synthetic error, `errors` restored afterwards) and asserts the pair reaches stdout
+# there. ⚠ A PIN, not a guard: the committed `docs_links.py`'s `main` returns before its only
+# print, so this fails on pre-fix code by construction.
+try:
+    # ⚠ These two names are CENSUSED against the whole file rather than chosen for their look: this
+    # block is appended to a ~23 000-line module, so every name it binds shares one module scope
+    # with everything above it, and mypy carries ONE type per module-scope name. `_ctx40` and
+    # `_buf40` were the first choice and BOTH were already taken (`:8137` a SimpleNamespace,
+    # `:18627` a str) — same collision class as the `_m40` → `_msg40` rename the pin pair above
+    # needed. It is a typing error only (both earlier uses are textually before this block, so
+    # nothing reads the old value here), but it fails the CI typecheck job, and mypy caught it
+    # before CI this time.
+    import contextlib as _ctxrd40
+    import io as _io40
+    _sink40 = _io40.StringIO()
+    _n40b = len(_dl40.errors)
+    _dl40.errors.append("v0.4.40 pin: synthetic, to route main() down its failure path")
+    try:
+        with _ctxrd40.redirect_stdout(_sink40):
+            _rc40 = _dl40.main()
+    finally:
+        del _dl40.errors[_n40b:]        # leave the gate module exactly as this pin found it
+    # Exactly one line: on the failure path the ✓ line is never reached, so a second match would
+    # mean the gate had grown another readout — which is a change worth seeing, not smoothing over.
+    _pair40 = [ln for ln in _sink40.getvalue().splitlines()
+               if "dated statements checked" in ln]
+    _c40 = _rc40 == 1 and len(_pair40) == 1
+    _cmsg40 = (f"main() on the failure path: rc={_rc40}, pair lines={len(_pair40)}"
+               + (f" ({_pair40[0].strip()})" if _pair40 else " — NO COUNTS PRINTED"))
+except Exception as _x40b:                                  # a broken gate is RED, not a traceback
+    _c40 = False
+    _cmsg40 = f"could not exercise it: {type(_x40b).__name__}: {_x40b}"
+
+check("v0.4.40 pin (PIN — the failure path prints the dated-statement pair too; `checked != "
+      "eligible` is reachable ONLY in a red run, so printing the pair only beside the ✓ left the "
+      "one distinction it exists to draw unobservable, and every red run reported no counts): "
+      f"⚠ {_cmsg40}", _c40)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
@@ -22647,7 +22692,21 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                             + 5 + 2 + 1 + 1 + 1
                             + 1
                             + 10
-                            + 2)
+                            + 2
+                            + 1)
+                                                        # +1: v0.4.40 pin — the FAILURE path's
+                                                        #     readout, added the day the gap was
+                                                        #     found. `main` printed the pair only
+                                                        #     beside the ✓, and the collapse to
+                                                        #     `0 of 2` is reachable ONLY in a red
+                                                        #     run — so the one distinction the pair
+                                                        #     exists to draw was unprintable.
+                                                        #     ⚠ Counted separately from the +2
+                                                        #     above, and it is not padding: those
+                                                        #     two read a function's RETURN VALUE,
+                                                        #     this one drives `main()` and reads
+                                                        #     its STDOUT. The defect lived in the
+                                                        #     call, not the function.
                                                         # +2: v0.4.40 pin — the date axis's
                                                         #     discriminating PAIR, in-tree. Both
                                                         #     are PINs (pre-fix has no
