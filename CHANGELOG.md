@@ -45,14 +45,22 @@ person typing a version is exactly as likely to leave its date behind as a scrip
    green mid-cycle, when the next section sits undated above a manifest still naming the
    shipped release.
 
-3. **The release-flow prose matches the tool.** Four documents (`CLAUDE.md`, `AGENTS.md`,
-   `docs/1.0-preflight.spec.md` and `.github/workflows/release.yml`) described `--stage` as
-   bumping `plugin.json`, committing `release: vX.Y.Z`, pushing `release/vX.Y.Z` and opening a
-   release PR, with a *"pre-bump preferred … `--stage` is a no-op"* fallback and a release PR
-   as the last-minute-bump escape. None of that is true: `--stage` **verifies, never authors**
-   — it asserts the hand-bumped `plugin.json` already equals the CHANGELOG version, refuses
-   otherwise, and runs the validators. No gate reads this prose, which is why it drifted: the
-   tool changed in a gitignored file, and the committed docs describing it did not follow.
+3. **Three false descriptions of the release tool, repaired.** The first spans four documents:
+   `CLAUDE.md`, `AGENTS.md`, `docs/1.0-preflight.spec.md` and `.github/workflows/release.yml`
+   described `--stage` as bumping `plugin.json`, committing `release: vX.Y.Z`, pushing
+   `release/vX.Y.Z` and opening a release PR, with a *"pre-bump preferred … `--stage` is a
+   no-op"* fallback and a release PR as the last-minute-bump escape. None of that is true:
+   `--stage` **verifies, never authors** — it asserts the hand-bumped `plugin.json` already
+   equals the CHANGELOG version, refuses otherwise, and runs the validators. No gate reads this
+   prose, which is why that description drifted: the tool changed in a gitignored file, and the
+   committed docs did not follow. Two more instances of the same class were still wrong. Three
+   further homes — `CLAUDE.md`, `AGENTS.md` and `release.yml` — said `--finalize` runs its
+   validators on *"the revision being tagged"* when they read the **working tree**, which the
+   tool names and compares against the commit being tagged, warning when the two differ; that
+   one did not drift, it shipped false in the commit that added the validators. And `CLAUDE.md`
+   credited `--stage` with a **tag** guard it never runs on the documented path — the check sits
+   only in the branch that exits 1 regardless. `--stage` guards the clean tree; `--finalize`
+   guards the tag.
 
 4. **Three coverage gaps on the release path, closed.** The first two are the same gap in two
    places: `docs_links.py` ran in `ci.yml` and **nowhere else** — the `release.yml` verify job ran
@@ -72,7 +80,7 @@ person typing a version is exactly as likely to leave its date behind as a scrip
 
 Evidence: the date gate caught a real defect before it ever shipped — the `v0.4.39` bump left
 both paired dates at `2026-09-19` against a `## [0.4.39] — 2026-09-20` section, and it was the
-only instrument that could: `ci.yml` runs the committed `docs_links.py`, which is blind to
+only instrument that could: `ci.yml` runs the committed `docs_links.py`, which was blind to
 dates. Six mutation arms run on a copy of this tree — one is a no-mutation control, and one edits
 both live sites in a single arm: the leave-behind drives the gate red on each live pair, one
 error apiece (the two-site arm reports their sum) while the version axis stays green throughout,

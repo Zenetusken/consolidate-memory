@@ -187,15 +187,17 @@ the `## [X.Y.Z]` CHANGELOG entry first (using the policy above), then release in
 phases with a human merge between them (GitHub requires PRs to `main`):
 - `./release.sh` — **dry-run**: prints current→target, the computed bump type, the tag,
   and the notes. No writes.
-- `./release.sh --stage` — guards (clean tree, tag free), then **VERIFIES, never
-  authors**: it asserts `plugin.json` already equals the CHANGELOG version (hand-bumped
-  on your feature branch) and refuses otherwise, then runs the four validators
+- `./release.sh --stage` — guards the clean tree, then **VERIFIES, never authors**: it
+  asserts `plugin.json` already equals the CHANGELOG version (hand-bumped on your feature
+  branch) and refuses otherwise, then runs the four validators
   (manifests + docs_links + smoke + sim). It edits no file, commits nothing, pushes
   nothing, and opens no PR — the bump rides your feature PR. (It does still `git fetch`
-  on the way in, so it is not a read-only command.)
+  on the way in, so it is not a read-only command. The TAG surface is guarded by
+  `--finalize`, not here.)
 - `./release.sh --finalize` — fetches, verifies `main`'s `plugin.json` equals the
   CHANGELOG version (the merge must have landed the bump), then **runs the same four
-  validators on the revision it is about to tag** — so a red one stops the release here
+  validators** — on the working tree, which it names and compares against the commit being
+  tagged, warning (not refusing) when they differ — so a red one stops the release here
   rather than shipping — tags `origin/main` (the pre-bumped path) or the release PR's
   merge commit if one exists, pushes the tag, and cuts the GH Release. Re-running reports
   already-done.
