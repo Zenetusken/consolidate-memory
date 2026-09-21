@@ -1,10 +1,11 @@
 name: Release gate
 
 # The release VERIFY + PROVENANCE teeth (R5, v0.4.2). The two-phase flow:
-# ./release.sh --stage opens the release PR → YOU merge it → ./release.sh --finalize
+# the bump is hand-authored on your feature branch; ./release.sh --stage VERIFIES it, you
+# merge the feature branch, then ./release.sh --finalize
 # signs the tag (SSH, `user.signingkey`) and cuts the GitHub Release.
 #
-# verify:  the candidate tree must pass smoke/sim/manifests, the strict plugin
+# verify:  the candidate tree must pass smoke/sim/manifests/docs, the strict plugin
 #          validates (marketplace + both plugins), and every pushed tag must carry
 #          a valid SSH signature from the committed public key (.github/release-tag.pub).
 #          Threat model: main is PR-only (branch ruleset) and the pubkey is committed —
@@ -57,11 +58,19 @@ jobs:
               sys.exit(f"plugin.json version {ver} != CHANGELOG top {top}")
           print(f"ok: {ver}")
           PY
-      - name: smoke + sim + manifests
+      # docs_links.py joins the other three here rather than only in `ci.yml`. Both run the same
+      # gate, but they gate different bytes: `ci.yml` judges the PR's head, and this judges the
+      # tree the TAG will be cut on — the same tree `release.sh --finalize` reads. A tag is the
+      # one artifact no later PR can correct, so it is the wrong place to be one workflow short.
+      # (History: until v0.4.40 this step ran three validators and the docs gate was absent from
+      # every release-path job, so a doc that went stale between the merge and the tag — or a
+      # version/date pair the tag path never read — could ship on a green release.)
+      - name: smoke + sim + manifests + docs
         run: |
           python3 tests/smoke.py
           python3 tests/simulate_accumulation.py
           python3 tests/validate_manifests.py
+          python3 tests/docs_links.py
       - name: strict plugin validates (marketplace + both plugins)
         timeout-minutes: 15
         run: |

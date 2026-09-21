@@ -22577,13 +22577,235 @@ with _tf36.TemporaryDirectory() as _td36w:
           + (f" ⚠ UNREADABLE: {', '.join(_swf47)}" if _swf47 else ""),
           {"ci.yml", "release.yml"} <= set(_sw47) and not _sbad47 and not _swf47)
 
+# v0.4.40 — the date axis's discriminating pair, IN-TREE.
+#
+# The rule these pin lives in `tests/docs_links.py`, a separate validator that no other check here
+# reads (MEASURED before this block: `grep -n docs_links tests/smoke.py` = one hit, a comment), so
+# the axis's only evidence that it did anything was a rehearsal harness in a gitignored maintainer
+# directory — nothing in the public artifact showed it firing at all. These two checks are the
+# positive/negative pair, and they read the LIVE release pair rather than a frozen one, so they
+# re-arm at every release instead of decaying at the next bump.
+#
+# A PIN, not a guard: `check_currency_dates` does not exist on the pre-fix revision (MEASURED —
+# `git show HEAD:tests/docs_links.py | grep -c check_currency_dates` = 0), so pre-fix this reports
+# RED rather than passing quietly. The GUARD half of the same defect — a manifest naming a section
+# the CHANGELOG never dated, which DISARMS the axis without reddening anything — is not provable
+# from inside the thing that is supposed to fire, so it is measured by contrast off-tree instead.
+#
+# ⚠ `sys.path` is extended explicitly rather than relying on `sys.path[0]` being the script's own
+# directory. That happens to be true for CI's `python3 tests/smoke.py`, but it is a property of the
+# INVOCATION rather than of the tree, and a pin that silently stops resolving under a different
+# entry point would report as an instrument fault.
+# ⚠ The whole exercise is wrapped: a gate module that fails to import, or an axis whose function
+# has been deleted, must report as two RED checks rather than as a traceback that takes the other
+# 2187 down with it — an abort upstream of a counter defeats the counter.
+try:
+    import json as _json40
+    sys.path.insert(0, str(ROOT / "tests"))
+    import docs_links as _dl40
+    _ver40 = _json40.loads(
+        (ROOT / "plugins" / "consolidate-memory" / ".claude-plugin" / "plugin.json")
+        .read_text(encoding="utf-8"))["version"]
+    _date40 = _dl40.changelog_date(_ver40)
+    _n40 = len(_dl40.errors)
+    # NEGATIVE arm: the line names the current release and dates it with a year the CHANGELOG
+    # contradicts. Expected: one eligible statement, one comparison PERFORMED (`checked` counts
+    # comparisons, not comparisons that passed — so a red still reads 1), and exactly one error.
+    _eA40, _cA40 = _dl40.check_currency_dates(
+        "AGENTS.md", ":4", _ver40, f"**v{_ver40}** (1999-01-01) — synthetic line")
+    _reds40 = list(_dl40.errors[_n40:])
+    # POSITIVE arm: the release's own date, and the same call must say nothing at all. This is the
+    # half that keeps the rule from being "any date is wrong", which would red every correct doc.
+    _eB40, _cB40 = _dl40.check_currency_dates(
+        "AGENTS.md", ":4", _ver40, f"**v{_ver40}** ({_date40}) — synthetic line")
+    _extra40 = len(_dl40.errors) - _n40 - len(_reds40)
+    del _dl40.errors[_n40:]              # leave the gate module exactly as this pin found it
+    _a40 = (_date40 is not None and _eA40 == 1 and _cA40 == 1 and len(_reds40) == 1
+            and "1999-01-01" in _reds40[0])
+    _b40 = _eB40 == 1 and _cB40 == 1 and _extra40 == 0
+    _msg40 = (f"live pair v{_ver40} / {_date40}: wrong date -> {len(_reds40)} error, "
+              f"release's own date -> {_extra40} error")
+except Exception as _x40:                                    # a broken gate is RED, not a traceback
+    _a40 = _b40 = False
+    _msg40 = f"could not exercise it: {type(_x40).__name__}: {_x40}"
+
+check("v0.4.40 pin (PIN — MEASURED RED on pre-fix code, not inferred: with the committed "
+      "`c63a45a:tests/docs_links.py` restored into an otherwise identical tree, this suite reads "
+      "`2187 passed, 2 failed` and BOTH failures are this pair — `check_currency_dates` does not "
+      "exist there at all, so the axis cannot be said to have passed): the date axis FIRES on a "
+      "currency line carrying a date the CHANGELOG contradicts. That is the D3 leave-behind — a "
+      "version moved without its date — checked in-tree rather than only in a rehearsal. "
+      f"⚠ {_msg40}", _a40)
+check("v0.4.40 pin (the CONTROL for the check above: the same axis stays SILENT when the line "
+      "carries the release's own date, so a red is the axis discriminating rather than a rule "
+      "that flags every date)", _b40)
+
+# ── and the FAILING path's readout, which is where the pair was missing entirely ─────────────
+# The two arms above exercise `check_currency_dates` directly and read its RETURN VALUE — the
+# function whose semantics are correct. The defect this arm exists for is one level up, in
+# `main`'s control flow: the pair was printed only beside the ✓, and `checked != eligible` is
+# reachable only in a RED run, so the one distinction the pair was built to draw — "a dated
+# statement was found and then skipped" versus "there was nothing dated to skip" — could not be
+# printed at all. Every red run reported no counts. This drives the real `main()` down its failure
+# branch (one synthetic error, `errors` restored afterwards) and asserts the pair reaches stdout
+# there. ⚠ A PIN, not a guard: the committed `docs_links.py`'s `main` returns before its only
+# print, so this fails on pre-fix code by construction.
+try:
+    # ⚠ These two names are CENSUSED against the whole file rather than chosen for their look: this
+    # block is appended to a ~23 000-line module, so every name it binds shares one module scope
+    # with everything above it, and mypy carries ONE type per module-scope name. `_ctx40` and
+    # `_buf40` were the first choice and BOTH were already taken (`:8137` a SimpleNamespace,
+    # `:18627` a str) — same collision class as the `_m40` → `_msg40` rename the pin pair above
+    # needed. It is a typing error only (both earlier uses are textually before this block, so
+    # nothing reads the old value here), but it fails the CI typecheck job, and mypy caught it
+    # before CI this time.
+    import contextlib as _ctxrd40
+    import io as _io40
+    _sink40 = _io40.StringIO()
+    _n40b = len(_dl40.errors)
+    _dl40.errors.append("v0.4.40 pin: synthetic, to route main() down its failure path")
+    try:
+        with _ctxrd40.redirect_stdout(_sink40):
+            _rc40 = _dl40.main()
+    finally:
+        del _dl40.errors[_n40b:]        # leave the gate module exactly as this pin found it
+    # Exactly one line: on the failure path the ✓ line is never reached, so a second match would
+    # mean the gate had grown another readout — which is a change worth seeing, not smoothing over.
+    _pair40 = [ln for ln in _sink40.getvalue().splitlines()
+               if "dated statements checked" in ln]
+    _c40 = _rc40 == 1 and len(_pair40) == 1
+    _cmsg40 = (f"main() on the failure path: rc={_rc40}, pair lines={len(_pair40)}"
+               + (f" ({_pair40[0].strip()})" if _pair40 else " — NO COUNTS PRINTED"))
+except Exception as _x40b:                                  # a broken gate is RED, not a traceback
+    _c40 = False
+    _cmsg40 = f"could not exercise it: {type(_x40b).__name__}: {_x40b}"
+
+check("v0.4.40 pin (PIN — the failure path prints the dated-statement pair too; `checked != "
+      "eligible` is reachable ONLY in a red run, so printing the pair only beside the ✓ left the "
+      "one distinction it exists to draw unobservable, and every red run reported no counts): "
+      f"⚠ {_cmsg40}", _c40)
+
+# ── and the SIBLING plugin's STATUS header, which no gate read at all ─────────────────────────
+# Found 2026-09-21 while closing this arc's own coverage gaps. `plugins/dream-beta-tester/docs/
+# STATUS.md:1` states `dream-beta-tester v0.1.8`, and the doc was in NEITHER `DOCS` nor
+# `LIVE_DOCS` — both measured 0 — so nothing read the claim. It cannot simply be added to the
+# currency sweep either: that sweep is keyed to THIS plugin's manifest, and the sibling's doc
+# carries two version statements (its own `v0.1.8` and the `v0.1.85` it cites as provenance, a
+# consolidate-memory release) — neither equals `plugin.json`'s, so listing it there reds on both.
+# The manifest a doc tracks is the one beside it, so the check discovers it the way the
+# plugin-table check discovers its rows.
+# ⚠ TWO ARMS, and they are not two copies of one. The live arm is the VACUITY floor: a glob that
+# stops matching reads `0 headers` and prints exactly as green as a check that examined the tree,
+# which is the shape of the gap being closed. The firing arm is the DISCRIMINATION: a manifest
+# moved out from under its header must be red, naming both versions.
+# ⚠ The firing arm repoints `docs_links.ROOT`, and `PLUGIN` is bound at IMPORT — it does NOT move
+# with it. So this arm doubles as the control for that trap: a repoint that no-opped would leave
+# the function reading the LIVE manifest against the LIVE header, which agree, and the arm would
+# go GREEN — failing the pin rather than quietly proving nothing.
+try:
+    import json as _jsonpsd40
+    import shutil as _shpsd40
+    import tempfile as _tfpsd40
+    _psdroot40 = _dl40.ROOT                     # the live tree, captured before anything moves
+    _psdn40 = len(_dl40.errors)
+    _psdlive40 = _dl40.check_plugin_status_docs()
+    _psdliveerr40 = len(_dl40.errors) - _psdn40
+    del _dl40.errors[_psdn40:]
+    _psda40 = _psdlive40 >= 1 and _psdliveerr40 == 0
+    _psdamsg40 = f"live tree: {_psdlive40} header(s) checked, {_psdliveerr40} error(s)"
+
+    _psdtmp40 = Path(_tfpsd40.mkdtemp(prefix="smoke-docs-status-"))
+    try:                                        # ── the firing arm, on a two-file tree ────────
+        _psdart40 = _psdtmp40 / "plugins" / "dream-beta-tester"
+        (_psdart40 / ".claude-plugin").mkdir(parents=True)
+        (_psdart40 / "docs").mkdir(parents=True)
+        (_psdart40 / ".claude-plugin" / "plugin.json").write_text(
+            _jsonpsd40.dumps({"name": "dream-beta-tester", "version": "0.1.9"}), encoding="utf-8")
+        (_psdart40 / "docs" / "STATUS.md").write_text(
+            "# Dream Beta-Harness — STATUS (dream-beta-tester v0.1.8 · built 2026-06-21)\n",
+            encoding="utf-8")
+        _dl40.ROOT = _psdtmp40
+        _psdn40b = len(_dl40.errors)
+        _psdret40 = _dl40.check_plugin_status_docs()
+        _psderr40 = _dl40.errors[_psdn40b:]
+        del _dl40.errors[_psdn40b:]
+    finally:
+        _dl40.ROOT = _psdroot40                 # restored even if the arm itself blew up
+        _shpsd40.rmtree(_psdtmp40, ignore_errors=True)
+    # Both operands named, and NOT truncated: the manifest's version must be the one the line was
+    # measured against, and the line's own stated versions must appear as they are — a cut message
+    # hides exactly the operand a reader needs to adjudicate a red.
+    _psdtext40 = " ".join(_psderr40)
+    _psdb40 = (_psdret40 == 0 and len(_psderr40) == 1
+               and "v0.1.9" in _psdtext40 and "['0.1.8']" in _psdtext40)
+    _psdbmsg40 = f"bumped manifest: ret={_psdret40}, errors={len(_psderr40)} — {_psdtext40}"
+except Exception as _psdx40:                    # a broken gate is RED, not a traceback
+    _psda40 = _psdb40 = False
+    _psdamsg40 = _psdbmsg40 = f"could not exercise it: {type(_psdx40).__name__}: {_psdx40}"
+
+check("v0.4.40 pin (PIN — the sibling plugin's STATUS header is READ AT ALL; pre-fix this fails "
+      "by ABSENCE, the committed gate has no `check_plugin_status_docs`, so the assertion can only "
+      "have been satisfied by the function it is about): "
+      f"⚠ {_psdamsg40}", _psda40)
+check("v0.4.40 pin (the CONTROL for the check above: the same check FIRES on a manifest moved out "
+      "from under its header — exactly one error, naming both the manifest's version and what the "
+      "line states. Without this arm the one above is satisfied by a glob that matches nothing, "
+      "which is the gap it was written to close): "
+      f"⚠ {_psdbmsg40}", _psdb40)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
       passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 7 + 18 + 5 + 4 + 31 + 5 + 6 + 4 + 8 + 2 + 1 + 1 + 3
                             + 5 + 2 + 1 + 1 + 1
                             + 1
-                            + 10)
+                            + 10
+                            + 2
+                            + 1
+                            + 2)
+                                                        # +2: v0.4.40 pin — the SIBLING plugin's
+                                                        #     STATUS header, in-tree. ⚠ Counted
+                                                        #     separately from the +2 above, which is
+                                                        #     this plugin's DATE axis: that one reads
+                                                        #     a date beside a version, this one
+                                                        #     reads another manifest's version with
+                                                        #     no date axis at all (its doc says the
+                                                        #     plugin has no CHANGELOG). A pin and
+                                                        #     its CONTROL: the live arm is the
+                                                        #     vacuity floor, the firing arm the
+                                                        #     discrimination, and neither
+                                                        #     substitutes for the other.
+                                                        # +1: v0.4.40 pin — the FAILURE path's
+                                                        #     readout, added the day the gap was
+                                                        #     found. `main` printed the pair only
+                                                        #     beside the ✓, and the collapse to
+                                                        #     `0 of 2` is reachable ONLY in a red
+                                                        #     run — so the one distinction the pair
+                                                        #     exists to draw was unprintable.
+                                                        #     ⚠ Counted separately from the +2
+                                                        #     above, and it is not padding: those
+                                                        #     two read a function's RETURN VALUE,
+                                                        #     this one drives `main()` and reads
+                                                        #     its STDOUT. The defect lived in the
+                                                        #     call, not the function.
+                                                        # +2: v0.4.40 pin — the date axis's
+                                                        #     discriminating PAIR, in-tree. Both
+                                                        #     are PINs (pre-fix has no
+                                                        #     `check_currency_dates` at all), and
+                                                        #     they are counted separately on
+                                                        #     purpose: the negative arm alone is
+                                                        #     satisfied by a rule that flags every
+                                                        #     date, and the positive arm alone by
+                                                        #     one that flags none. Neither is
+                                                        #     padding for the other.
+                                                        #     ⚠ They read the LIVE release pair,
+                                                        #     not a frozen one, so a bump re-arms
+                                                        #     them rather than decaying them — and
+                                                        #     they assert `checked` counts
+                                                        #     COMPARISONS performed, not
+                                                        #     comparisons that passed, which is
+                                                        #     what makes the printed denominator a
+                                                        #     vacuity signal instead of a score.
                                                         # +1: v0.4.37 PR B pin 10 — every workflow
                                                         #     JOB that runs the suite also gives it
                                                         #     HISTORY. A PIN rather than a guard:

@@ -11,8 +11,8 @@ by Python version or OS.
 Invariants:
 
 1. **Badge ↔ manifest.** The shields version badge is a hand-written URL that nothing else
-   reads, so it silently drifts from plugin.json. `release.sh` rewrites both in the same
-   commit; this asserts they agree.
+   reads, so it silently drifts from plugin.json. Both are bumped BY HAND together on the
+   feature branch, and `release.sh --stage` validates the result; this asserts they agree.
 2. **Every relative link in the checked set resolves the way GitHub resolves it** —
    doc-relative with no repo-root fallback, raw HTML `href`/`src` included. **The set is
    `DOCS` below, which is a CURATED list and not the closure of the README's links** — two
@@ -62,6 +62,25 @@ Invariants:
    and nothing regenerates it on its own. It had drifted for two releases — v0.4.22 changed
    the reason-string format and v0.4.24 the dimmed-node CSS, and the README's linked preview
    still shipped both superseded.
+9. **A dated currency statement carries its release's date — and the release itself is dated.**
+   A release moves the version and the date beside it together, and nothing else reads that
+   date: the bump is hand-authored, and a person typing a version is exactly as likely to leave
+   its date behind as the old sweep was. Both halves are required, and neither substitutes for
+   the other. `check_currency_dates` compares a live doc's paired date against the CHANGELOG's
+   date for *the version that doc names*. `check_changelog_dated` refuses the state in which
+   there is nothing to compare against: while `plugin.json` names a version the CHANGELOG has
+   not dated — precisely the pair `--stage` verifies and `--finalize` tags — the gate is red.
+   Without the second, the first prints a green success line over an axis that examined nothing,
+   because the `— UNRELEASED` window is the state this repo authors its releases in.
+10. **Each plugin's `docs/STATUS.md` opens on its OWN manifest's version.** Invariant 6 is keyed to
+   ONE manifest, so a doc whose opening statement is about a *different* plugin is not merely
+   unchecked — listed there it would be checked *wrongly*. Measured on this tree: putting
+   `plugins/dream-beta-tester/docs/STATUS.md` into `LIVE_DOCS` reds on **two** of its statements
+   (`v0.1.8`, its own manifest's — `0.1.8` — and `v0.1.85`, a consolidate-memory release the doc
+   cites as provenance, which lives in *this* CHANGELOG), because neither equals `plugin.json`'s.
+   So the sibling's header is checked against the manifest BESIDE it, discovered the way invariant
+   7's rows are rather than named — a third plugin's STATUS.md is covered the day it lands. ⚠ One
+   site, pinned like the badge, and the boundary is stated in the function rather than implied.
 
 Run:  python3 tests/docs_links.py   (exit 0 = clean)
 """
@@ -112,6 +131,11 @@ DOCS = [
     "plugins/consolidate-memory/skills/consolidate-memory/references/harness-map.md",
     "plugins/dream-beta-tester/docs/SPEC.md",
     "plugins/dream-beta-tester/docs/CONTRACT.md",
+    # The sibling plugin's own status doc. It sat in NEITHER this set NOR `LIVE_DOCS` — both
+    # measured 0 — while its opening line stated `dream-beta-tester v0.1.8`, so no gate read that
+    # claim and none of its outbound links were checked. Listed here for the links (invariant 2);
+    # its version is read by `check_plugin_status_docs` (invariant 10).
+    "plugins/dream-beta-tester/docs/STATUS.md",
     # No markdown link reaches this one under the matcher this gate walks — `](...)`
     # destinations in tracked files, doc-relative — measured, not assumed. ⚠ The bound is
     # that matcher and not the tree, and the difference is a DIRECTORY link, which the walk
@@ -128,7 +152,9 @@ DOCS = [
 # are each one hop PAST an entry above, and neither is listed. Depth is not the rule —
 # `docs/redos-guard-linearity.spec.md` above is also a 2-hop arrival and IS listed — and
 # neither is unreachability: both are linked from markdown in the tree — `SPEC-A.md`
-# from `SPEC.md` and `STATUS.md`, `CLAUDE.md` from `CONTRIBUTING.md`. Membership is a
+# from `SPEC.md` and `STATUS.md`, `CLAUDE.md` from `CONTRIBUTING.md`. ⚠ Both of those
+# linkers are listed ABOVE, and listing a linker lists nothing it points at: `check_links`
+# iterates this list, it is not the closure of it. Membership is a
 # judgment about reader-facing-ness, and these two are where that judgment was measured to
 # stop, not a rule that derives it. ⚠ The EDGE is the edge of THIS WALK, not of arrival: the
 # walk follows markdown destinations from a linking `.md` and filters to tracked `.md`, so a
@@ -170,6 +196,22 @@ LIVE_DOCS = [
 # `**1.0.0**` is the release that checklist certifies rather than the one it describes.
 _CURRENCY = re.compile(r"\bv(\d+\.\d+\.\d+)\b")
 
+# The date a currency statement pairs with its version. The `v` in _CURRENCY is what makes a
+# statement *currency*; the date beside it is what makes that statement a claim about *when*,
+# and no gate read it before v0.4.40. `release.sh`'s old sweep moved the version and left the
+# date behind; that sweep is gone — the bump is hand-authored now — which is why the pair needs
+# a gate MORE than it did before rather than less. Word-bounded on purpose: an unbounded
+# `\d{4}-\d{2}-\d{2}` would also match the first ten characters of a longer number.
+_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+# `## [0.4.38] — 2026-09-19`. The top section reads `— UNRELEASED` until the release stamps it,
+# which is why `changelog_date` returns None rather than "": an absent date claim is not a
+# wrong one, and a version the CHANGELOG has not dated yet is not a version with a bad date.
+# ⚠ That tolerance is scoped to the CYCLE — a manifest still naming the shipped version. The
+# moment `plugin.json` names the undated one, `check_changelog_dated` makes it an error: that
+# pair is what a release ships, and `None` there silences the whole date axis.
+_HEADING = re.compile(r"^## \[(\d+\.\d+\.\d+)\] — (.*)$")
+
 # Inline code spans and fenced blocks are stripped before scanning: a doc may legitimately
 # *show* a path (`~/.claude/projects/<slug>/dashboards/index.html`) or a link-shaped example
 # that is not a repo file. Both are stripped for anchors too, since a fenced example can
@@ -199,6 +241,27 @@ def read(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
 
 
+def changelog_date(version: str) -> str | None:
+    """The date the CHANGELOG pairs with `version`, or None when it makes no date claim.
+
+    Deliberately uncached: one full scan costs ~1.4 ms (measured, n=20, on the ~500 KB
+    CHANGELOG), so the calls a full pass makes — one per dated statement (two today), plus
+    `check_changelog_dated`'s own probe of the manifest's version, three measured — add ~4 ms
+    to a gate that runs in ~100 ms. Cheaper than the mutable module state a cache would need,
+    and it keeps this a pure function.
+
+    Reads the date of the version it is ASKED about rather than plugin.json's, so the two axes
+    stay independent: a doc left on a stale version still gets its date checked against *that*
+    release, and the version error is reported once rather than twice.
+    """
+    for line in read("CHANGELOG.md").splitlines():
+        m = _HEADING.match(line)
+        if m and m.group(1) == version:
+            found = _DATE.findall(m.group(2))
+            return found[0] if found else None
+    return None
+
+
 def check_badge() -> None:
     """The shields badge and plugin.json carry the same version."""
     if not PLUGIN.is_file():
@@ -212,14 +275,14 @@ def check_badge() -> None:
         return
     if badge.group(1) != version:
         err(f"README version badge is {badge.group(1)!r} but plugin.json is {version!r} — "
-            "release.sh bumps both; a hand-edit drifted one of them")
-    # Every alt, not the first: release.sh substitutes the first match only, so a second
-    # same-shaped badge higher up would let the tool bump the wrong one and leave the real
-    # badge's alt stale while this gate still reported green.
+            "both are hand-bumped together; one of them drifted")
+    # EVERY alt, not the first: nothing substitutes these any more, so the only thing that keeps
+    # them in step is a reader noticing — and a second same-shaped badge higher up would let a
+    # hand edit move one and leave the other stale while this gate still reported green.
     alts = re.findall(r'alt="Version ([0-9.]+)"', readme)
     if not alts:
-        err('README.md version badge has no alt="Version X.Y.Z" — release.sh rewrites that '
-            "alt in the same commit as plugin.json, so its absence silently unenforces it")
+        err('README.md version badge has no alt="Version X.Y.Z" — the alt carries its own copy '
+            "of the version, and an absent one is unenforceable rather than correct")
     for a in alts:
         if a != version:
             err(f"README version badge alt text says {a!r}, plugin.json says {version!r}")
@@ -515,8 +578,70 @@ def check_themes() -> None:
                 f"({', '.join(shipped)}) — a row left behind by a removed theme")
 
 
-def check_version_statements() -> None:
-    """Each live doc names the current release, and names it first.
+def check_currency_dates(rel: str, where: str, stated: str, line: str) -> tuple[int, int]:
+    """A currency statement that carries a date must carry the release's date.
+
+    Returns (eligible, checked): `eligible` is 1 when the line carries a date at all, `checked`
+    is 1 when that date was actually compared against the release's. They differ in exactly one
+    state — the CHANGELOG has not dated the version the statement names — and that state is
+    ALWAYS a red one, because a green run requires every statement to name the manifest's version
+    and the undated case is the one `check_changelog_dated` refuses. So `main` prints the pair on
+    the failing path as well: a single number reads the same whether the axis examined both sites
+    or skipped both, and the only run that can tell them apart is the one that never reached the
+    ✓. "0 of 2" is the skip; "0 of 0" is a tree with nothing dated.
+
+    Four of the six live docs put no date on their statement, which is why the denominator is not
+    `len(LIVE_DOCS)`: reporting six would claim coverage this check does not have.
+
+    Called *from* `check_version_statements`'s walk rather than given a walk of its own: that
+    loop already has the currency claim's line in hand, and a second sweep would be a second
+    copy of the rule — the defect class this whole division exists to close.
+
+    ⚠ Scope is the currency claim's own line — never a `v`-token's line, never file-wide.
+    Measured: `docs/1.0-preflight.spec.md` carries six `2026-` lines in total, and `:18` pairs
+    a HISTORICAL token with a date the CHANGELOG contradicts (`v0.4.2` against `## [0.4.2] —
+    2026-09-03`), so a file-wide sweep would redden the current, correct tree. The caller's
+    `break` is load-bearing for the same reason: it stops at the first currency line, so `:18`
+    is never reached.
+
+    Every date on that line must agree. Both dated sites today carry exactly one date, so this
+    is not yet a distinction — but the statement makes ONE claim about *when*, and a second,
+    different date on the same line is a stale date sitting beside the current version, which
+    is the defect rather than an exception to it.
+    ⚠ That rule is a deliberate OVER-approximation, stated because the message must not claim
+    more than the check can do: a `findall` over a physical line cannot bind a date to a token,
+    so a line that names a superseded release *with its date* reads as a second date on the
+    currency line and reds. The error says what was seen and what the rule is, never which token
+    the date belongs to and never why the author moved it — a re-verification that re-dates a
+    statement is a real edit, and naming a release as the cause would be a diagnosis the check
+    cannot make.
+
+    ⚠ KNOWN BLIND SPOT, measured — this reads PHYSICAL lines, so it sees the pair only while
+    both tokens share one. A reflow that puts a line break between the version and its date
+    leaves the currency line undated, and the check SKIPS rather than firing: a fixture doing
+    exactly that reports `1 of 1` where the tree carries two dated statements, with no error.
+    Widening the scope to a window of following lines is what would fix it, and is also what
+    would rediscover the `:18` false positive above — the two constraints are in direct tension,
+    and the narrower scope was chosen. The ELIGIBLE count is the trace, not the checked one: if
+    it falls without a doc having dropped its date, look for a wrap.
+    """
+    dates = _DATE.findall(line)
+    if not dates:
+        return 0, 0
+    expected = changelog_date(stated)
+    if expected is None:
+        return 1, 0
+    for d in dates:
+        if d != expected:
+            err(f"{rel}{where}: the v{stated} statement's line carries {d}, but the CHANGELOG's "
+                f"`## [{stated}]` section is dated {expected} — every date on a currency line "
+                "must be its release's date")
+    return 1, 1
+
+
+def check_version_statements() -> tuple[int, int]:
+    """Each live doc names the current release, and names it first — and, if it dates that
+    statement, names the release's date with it.
 
     The convention this rests on: the FIRST `vX.Y.Z` in a live doc is its currency
     statement. All six put it in the opening lines today (the introduction, the status
@@ -527,11 +652,21 @@ def check_version_statements() -> None:
 
     A missing statement is an error too, not a skip: otherwise the cheapest fix for a red
     gate would be deleting the line that tripped it.
+
+    Returns (eligible, checked) — the dated statements the walk found, and the ones it could
+    compare against a release date — the way `check_plugin_table` returns its row count: a
+    reader must be able to tell "0 problems in 2 dated statements" from "0 problems in 0", and
+    a check that has silently stopped examining anything prints as green as one that examined
+    everything. Two numbers rather than one, because `check_currency_dates` skips a dated
+    statement whose release the CHANGELOG has not dated: a single count cannot separate "nothing
+    was dated" from "everything dated was skipped", and the state that does the skipping is the
+    one this repo authors its releases in.
     """
     if not PLUGIN.is_file():
         err("missing plugins/consolidate-memory/.claude-plugin/plugin.json")
-        return
+        return 0, 0
     version = json.loads(PLUGIN.read_text(encoding="utf-8")).get("version", "")
+    eligible = checked = 0
     for rel in LIVE_DOCS:
         path = ROOT / rel
         if not path.is_file():
@@ -542,13 +677,55 @@ def check_version_statements() -> None:
             m = _CURRENCY.search(line)
             if m:
                 stated, where = m.group(1), f":{n}"
+                e, c = check_currency_dates(rel, where, stated, line)
+                eligible += e
+                checked += c
                 break
         if stated is None:
             err(f"{rel}: no `vX.Y.Z` statement of the current release — a live doc opens by "
                 f"naming the release it describes (expected v{version})")
         elif stated != version:
-            err(f"{rel}{where}: states v{stated} but plugin.json is {version} — the version "
-                "sweep missed this file")
+            err(f"{rel}{where}: states v{stated} but plugin.json is {version} — the hand-bump "
+                "missed this file")
+    return eligible, checked
+
+
+def check_changelog_dated() -> None:
+    """The release the manifest claims must be DATED in the CHANGELOG.
+
+    This is the half D3 did not close. `changelog_date` returns None both for a version the
+    CHANGELOG never dated and for one it never mentions; `check_currency_dates` then SKIPS a
+    dated statement whose release has no date to compare against. So an undated top section
+    silences the date axis for every doc that names it, while every other check stays green.
+    MEASURED before this check existed: a tree whose CHANGELOG top reads `## [0.4.40] —
+    UNRELEASED` with real notes passed `--stage`, passed `--finalize`, shipped, and printed a
+    success line over an axis that examined nothing. The silence is not hypothetical — the
+    `— UNRELEASED` window is the state this repo authors its releases in, and nothing stamped
+    it: the convention had no producer anywhere in the tooling.
+
+    The discriminator is `plugin.json`, and it is the one `--stage` already verifies: the
+    pre-bump contract makes "the manifest equals the CHANGELOG's version" the RELEASABLE state,
+    so a manifest naming an undated version is a release that cannot be honestly dated. A
+    manifest BEHIND the CHANGELOG — the mid-cycle state, where the next section is authored
+    `— UNRELEASED` and the manifest still names the shipped one — stays green, because there is
+    no release to date yet. Requiring the TOP section to be dated would red on every cycle;
+    requiring the MANIFEST'S version to be dated reds exactly when shipping would be wrong.
+
+    ⚠ The remedy is to date the section, never to drop the version from the heading: the version
+    axis reads that heading, and so does the release harness.
+    """
+    if not PLUGIN.is_file():
+        err("missing plugins/consolidate-memory/.claude-plugin/plugin.json")
+        return
+    version = json.loads(PLUGIN.read_text(encoding="utf-8")).get("version", "")
+    if not version:
+        return  # a versionless manifest is reported per doc by check_version_statements
+    if changelog_date(version) is None:
+        err(f"plugin.json is {version}, but CHANGELOG.md dates no `## [{version}]` section — "
+            "that pair is what ships, and an undated section leaves every dated currency "
+            "statement with nothing to check against (stamp the section if it exists, author it "
+            "if it does not — `changelog_date` returns None for both, so this message cannot tell "
+            "you which and names both remedies rather than the wrong one)")
 
 
 def check_plugin_table() -> int:
@@ -598,6 +775,56 @@ def check_plugin_table() -> int:
             err(f"{rel}:{where}: the plugin table says {name} is {stated!r} but its manifest is "
                 f"{version!r} — a table cell is a current-version claim the `v`-sweep cannot see")
     return len(manifests)
+
+
+def check_plugin_status_docs() -> int:
+    """Each plugin's `docs/STATUS.md` opens on its OWN manifest's version, and nothing read it.
+
+    Returns the number of headers checked, so `main` can report the coverage instead of implying it.
+
+    Invariant 6, one manifest out. `check_version_statements` walks `LIVE_DOCS` against `PLUGIN` —
+    consolidate-memory's manifest — so a doc opening on a DIFFERENT plugin's version is not only
+    unchecked, it is checked *wrongly* if listed there (measured: two errors, invariant 10). The
+    manifest such a doc tracks is the one beside it, so this discovers it the way
+    `check_plugin_table` discovers its rows rather than naming it: `plugins/*/.claude-plugin/
+    plugin.json`, paired with `plugins/<name>/docs/STATUS.md`. A third plugin is covered on landing.
+
+    ⚠ THE SITE IS THE OPENING LINE, and that is a boundary rather than a claim of coverage. The
+    sibling's own line 6 restates the same figure as a bare `**0.1.8**`, which carries no `v` and
+    so is not a currency statement under `_CURRENCY` — this check does not read it. One site, pinned
+    the way the badge and the plugin table are, and the class is not offered.
+
+    ⚠ Paths are built from `ROOT` AT CALL TIME, never from the module-level `PLUGIN` constant. That
+    is not style: `PLUGIN` is bound at import, so a caller that repoints `ROOT` — the in-tree pin in
+    `tests/smoke.py` does exactly that, to exercise this check against a two-file fixture — would
+    still have it reading the live manifest, and the pin would pass on a tree that never changed.
+    """
+    plugins = ROOT / "plugins"
+    checked = 0
+    for manifest in sorted(plugins.glob("*/.claude-plugin/plugin.json")):
+        name = manifest.parent.parent.name
+        rel = f"plugins/{name}/docs/STATUS.md"
+        path = ROOT / rel
+        if not path.is_file():
+            continue                        # optional per plugin — the printed count is the coverage
+        version = json.loads(manifest.read_text(encoding="utf-8")).get("version", "")
+        if not version:
+            err(f"{rel} tracks {name!r}'s manifest, which carries no version — the check cannot run")
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+        first = lines[0] if lines else ""
+        if f"v{version}" not in first:
+            err(f"{rel}:1: the opening line is this plugin's currency statement and must carry "
+                f"v{version}, {name!r}'s manifest version; it states "
+                f"{_CURRENCY.findall(first)!r} — a header that outlives its manifest is the same "
+                "drift invariant 6 catches, one plugin out")
+        elif name not in first:
+            err(f"{rel}:1: the line carries v{version} but never names {name!r} — this check pairs "
+                "each manifest with the header beside it, so a header naming no plugin cannot be "
+                "attributed to one")
+        else:
+            checked += 1
+    return checked
 
 
 def check_preview() -> None:
@@ -655,20 +882,35 @@ def main() -> int:
     check_required_strings()
     check_contiguity()
     check_themes()
-    check_version_statements()
+    check_changelog_dated()
+    dated_eligible, dated_checked = check_version_statements()
     plugin_rows = check_plugin_table()
+    status_headers = check_plugin_status_docs()
     check_preview()
     if errors:
         print("✗ documentation gate FAILED:")
         for e in errors:
             print(f"  - {e}")
+        # ⚠ THE PAIR PRINTS ON THIS PATH TOO, and it is not decoration. `checked != eligible` is
+        # reachable ONLY here: a green run requires every statement to name the manifest's version,
+        # and the undated case is exactly what `check_changelog_dated` refuses — so printing the
+        # pair only beside the ✓ made the one distinction it exists to draw unobservable, since
+        # every run that reaches the ✓ has the two numbers equal by construction. It prints as a
+        # parenthesized aside rather than a `  - ` line, so it is never read as another error.
+        print(f"  ({dated_checked} of {dated_eligible} dated statements checked)")
         return 1
     version = json.loads(PLUGIN.read_text(encoding="utf-8"))["version"]
     # The denominators are not decoration: without them a reader cannot tell "0 problems in 7
     # required strings" from "0 problems in 0", and a check that has silently stopped examining
-    # anything prints exactly as green as one that examined everything.
+    # anything prints exactly as green as one that examined everything. The date axis prints a
+    # PAIR for the same reason: those two numbers differ exactly when a dated statement was
+    # found and then skipped, which is the one failure a single count cannot express — and since
+    # that state is always a RED one, the pair is printed on the failing path above as well.
     print(f"✓ docs valid (badge + {len(LIVE_DOCS)} live-doc statements at v{version}, "
-          f"{plugin_rows} plugin-table rows, {len(DOCS)} files link-checked, "
+          f"{dated_checked} of {dated_eligible} dated statements checked, "
+          f"{plugin_rows} plugin-table rows, "
+          f"{status_headers} plugin STATUS headers, "
+          f"{len(DOCS)} files link-checked, "
           f"{len(REQUIRED_IN_README)} required strings unbroken, anchors balanced, "
           "preview current)")
     return 0

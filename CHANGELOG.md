@@ -5,6 +5,93 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.40] — 2026-09-21
+
+**Patch — the release's version/date pair gets a gate, and four documents stop describing a
+release tool that no longer exists.**
+
+A release moves two things together: the version, and the date printed beside it. `release.sh`'s
+old bump moved the version and left the date behind, and nothing read the date — so a live doc
+could state the current version while still carrying a date the CHANGELOG contradicted. The bump
+is hand-authored now, which makes the pair need a gate *more* than before rather than less: a
+person typing a version is exactly as likely to leave its date behind as a script was.
+
+1. **`tests/docs_links.py` checks the date a currency statement pairs with its version.**
+   `check_currency_dates` runs *from* the existing first-`vX.Y.Z` walk rather than getting a
+   sweep of its own — that loop already has the claim's line in hand, and a second sweep would
+   be a second copy of the rule. A doc that dates its statement must carry the CHANGELOG's date
+   for the version it names. The gate reports that as a **pair** — *"2 of 2 dated statements
+   checked"* — and the pair is the instrument rather than a flourish: the first number counts
+   comparisons **performed**, so a skipped statement shows as one number falling while the other
+   holds, and a single count could not separate *"nothing was dated"* from *"everything dated
+   was skipped"*. The **failing** path prints it too, and has to: a skipped statement forces a
+   red run, so a readout that existed only beside the ✓ could never have shown the fall it
+   describes. Scope is the claim's own physical line, deliberately: the
+   spec's ops-HOLD line carries a **historical** `v0.4.2` beside a `2026-08-31` date while the
+   CHANGELOG dates `0.4.2` at `2026-09-03`, so a file-wide sweep would redden a correct tree.
+   The blind spot that buys — a reflow separating a version from its date — is recorded in the
+   function and is the one arm the mutation harness still measures green, visible as `1 of 1`
+   where an untouched tree reads `2 of 2`.
+
+2. **An undated release section is refused, not tolerated.** `check_changelog_dated` closes a
+   hole the check above cannot close from inside: `changelog_date` returns `None` both for a
+   version the CHANGELOG never dated and for one it never mentions, and on `None` the date axis
+   **skips** every statement it was about to compare, with every other check still green. Measured, the state is reachable and is the state this repository releases from: a
+   CHANGELOG whose top section reads `— UNRELEASED` with real notes passed `--stage`, passed
+   `--finalize`, and shipped — nothing stamped the heading, and nothing required it: the
+   convention had no producer anywhere in the tooling. The discriminator is `plugin.json` —
+   the manifest's version has to be a version the CHANGELOG dates — which is the same pair the
+   release harness verifies, so the gate reds exactly when shipping would be wrong and stays
+   green mid-cycle, when the next section sits undated above a manifest still naming the
+   shipped release.
+
+3. **The release-flow prose matches the tool.** Four documents (`CLAUDE.md`, `AGENTS.md`,
+   `docs/1.0-preflight.spec.md` and `.github/workflows/release.yml`) described `--stage` as
+   bumping `plugin.json`, committing `release: vX.Y.Z`, pushing `release/vX.Y.Z` and opening a
+   release PR, with a *"pre-bump preferred … `--stage` is a no-op"* fallback and a release PR
+   as the last-minute-bump escape. None of that is true: `--stage` **verifies, never authors**
+   — it asserts the hand-bumped `plugin.json` already equals the CHANGELOG version, refuses
+   otherwise, and runs the validators. No gate reads this prose, which is why it drifted: the
+   tool changed in a gitignored file, and the committed docs describing it did not follow.
+
+4. **Three coverage gaps on the release path, closed.** The first two are the same gap in two
+   places: `docs_links.py` ran in `ci.yml` and **nowhere else** — the `release.yml` verify job ran
+   smoke, the accumulation sim and the manifest validator, and `./release.sh --finalize` ran no
+   validator at all, so the one path that *tags and ships* validated no bytes. Both now run it, and
+   neither call repeats `ci.yml`: that job judges the PR's **head**, and the tag goes on the
+   **merge commit**, which a conflict resolution or an "Update branch" can change after CI last
+   said green. The third is a claim with no reader: `plugins/dream-beta-tester/docs/STATUS.md:1`
+   states `dream-beta-tester v0.1.8`, and the doc was in neither `DOCS` nor `LIVE_DOCS` — both
+   measured 0 — so its links went unchecked and its version unread. It cannot simply join the
+   currency sweep either, which is keyed to *this* plugin's manifest: the sibling's own `v0.1.8`
+   and the `v0.1.85` it cites as provenance are both "wrong" against `0.4.40`. So
+   `check_plugin_status_docs` pairs each discovered `plugins/*/` manifest with the `docs/STATUS.md`
+   beside it — discovered the way the plugin-table rows are, so a third plugin is covered the day
+   it lands — and the boundary is stated rather than implied: one site, the doc's opening line,
+   the way the badge and the table are one site each.
+
+Evidence: the date gate caught a real defect before it ever shipped — the `v0.4.39` bump left
+both paired dates at `2026-09-19` against a `## [0.4.39] — 2026-09-20` section, and it was the
+only instrument that could: `ci.yml` runs the committed `docs_links.py`, which is blind to
+dates. Six mutation arms run on a copy of this tree — one is a no-mutation control, and one edits
+both live sites in a single arm: the leave-behind drives the gate red on each live pair, one
+error apiece (the two-site arm reports their sum) while the version axis stays green throughout,
+the `— UNRELEASED` window and a broken heading matcher each drive it red through the guard — both
+were green blind spots before it existed — and the reflow remains the single recorded blind spot,
+green at `1 of 1`. The arms are separated by the pair each red now prints: a real date divergence
+leaves the axis running (`2 of 2 dated statements checked`), a disabled one reads `0 of 2`. That
+discrimination was previously unprintable — the pair went out only beside the ✓, and
+`checked != eligible` is reachable ONLY in a red run — so every red reported no counts at all,
+and the failing path now carries it too, as a parenthesized aside rather than a `- ` line. Three
+in-tree pins in `tests/smoke.py` cover the axis: the first pair reads `check_currency_dates`'
+return directly and is RED against the pre-arc `docs_links.py`, where it does not exist; the third
+drives `main()` down its failure path and reads its stdout. Each is measured as a contrast, not
+asserted: an earlier gate restored into a `cp -a` copy of the tree, `diff -rq` showing the copy
+and the original differ in exactly one file, and the two runs differing by exactly the pins that
+are red. Two further pins cover item 4's sibling header and fail the same way — RED *by absence*,
+since a gate that predates `check_plugin_status_docs` cannot run it, which the arm reports as the
+`AttributeError` it is rather than as a traceback out of the suite.
+
 ## [0.4.39] — 2026-09-20
 
 **Patch — one defect on two arms: the dream read a project's transcripts from the STORE's slug only, so
