@@ -60,8 +60,10 @@ jobs:
           PY
       # docs_links.py joins the other three here rather than only in `ci.yml`. Both run the same
       # gate, but they gate different bytes: `ci.yml` judges the PR's head, and this judges the
-      # tree the TAG will be cut on — the same tree `release.sh --finalize` reads. A tag is the
-      # one artifact no later PR can correct, so it is the wrong place to be one workflow short.
+      # commit the TAG was cut on — the revision `release.sh --finalize` names and compares,
+      # though that tool's own validators read the WORKING TREE rather than the tagged commit.
+      # A tag is the one artifact no later PR can correct, so it is the wrong place to be one
+      # workflow short.
       # (History: until v0.4.40 this step ran three validators and the docs gate was absent from
       # every release-path job, so a doc that went stale between the merge and the tag — or a
       # version/date pair the tag path never read — could ship on a green release.)
