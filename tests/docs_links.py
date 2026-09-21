@@ -620,10 +620,13 @@ def check_currency_dates(rel: str, where: str, stated: str, line: str) -> tuple[
     both tokens share one. A reflow that puts a line break between the version and its date
     leaves the currency line undated, and the check SKIPS rather than firing: a fixture doing
     exactly that reports `1 of 1` where the tree carries two dated statements, with no error.
-    Widening the scope to a window of following lines is what would fix it, and is also what
-    would rediscover the `:18` false positive above — the two constraints are in direct tension,
-    and the narrower scope was chosen. The ELIGIBLE count is the trace, not the checked one: if
-    it falls without a doc having dropped its date, look for a wrap.
+    Widening the scope to a window of following lines would fix it. It was not taken, and not
+    for safety: the `:18` false positive above is reached by a FILE-WIDE sweep, never by a
+    window — `:18` sits ten lines below the currency line, where a reflow bridges one. The
+    reason is scope: a window's correctness would rest on each document's layout, where the
+    claim's own line is the claim's own extent by construction. The ELIGIBLE count is the
+    trace, not the checked one: if it falls without a doc having dropped its date, look for a
+    wrap.
     """
     dates = _DATE.findall(line)
     if not dates:
