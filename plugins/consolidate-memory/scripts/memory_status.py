@@ -804,13 +804,28 @@ def suggested_tier(git_commits: float, session_candidates: float) -> str:
     return "HEAVY"
 
 
+# prune_pressure's reason vocabulary — this constant, "many-facts", or "" (clear). ⚠ The over-TARGET
+# token is NAMED rather than copied because it has TWO homes in this module: the producer below and the
+# suppression predicate in print_report() that decides whether to PRINT the line. Two bare literals were
+# a silent-drift coupling — a rename on one side left the suppression matching nothing, the redundant
+# line quietly reappeared, and no check could see it. That is print_report's own stated rule
+# ("derive, don't duplicate") applied to a token.
+# ⚠ `-target` is the precise word, and the imprecision WAS the finding: this fires on INDEX_TOKEN_BUDGET
+# (the 1500 TARGET rung). INDEX_CEILING_TOKENS is the second, HARDER rung and reports separately as
+# remediation.over_ceiling — so one live record can carry a prune_reason of this token beside
+# `over_ceiling: false`. "budget" is the word the ladder reserves for the WHOLE two-rung ladder, so
+# naming the LOWER rung with it read as the upper one.
+PRUNE_REASON_INDEX_OVER_TARGET = "index-over-target"
+
+
 def prune_pressure(index_over: bool, memories_reviewed: int) -> tuple[bool, str]:
     """Whether the pass MUST prune-or-propose regardless of magnitude tier, plus the
-    reason. Set when the always-loaded index is over budget OR the store already holds a
-    large number of facts. Orthogonal to suggested_tier: a 100-fact store needs prune
-    rigor even on a 1-candidate pass."""
+    reason. Set when the always-loaded index is over its TARGET rung (INDEX_TOKEN_BUDGET —
+    the harder INDEX_CEILING_TOKENS rung reports separately, as remediation.over_ceiling)
+    OR the store already holds a large number of facts. Orthogonal to suggested_tier: a
+    100-fact store needs prune rigor even on a 1-candidate pass."""
     if index_over:
-        return (True, "index-over-budget")
+        return (True, PRUNE_REASON_INDEX_OVER_TARGET)
     if memories_reviewed >= PRUNE_PRESSURE_FACTS:
         return (True, "many-facts")
     return (False, "")
@@ -2194,6 +2209,104 @@ def stamp_project_marker(project_dir: Path, *, commit: "str | None" = None,
     return {"ok": True, "error": "", **result}
 
 
+# R1d cause tokens: WHAT was refused, and why. The arms that report an unstamped cycle read
+# these rather than spelling a cause themselves — a token this classifier cannot return would
+# make a message assert a cause that did not happen, which is the defect R1d exists to remove.
+STAMP_ABSENT = "absent"                 # the state file holds no stamp at all
+STAMP_OWN_BASELINE = "own-baseline"     # it holds one, and it IS this cycle's own baseline
+
+_STAMP_CAUSE_CLAUSE = {
+    STAMP_ABSENT: "no stamp in .consolidation-state.json",
+    STAMP_OWN_BASELINE: "`.consolidation-state.json` holds a stamp, and it is THIS cycle's own "
+                        "baseline — reconcile REFUSED it rather than re-fill the previous "
+                        "cycle's coordinate",
+}
+
+
+def _stamp_cause(record: dict, state: dict) -> str:
+    """R1a/R1d: is the state file's `timestamp` admissible into `record` — and, if not, why?
+
+    `""` means ADMITTED; the two tokens are the refusals. It answers with the CAUSE and not a
+    bool because three arms must name it, and `_admit_stamp` below is this function's boolean
+    projection — the predicate that FILLS and the sentence that EXPLAINS a non-fill cannot drift
+    apart.
+
+    ⚑ The file's stamp is admitted only when it has **MOVED since Phase 0**. `record`'s
+    `before_timestamp` IS that same file's `timestamp` as read at Phase 0 (`seed_record`) — one
+    field of one file at two moments, so this is a change-detector, not two proxies for one fact.
+    An EQUAL value means the pass never re-stamped and the file still holds the PREVIOUS cycle's
+    pair. Filling it would mint **this cycle's commit wearing the last cycle's time** — a
+    coordinate that never existed — and `render_dashboard._persist` uses that pair as its dedup
+    identity (`_already_logged`), so two runs of one cycle collide, the clean run is suppressed
+    as a "duplicate", and the cycle ends **exit 0 with no log line**: the exact failure this
+    function's own docstring says v0.4.1 was written to prevent.
+
+    Refusal needs EQUALITY, so a baseline that cannot equal the file's stamp — absent, `""`, the
+    SKILL's `"<prev marker ISO>"` placeholder, junk — ADMITS. That is deliberate, and the reason
+    is the remedy rather than the grammar: `before_timestamp` is a record field this tool never
+    rewrites, so a refusal keyed on it could never be cleared by the printed remedy (a permanent
+    wedge). A parse would not help and would add `fromisoformat`'s 3.10-vs-3.11 skew; a non-`str`
+    baseline needs no special case either, since the comparison is on `str()` forms.
+
+    NEVER raises — every operand is coerced, and a non-dict input degrades to `{}`."""
+    stamp = str(state.get("timestamp") or "").strip()
+    if not stamp:
+        return STAMP_ABSENT                             # nothing to admit
+    prev = str(record.get("before_timestamp") or "").strip()
+    if prev and stamp == prev:
+        return STAMP_OWN_BASELINE                       # the seeded pair itself
+    return ""
+
+
+def _admit_stamp(record: dict, state: dict) -> bool:
+    """The fill's gate: `_stamp_cause` as a bool. A want of a cause is an admit."""
+    return not _stamp_cause(record, state)
+
+
+def stamp_refusal_note(record: object, store_dir: str | os.PathLike[str]) -> str:
+    """R1d: the clause naming WHY `reconcile_marker` left `record` unstamped — `""` if it did not.
+
+    The three arms that report an unstamped cycle used to assert ABSENCE — "no stamp in
+    `.consolidation-state.json`" — and R1a routed a SECOND cause into them: the file may hold a
+    stamp this pass refused for being the cycle's own baseline. A reader of that line could not
+    tell which state they were in. This is the rule the `--diffs` block below already states:
+    *an instrument's fault and its verdict must not share one message.*
+
+    ⚠ **Position is part of the predicate.** The precondition is not "the file's stamp would be
+    refused" but "**the fill was entered and refused**" — a record that already carries a
+    non-empty `timestamp` had nothing refused, because a non-empty value STANDS. So an empty
+    `record["timestamp"]` is required, and the callers' own guards cannot be relied on to supply
+    it: this helper is also reachable from arms that only *report*.
+
+    Reads the state file exactly as `reconcile_marker` does, so the clause and the fill judge the
+    same bytes. ⚠ NEVER raises, and for the reason that matters here rather than by luck: a
+    non-`Path` `store_dir` is coerced (the three callers pass a `Path` from `ctx["auto_mem"]` and
+    a `str` from `--persist`'s `dirpath`), and a `store_dir` that will not read degrades to the
+    absence clause rather than a `TypeError`. A diagnostic must not be the thing that turns a
+    clean refusal into a crash.
+
+    ⚠ **`""` is also the answer when the cause is UNCLASSIFIED, and that is deliberate.** It
+    means "admitted by this read" — reachable here only if the file moved between the fill and
+    this read, i.e. the read and the report disagree about the same file. Falling back to a
+    clause there would assert absence for a file that has a stamp: the very false universal
+    R1d removes. So the callers assert LESS rather than something false."""
+    if not isinstance(record, dict) or str(record.get("timestamp") or "").strip():
+        return ""                       # a non-empty stamp stands; a non-dict has no field to fill
+    state: dict = {}
+    try:
+        parsed = json.loads((Path(store_dir) / STATE_FILE).read_text(encoding="utf-8"))
+        if isinstance(parsed, dict):
+            state = parsed
+    except (OSError, ValueError, TypeError):
+        # JSONDecodeError is a ValueError subclass; UnicodeDecodeError is one too. TypeError is
+        # the non-`Path` operand — caught so the sentence above is true as written. NOTE this arm
+        # is a READ failure, which is an absence of evidence about the file, not evidence of an
+        # absent stamp — but `state` stays `{}` exactly as the fill leaves it, so the clause and
+        # the fill still describe the same bytes.
+        state = {}
+    return _STAMP_CAUSE_CLAUSE.get(_stamp_cause(record, state), "")
+
+
 def reconcile_marker(marker: object, store_dir: Path) -> dict:
     """v0.4.1 (D2): fill EMPTY commit/timestamp from the stamped marker FILE —
     the single source. `--stamp-marker` writes only the file; mirroring into the
@@ -2214,10 +2327,20 @@ def reconcile_marker(marker: object, store_dir: Path) -> dict:
         if not str(out.get(k) or "").strip() and str(state.get(k) or "").strip():
             # v0.4.21 (D1, amend-3 R3): the commit fill is _valid_sha-gated — a defect-era
             # garbage commit (the literal "HEAD" class) must never copy into the record marker,
-            # the archive, or the persist dedup key; the timestamp fills unconditionally.
-            if k == "commit" and not _valid_sha(str(state.get(k))):
+            # the archive, or the persist dedup key.
+            if k == "commit":
+                if not _valid_sha(str(state.get(k))):
+                    continue
+            # v0.4.41 (R1a, R1e): the timestamp fill is admitted only when the file MOVED since
+            # Phase 0. It used to fill UNCONDITIONALLY — which is how a pass that had not
+            # re-stamped took the PREVIOUS cycle's time onto THIS cycle's commit, minting a
+            # coordinate that never existed and then using it as the persist dedup identity.
+            # `_admit_stamp` carries the rule and the reason it must not refuse harder.
+            elif not _admit_stamp(out, state):
                 continue
-            out[k] = state[k]
+            out[k] = str(state[k])   # R1b: COERCE, never copy the raw object — `str()` above is a
+                                     # FILTER; a JSON int `timestamp` would otherwise ride into the
+                                     # log line, `cycle_id = f"{commit}|{ts}"`, and the archive.
     return out
 
 
@@ -3088,6 +3211,17 @@ def build_context(project_dir: Path) -> dict:
     elif not last_commit:
         last_commit = ""
 
+    # v0.4.41 (R1c): the same JSON object also carries `timestamp`, and it reaches no subprocess —
+    # so it needs a TYPE tooth where the commit needs an argument-injection one. **Coerce, never
+    # blank**: R1a's predicate compares `str()` forms, so `20260921` and `"20260921"` give ONE
+    # verdict, whereas blanking REMOVES a baseline that matches and lands on the vacuous-admit arm,
+    # taking the file's possibly-stale stamp — re-minting the incident on this repair's own target
+    # input (measured both ways; see the spec's §3 row 5). `or ""` is load-bearing: `str(None)` is
+    # the truthy junk string `"None"`, a worse baseline than an absent one. A display-identity
+    # repair, not part of the incident's closure — and exactly the expression both of this field's
+    # consumers already apply (`render_dashboard.py:1963`, `render_html.py:189`).
+    last_ts = str(last_ts or "")
+
     head = _run(["git", "rev-parse", "HEAD"], project_dir)
     git_range = f"{last_commit[:12]}..HEAD" if last_commit else "-20"
     rng = f"{last_commit}..HEAD" if last_commit else "-20"
@@ -3933,9 +4067,18 @@ def validate_cycle_record(record: object) -> list[str]:
     # with the scripted audit's own delta for the same file. The two operands arrive by independent
     # paths: `after_tokens` is a measurement of the store, the audit's `token_delta` is what the
     # scripted `--audit-into` diff computed for `memory/MEMORY.md`. They describe one number, so a
-    # disagreement means the record contradicts itself — the C3 class (a `1746 → 1746` pair beside
-    # an audit delta of −52), which rendered as a self-falsifying gauge line and was caught by
-    # nothing. PURE and zero-I/O: every operand is already in the record.
+    # disagreement means ONE of those two computations is wrong — the C3 class (a `1746 → 1746` pair
+    # beside an audit delta of −52), which rendered as a self-falsifying gauge line and was caught by
+    # nothing.
+    # ⚠ **WHICH one is not determined here, and the first cut named the wrong candidate.** It read
+    # *"a disagreement means the record contradicts itself"* — an attribution this invariant cannot
+    # make, because the AUDIT is the side that can be handed a wrong operand (§C4). Measured in this
+    # arc: a store passed as `--audit`'s positional produced a bogus delta while the record's own
+    # field was a genuine store measurement. `auditor-disagreement-names-the-operand` — a
+    # disagreement between two reconstructions of one figure is evidence about the OPERAND or the
+    # UNIT, never about which value is wrong. The message below therefore carries the same
+    # correction it took to find this.
+    # PURE and zero-I/O: every operand is already in the record.
     #
     # The matcher is three conjuncts (spec §C8), each load-bearing for a different case, and every
     # one of them exists because a narrower matcher would be SILENT rather than wrong on the only
@@ -3983,7 +4126,14 @@ def validate_cycle_record(record: object) -> list[str]:
                 if _at30 - _bt30 != _dt30:
                     warnings.append(
                         "budget.index.after_tokens contradicts the scripted audit "
-                        "(after=%d, before=%d, audit delta=%d)" % (_at30, _bt30, _dt30))
+                        "(after=%d, before=%d, audit delta=%d) — ⚠ BOTH operands are "
+                        "script-computed and describe one number by independent paths: "
+                        "`after_tokens` is a measurement of the store, the audit delta is what "
+                        "the scripted `--audit-into` diff computed for `memory/MEMORY.md`. So "
+                        "this reports a disagreement between two computations and does NOT "
+                        "name which of them is wrong — an audit handed the wrong operand "
+                        "yields a bogus delta while the record's own field is sound"
+                        % (_at30, _bt30, _dt30))
     return warnings
 
 
@@ -4617,10 +4767,12 @@ def print_report(ctx: dict) -> None:
              else "")
     add(_ui.kv("RIGOR", f"{_ui.c(tier, tcol)} provisional · magnitude {gc} "
                         + _ui.c(f"(+ curated candidates in Phase 2) · ladder ≤{TIER_LIGHT_MAX} / {TIER_LIGHT_MAX + 1}–{TIER_SUBSTANTIAL_MAX} / ≥{TIER_SUBSTANTIAL_MAX + 1}", "dim") + _gate))
-    # F (v0.1.18.x): when the REMEDIATION gate will render (index over budget), suppress the redundant
-    # `index-over-budget` prune-pressure line — the gate is its actionable form. A `many-facts` prune-pressure
+    # F (v0.1.18.x): when the REMEDIATION gate will render (index over its TARGET), suppress the redundant
+    # over-target prune-pressure line — the gate is its actionable form. A `many-facts` prune-pressure
     # is a genuinely separate signal → still print it. (Suppress the PRINT only; the seeded flag stays true.)
-    if rg["prune_pressure"] and not (rg.get("prune_reason") == "index-over-budget" and ctx.get("remediation")):
+    # ⚠ Compared against the producer's NAME, never a copied literal: this predicate and prune_pressure()
+    # are that token's two homes, and the same literal spelled twice couples them in silence.
+    if rg["prune_pressure"] and not (rg.get("prune_reason") == PRUNE_REASON_INDEX_OVER_TARGET and ctx.get("remediation")):
         add(_ui.li(_ui.c(f"⚠ prune-pressure ({rg['prune_reason']}) — prune-or-propose this pass, at ANY tier", "yellow")))
     advisory = dream_timing_advisory(gc, ctx["last_ts"], has_marker)
     if advisory:
@@ -4932,6 +5084,35 @@ def main() -> int:
                 _argpaths.add(argv[_fi + 1])
     pos = [a for a in argv if not a.startswith("-") and a not in _argpaths]   # positional = the project dir
     project_dir = Path(pos[0]) if pos else Path.cwd()
+    # v0.4.41 (R2, guard 1): THE OPERAND IS A STORE. Every arm below resolves a PROJECT's store
+    # FROM this operand, and `resolve_store` is deliberately non-strict — so a store handed in as
+    # PROJECT_DIR derives a PHANTOM slug instead of failing. It sits at the POOL rather than inside
+    # one arm because all three `audit_snapshot` producers (`capture_diffs` ← `--diffs`, and the
+    # `--snapshot`/`--audit` arms) are downstream of here: one insertion covers every path.
+    #
+    # The predicate is the tool's OWN definition of "this is a store", not a new one —
+    # `render_dashboard.py:627-631`'s ownership guard: a state file whose script-written
+    # `project_path` resolves to a store that IS this directory. A project dir cannot satisfy it:
+    # its own state file, if it has one, names a project rather than itself.
+    #
+    # ⚠ Cheap on the hot path (`--json` every Phase 0): the read fails with OSError for a normal
+    # project dir, which has no marker in it, so `resolve_store` is never reached.
+    _is_store = False
+    try:
+        _st_r2 = json.loads((project_dir / STATE_FILE).read_text(encoding="utf-8"))
+        _pp_r2 = str(_st_r2.get("project_path") or "") if isinstance(_st_r2, dict) else ""
+        if _pp_r2:
+            from store_context import resolve_store as _rs_r2
+            _is_store = _rs_r2(Path(_pp_r2)).native_memory_dir.resolve() == project_dir.resolve()
+    except Exception:   # noqa: BLE001 — no/unreadable marker, or a store that cannot be resolved:
+        _is_store = False   # cannot VERIFY ownership → do not claim it (this guard's own stance)
+    if _is_store:
+        print(f"error: PROJECT_DIR {project_dir} is a MEMORY STORE, not a project — refusing "
+              f"(every arm here resolves a project's store FROM this operand, so it derives a "
+              f"PHANTOM slug rather than failing: a census taken here reports every file as "
+              f"DELETED, and the native-plane tree is minted under a project id that no enrollment "
+              f"can ever reclaim — pass the project directory the store belongs to)", file=sys.stderr)
+        return 2
     if "--justify-demotion" in argv:
         out = run_justify_demotion(project_dir, justify_stems, force="--force" in argv)
         if not out.get("ok"):
@@ -5082,7 +5263,33 @@ def main() -> int:
                       file=sys.stderr)
                 return 2
             before = _b
-        diff = audit_diff(before, audit_snapshot(project_dir))
+        # v0.4.41 (R2, guard 2): THE IMPOSSIBLE CENSUS. Guard 1 — the store-shaped operand — sits
+        # at the POSITIONAL POOL, where one insertion covers every arm and all three
+        # `audit_snapshot` producers. THIS guard is the one whose predicate names TWO operands, so
+        # it can only live where BOTH exist: `--audit` consumes a named before-snapshot while
+        # `--snapshot` supplies none at all — there the predicate is undefined, not false.
+        # ⚠ The `--diffs` producer is the third case, and it is a CEILING rather than a site: that
+        # arm's own contract pins a capture failure to exit 0 with a named skip, so guard 2's
+        # fatal `return 2` is not its shape. Recorded in §5; not solved here.
+        #
+        # All three of `audit_snapshot`'s roots are script-computed, so "resolves to nothing at
+        # all" is objectively detectable rather than a heuristic about the result —
+        # `a-complete-guard-inverts-its-question`: fire on the instrument's state, never on the
+        # census's shape. ⚠ BOTH halves are load-bearing, and the `before` half is what keeps the
+        # refusal CLEARABLE: re-running `--snapshot` against a genuinely-emptied tree sets
+        # `before = {}`, the guard stops firing, and the legitimately-empty census comes back. A
+        # guard on `not _after` alone would wedge exactly the state it must accept.
+        # ⚠ Its SCOPE is "resolves to nothing", NOT "any wrong operand" — an operand pointing at a
+        # DIFFERENT populated project yields a confident bogus census this cannot see. See §5.
+        _after = audit_snapshot(project_dir)
+        if before and not _after:
+            print(f"error: PROJECT_DIR {project_dir} snapshots EMPTY while --before carries "
+                  f"{len(before)} file(s) — refusing (this operand resolves to no memory store, no "
+                  f"CLAUDE.md and no tracked docs, so every file in --before reports as DELETED: "
+                  f"not a census, an instrument fault. Pass the PROJECT directory; if that tree "
+                  f"really is empty now, re-run --snapshot against it first)", file=sys.stderr)
+            return 2
+        diff = audit_diff(before, _after)
         # The row carries its DREAM identity (render-chain audit: rows were anonymous — the live log held
         # 24 rows for 26 dreams, the missing two untraceable) and a re-run of --audit (retry / a second
         # Phase-5 pass) must NOT double-append an indistinguishable duplicate.
@@ -5102,6 +5309,14 @@ def main() -> int:
         # v0.4.1 (D2): the mutation-log row carries its dream identity even when the cycle
         # record's marker was left blank — reconcile from the stamped state file.
         _mrk = reconcile_marker(_mrk, ctx["auto_mem"])
+        # R1d: a refused stamp leaves the row's identity HALF-LOST — `_ident` below is the pair
+        # `(commit, timestamp)`, and `--audit` writes that row either way, so a lost coordinate
+        # reaches the log as a nameless row with nothing said about it. Name the cause instead.
+        # No exit change: `--audit`'s ladder is untouched, and this is a diagnostic on stderr.
+        _stamp_ref = stamp_refusal_note(_mrk, ctx["auto_mem"])
+        if _stamp_ref:
+            print("--audit: the mutation-log row carries no timestamp — %s; run --stamp-marker "
+                  "first, then re-run --audit to re-identify the row" % _stamp_ref, file=sys.stderr)
         try:                    # the ONLY write in the audit path — plugin-data, never the native plane
             from retention import mutation_log_read_paths, mutation_log_write_path
             _ident = (str(_mrk.get("commit", "") or ""), str(_mrk.get("timestamp", "") or ""))
@@ -5327,7 +5542,17 @@ def main() -> int:
         # the hand-mirror step that was silently losing the persist no longer gates this.
         marker = reconcile_marker(marker, ctx["auto_mem"])
         if not str(marker.get("timestamp", "")).strip():
-            print("--diffs: skipped (cycle unstamped and no state-file stamp — run --stamp-marker first)", file=sys.stderr)
+            # R1d: name the CAUSE. This arm used to assert "no state-file stamp" unconditionally,
+            # which after R1a is false whenever the file HOLDS a stamp refused for being the
+            # cycle's own baseline. The remedy is the same either way — `--stamp-marker` writes a
+            # NEW `_utc_iso_now()` into the exact field the refusal reads, so it clears it — but
+            # the reader of the line could not tell which state they were in. Exit stays 0: this
+            # is a capture step, and `:5442`'s own rule is that a diff failure must never crash a
+            # dream. Naming the cause is the repair; a nonzero exit would be a contract change.
+            # ⚠ When no cause can be named, assert LESS — do not fall back to the absence clause.
+            _clause = stamp_refusal_note(marker, ctx["auto_mem"])
+            print("--diffs: skipped (cycle unstamped%s; run --stamp-marker first)"
+                  % ((" — " + _clause) if _clause else ""), file=sys.stderr)
             return 0
         try:                    # best-effort — a diff-capture failure must NEVER crash a dream (mirrors --audit)
             diffs = capture_diffs(before, project_dir)

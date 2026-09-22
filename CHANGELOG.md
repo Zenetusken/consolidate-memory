@@ -5,6 +5,80 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.41] — 2026-09-21
+
+**Patch — a dream pass that reported success while appending nothing, and five smaller
+coordinate defects in the same tool. Two guards, one split message, one renamed token;
+no `CycleRecord` field, CLI flag, or manifest contract changes.**
+
+A pass ended with `render_dashboard --persist` exiting **0 and appending no line**, and then —
+after a hand-fix — appending **two** lines for one cycle. Both symptoms have one root: the
+identity key `(marker.commit, marker.timestamp)`.
+
+1. **A stamp must have MOVED before it is copied into the record.** `seed_record` seeds
+   `marker.commit` **filled** and `marker.timestamp` **empty** ("stamp at write time in Phase 5"),
+   beside `before_commit`/`before_timestamp` — the previous cycle's pair. `reconcile_marker` fills
+   the empty `timestamp` from `.consolidation-state.json`, and that fill was **ungated** while the
+   `commit` fill beside it was `_valid_sha`-checked. A pass that had not re-stamped therefore wrote
+   **this cycle's commit wearing the last cycle's time** — a coordinate that never existed — and
+   because `_persist` dedups on that pair and keys the usage clock on it, two runs of one cycle
+   minted the same chimera, the clean run was suppressed as a `"duplicate"`, and the cycle ended
+   **exit 0 with no log line**. The fix site records what that means: it is *"the exact failure
+   this function's own docstring says v0.4.1 was written to prevent."*
+   The fill is now admitted only when the record carries no `before_timestamp` (the first-run case,
+   vacuous) **or** the state's stamp differs from the record's own `before_timestamp` — **string
+   identity, no parsing** — because the incident's condition was **equality**, not "older", and a
+   lexical ISO comparison is unsound across a fractional-seconds boundary. A refused stamp fills
+   **neither** field (`stamp_project_marker` writes the pair together), and the file's timestamp
+   must now be parseable ISO before it is copied, mirroring the gate `commit` already had. A stale
+   stamp reaches `_persist`'s existing unstamped arm → **exit 5** with the re-stamp remedy named,
+   on a path already pinned end-to-end. A silently wrong coordinate became a loud refusal.
+
+2. **`--audit` refuses a store-shaped operand, and refuses an impossible census.**
+   `audit_snapshot` derives three roots from the positional, so a memory store handed in as
+   `PROJECT_DIR` resolved all three empty and every entry read as *deleted* — a confident bogus
+   census, injected into the record and rendered. The positional was unvalidated besides:
+   `resolve_store` is deliberately non-strict, so a wrong operand resolved to a **phantom slug**
+   and the audit then `mkdir -p`'d that phantom's operational directory. Two guards, both at the
+   positional pool so one insertion covers every arm — the store-shaped operand is refused in
+   `sync_global`'s established message shape, and a **non-empty snapshot whose roots all resolve
+   empty** is refused as an instrument fault rather than reported as a census. That second rule is
+   the inverted-guard shape: it fires on the script-computed condition rather than on a heuristic
+   about the result, so a genuinely all-deleted census with resolving roots still passes.
+
+3. **The disagreement diagnostic names both operands instead of presuming which is wrong.**
+   `budget.index.after_tokens contradicts the scripted audit (…)` asserted a fault it could not
+   establish: both sides are script-computed, so a disagreement is a fact about one of two
+   computations, not a verdict on the record. The message now names both and their provenance and
+   blames neither. The `contradicts the scripted audit` phrase is deliberately retained — a test
+   selects warnings by it, and dropping it would turn that selector into a filter matching nothing,
+   which is a false green.
+
+4. **The archive's exit-1 arm stops sharing one sentence between a fault and a verdict.** Given a
+   project dir, `render_html.py` exited 1 with *"no dreams to render — run a dream first"* when the
+   real fault was the **operand** — the log was not empty. The two conditions now carry distinct,
+   operand-naming messages, and `--store` is still never silently defaulted: the ownership guard
+   admits a `project_path` only when it verifies, so a guessed default would be a new way to render
+   the wrong store.
+
+5. **`prune_reason` stops calling the target rung "budget".** `prune_pressure` returned
+   `"index-over-budget"` when the index passed the **1500 target**, while `INDEX_CEILING_TOKENS`
+   (3840) is the second, independent rung reported separately as `remediation.over_ceiling`. One
+   record therefore carried `prune_reason: "index-over-budget"` beside `over_ceiling: false` — with
+   "budget" being the one word the ladder reserves for the whole two-rung ladder. The token is now
+   `index-over-target`, and the two sites that carried it as twin bare literals share one named
+   constant, so the producer and the reporting predicate cannot drift. Naming only, no behavior.
+
+6. **A comment stops claiming a consumer that does not exist.** `_ui.py`'s wide-glyph range was
+   described as shared with "the arc-completeness check". `arc_completeness` never reads it — it
+   decides the exit-4 gate on presence, count and string-ness only, and a glyph rule there would
+   fail an arc over its typography. The range has exactly one consumer: `render_dashboard`'s
+   advisory beat flag, which changes no verdict and no exit code. The code was already honest and
+   only the prose over-stated, so the prose is what changed.
+
+`tests/smoke.py` gains **11 checks tagged v0.4.41**, each labeled a pin or a regression guard —
+the guards kept out of the pin count precisely because they pass on both trees.
+
 ## [0.4.40] — 2026-09-21
 
 **Patch — the release's version/date pair gets a gate, and four documents stop describing a

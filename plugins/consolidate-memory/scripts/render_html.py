@@ -404,6 +404,15 @@ _ARM_ENV = "resolves through an unusable store path"
 _REMEDY_PROJECT = "pass --project <its dir>"
 _REMEDY_PATH = "check the path"
 _REMEDY_ENV = "check autoMemoryDirectory in your settings"
+# v0.4.41 R4: the LAST pair of distinct conditions in this module still sharing one sentence. A
+# VERDICT (a resolved store whose log holds no dream) and a FAULT (no store was ever named, so no
+# log was located and none was read) arrived at the same string — and the string asserted the
+# VERDICT's cause in both cases. Same rule as the five arms above, same reason: one anchor per arm,
+# so a pin asserts WHICH arm fired without matching prose.
+_ARM_NO_CYCLES = "has no cycle record at"
+_ARM_NO_STORE = "names no store to read"
+_REMEDY_STORE = "pass --store <auto-memory dir> or --project <dir>"
+_REMEDY_DREAM = "run a dream first"
 
 
 def _canon(p: Path) -> "Path | None":
@@ -434,6 +443,26 @@ def _shown(p: Path) -> str:
     so the reader sees `/tmp/x y` and goes looking for a space that is not there.
     """
     return str(p).replace("\x00", "\\0")
+
+
+def _log_paths_for(store: Path) -> str:
+    """The path(s) `read_history` consults for this store, for naming in a refusal (R4).
+
+    The cycle log is a LADDER, not one path (`retention.cycle_log_read_paths`: legacy native, then
+    slot-keyed, then project-id-keyed — *last wins*), so a message naming a single path would name a
+    file that may not be the one read — and the whole point of the arm is to let a reader check the
+    place the tool actually looked.
+
+    Cold path only, and the import is lazy for the same reason `_canon`'s is: `retention` is a
+    shipping-class sibling with no truncated-install guard of its own, and a refusal that turned into
+    an ImportError traceback would be the very defect it exists to report.
+    """
+    try:
+        from retention import cycle_log_read_paths
+        paths = [Path(p) for p in cycle_log_read_paths(Path(store))]
+    except Exception:
+        paths = [Path(store) / ".consolidation-log.jsonl"]
+    return ", ".join(_shown(p) for p in paths)
 
 
 def _project_derived(c: StoreContext) -> bool:
@@ -785,7 +814,31 @@ def main(argv: list) -> int:
 
     cycles, _total = assemble_cycles(record, history)
     if not cycles:
-        print("render_html: no dreams to render — run a dream first (no cycle given + an empty .consolidation-log)", file=sys.stderr)
+        # v0.4.41 R4: ONE sentence, TWO conditions — and the sentence asserted the OTHER one's cause.
+        # MEASURED 2026-09-21, the two arms byte-identical before this change:
+        #   `--project <dir>` with a verified store whose log is absent → a true VERDICT about a real
+        #   absence, remedy correct. `no operand at all` → `store` is None and `read_history(None)`
+        #   returns `[]` at its FIRST line, so no path was located and no file was opened — yet the
+        #   sentence asserted "an empty .consolidation-log" anyway. Its remedy ("run a dream first")
+        #   is the wrong repair for an invocation that never named a subject, and the reader has no
+        #   way to tell the two apart: neither arm names the store, and the fault arm names nothing
+        #   at all *because there is nothing to name* — which is itself the report.
+        # ⚠ `--store <project dir>` does NOT reach here. The v0.4.36 identity resolver refuses it one
+        # screen up and names the operand (`belongs to no registered project`). Recorded because that
+        # route is the one R4's plan named, and it is not this arm — measured, not reasoned.
+        #
+        # ⚠ Reachability, so the second arm is not read as a case that cannot happen: `assemble_cycles`
+        # keeps every dict row, so `cycles` empty means NO cycle-bearing row was read — which is the
+        # absent-log case and nothing else. There is deliberately no third arm for "rows read but
+        # none assembled": it is unreachable, and an unreachable arm is a promise the code cannot
+        # keep (the reason R4's second planned arm is absent rather than written).
+        if store is None:
+            print(f"render_html: this invocation {_ARM_NO_STORE} — neither --store nor --project "
+                  f"was given, so no cycle log was located and none was read (this is NOT a report "
+                  f"that the log is empty) — {_REMEDY_STORE}", file=sys.stderr)
+        else:
+            print(f"render_html: the store {_shown(store)} {_ARM_NO_CYCLES} "
+                  f"{_log_paths_for(store)} — {_REMEDY_DREAM}", file=sys.stderr)
         return 1
 
     # which view to OPEN: a specific dream (#sel=i) or the archive index (no fragment). The JS reads #sel= on load.
