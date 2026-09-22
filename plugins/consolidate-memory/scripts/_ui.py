@@ -162,8 +162,13 @@ def vis(s: str) -> int:
 
 
 _WIDE_RE = re.compile("[\U0001F000-\U0001FAFF☀-➿]")
-# The dream-arc contract bans emoji in the NON-bookend beats — the same wide-glyph class, exposed
-# by name so the arc-completeness check and any future content lint share ONE range.
+# The dream-arc contract bans emoji in the NON-bookend beats (SKILL.md's narration contract: emojis
+# exist ONLY on the two bookends) — the same wide-glyph class, exposed by name so the one site that
+# ACTS on it shares the range rather than re-spelling it: render_dashboard's advisory beat-index flag,
+# which names the beats that would break the rule. ⚠ NOT the arc-completeness check (an earlier cut of
+# this comment claimed it was): arc_completeness() reads the beats for presence, count and string-ness
+# only, and never consults a glyph class — it decides the exit-4 gate, and a glyph rule there would
+# fail an arc over its typography.
 BEAT_EMOJI_RE = _WIDE_RE
 
 

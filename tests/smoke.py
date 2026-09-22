@@ -232,10 +232,26 @@ check("rigor: suggested_tier excludes memories_reviewed (F1 axis-separation guar
       "memories_reviewed" not in _inspect.signature(ms.suggested_tier).parameters
       and "reviewed" not in _inspect.signature(ms.suggested_tier).parameters)
 # prune-pressure: the SEPARATE axis the stock drives
-check("rigor: prune_pressure on index-over-budget", ms.prune_pressure(True, 0) == (True, "index-over-budget"))
+# ⚠ v0.4.41 R5 — the token is pinned as a LITERAL, never via PRUNE_REASON_INDEX_OVER_TARGET: a constant
+# asserted against itself can never redden on a rename, and a rename is the one thing this pins. The old
+# spelling named the 1500 TARGET rung with the word the ladder reserves for the WHOLE two-rung ladder
+# (INDEX_CEILING_TOKENS is the other rung, surfaced separately as remediation.over_ceiling).
+check("rigor: prune_pressure on index-over-target", ms.prune_pressure(True, 0) == (True, "index-over-target"))
 check("rigor: prune_pressure on many-facts at threshold", ms.prune_pressure(False, ms.PRUNE_PRESSURE_FACTS) == (True, "many-facts"))
 check("rigor: prune_pressure clear when small + under budget", ms.prune_pressure(False, ms.PRUNE_PRESSURE_FACTS - 1) == (False, ""))
-check("rigor: index-over takes reason precedence over many-facts", ms.prune_pressure(True, 999)[1] == "index-over-budget")
+check("rigor: index-over takes reason precedence over many-facts", ms.prune_pressure(True, 999)[1] == "index-over-target")
+# ⚠ v0.4.41 R5 (PIN, structural — spec §3 row 17) — the token has ONE home, not two. It is PRODUCED by
+# prune_pressure() and COMPARED by print_report()'s suppression predicate: same module, two sites, and
+# as twin bare literals they were a coupling that could only drift in silence — a rename on one side
+# leaves the suppression matching nothing, the redundant prune-pressure line quietly reappears, and no
+# check can see it. Read with getattr because the name is ABSENT on the pre-fix tree, where a bare read
+# would raise AttributeError and ERROR the whole suite instead of reddening this one check.
+# ⚠ Honest kind: this DOES flip on pre-fix code, so §3's operational rule makes it a PIN — but it flips
+# STRUCTURALLY, because there is no binding on that tree to compare. It is NOT evidence of the drift it
+# guards, and the two checks above (not this one) carry the defect's evidence.
+_r5const = getattr(ms, "PRUNE_REASON_INDEX_OVER_TARGET", "<absent-on-this-tree>")
+check("v0.4.41 R5 (PIN, structural): the over-target token is one name, not two literals",
+      _r5const == "index-over-target" and ms.prune_pressure(True, 0)[1] == _r5const)
 # A10: no-marker first pass — git_range defaults to a recent-≤20 lookback, so a mature repo's
 # FIRST consolidation reads HEAVY provisional purely from history depth (documented, advisory;
 # the model finalizes in Phase 2). The seed rigor block is phase:provisional regardless.
@@ -22753,6 +22769,229 @@ check("v0.4.40 pin (the CONTROL for the check above: the same check FIRES on a m
       "which is the gap it was written to close): "
       f"⚠ {_psdbmsg40}", _psdb40)
 
+# --- v0.4.41 R1: the timestamp fill must not mint a coordinate that never existed ------------
+# `reconcile_marker` copies the state file's `timestamp` into a record whose own is empty. Before
+# R1a that copy was UNCONDITIONAL, so a pass that had not re-stamped took the PREVIOUS cycle's time
+# onto THIS cycle's commit — a coordinate that never existed — and `render_dashboard._persist` uses
+# that same pair as its dedup identity, so the clean run was suppressed as a "duplicate" and the
+# cycle ended exit 0 with no log line: the failure the fill's own docstring says it prevents.
+# The operand needs no new input: `record["before_timestamp"]` IS that same file's `timestamp` as
+# read at Phase 0 (one field of one file at two moments), so the fill is a change-detector.
+#
+# ⚠ These drive `reconcile_marker` ITSELF, never a transcription of its loop. The predicate can be
+# perfectly right while the loop never REACHES it — and the reachability is where the old
+# unconditional copy actually lived (the spec's §3 "the triple, so the count is not carried").
+_R1_T = "2026-09-15T14:16:11.649Z"        # the incident's stamp: one file field, two moments
+_R1_T2 = "2026-09-21T18:43:39.729Z"       # what a re-stamp writes (a NEW _utc_iso_now)
+
+with _tf43.TemporaryDirectory() as _td_r1:
+    _st_r1 = Path(_td_r1) / "store"
+    _st_r1.mkdir()
+
+    def _fill_r1(_rec: dict, _state: dict) -> dict:
+        """reconcile_marker against a store whose state file holds `_state`."""
+        (_st_r1 / ms.STATE_FILE).write_text(_json43.dumps(_state), encoding="utf-8")
+        return ms.reconcile_marker(dict(_rec), _st_r1)
+
+    _f_r1 = _fill_r1({"commit": "29cdfb336d18", "timestamp": "", "before_timestamp": _R1_T},
+                     {"commit": "2b07ce345dd6", "timestamp": _R1_T})
+    check("v0.4.41 R1 (PIN): a state-file stamp EQUAL to the record's own `before_timestamp` fills "
+          "NOTHING into `timestamp` — the file has not moved since Phase 0, so the stamp it holds "
+          "is the PREVIOUS cycle's. Pre-fix the copy is unconditional and this cycle's commit takes "
+          "the last cycle's time; `_persist` then keys its dedup on that chimera, so the clean "
+          "run's own log line is suppressed as a 'duplicate' and the cycle ends exit 0, silently. "
+          "⚠ The commit is asserted UNCHANGED rather than empty: the seed filled it, the fill's "
+          "empty-check skips it, and a pin asserting `\"\"` here would be asserting the seed away",
+          _f_r1.get("timestamp") == "" and _f_r1.get("commit") == "29cdfb336d18")
+
+    _v_r1 = _fill_r1({"timestamp": "", "before_timestamp": "t0"}, {"timestamp": _R1_T})
+    _n_r1 = _fill_r1({"timestamp": ""}, {"timestamp": _R1_T})
+    _a_r1 = _fill_r1({"timestamp": ""}, {"timestamp": ""})
+    _m_r1 = _fill_r1({"timestamp": "", "before_timestamp": _R1_T}, {"timestamp": _R1_T2})
+    _h_r1 = _fill_r1({"commit": "", "timestamp": "", "before_timestamp": _R1_T},
+                     {"commit": "2b07ce345dd6", "timestamp": _R1_T})
+    check("v0.4.41 R1 (PIN — and the label is the part that had to be corrected, not the "
+          "assertion: (a)–(d) AND (e)'s commit all fill on BOTH trees, so the ADMIT rows 2, 3 and "
+          "11 are genuinely green guards; what makes the conjunction a PIN is (e)'s SECOND "
+          "conjunct, `timestamp == \"\"`, which pre-fix is the stale `_R1_T` copied verbatim. That "
+          "conjunct is row 1's observable re-measured in the half-stamp fixture, and it is the one "
+          "thing here that shows the gate is PER KEY rather than pair-wide — a pair-wide predicate "
+          "would cost the record its commit coordinate — so it stays. MEASURED 2026-09-21 on "
+          "`29cdfb33` at the predicate level: (a) (b) (c) (d) (e)commit PASS, (e)timestamp FLIP; "
+          "the check as a whole therefore reddens there. Refusing (a)–(d) is the permanent wedge "
+          "the predicate's own docstring forbids — `before_timestamp` is a field this tool never "
+          "rewrites, so a refusal keyed on it could never be cleared by the printed remedy",
+          _v_r1.get("timestamp") == _R1_T and _n_r1.get("timestamp") == _R1_T
+          and _a_r1.get("timestamp") == "" and _m_r1.get("timestamp") == _R1_T2
+          and _h_r1.get("commit") == "2b07ce345dd6" and _h_r1.get("timestamp") == "")
+
+    _i_r1 = _fill_r1({"timestamp": "", "before_timestamp": ""}, {"timestamp": 20260921})
+    check("v0.4.41 R1 (PIN): a JSON-INT `timestamp` is COERCED, not copied — the raw object must "
+          "not ride into the log line, `cycle_id = f\"{commit}|{ts}\"`, or the archive (R1b). "
+          "⚠ The assertion is the VALUE, and `== \"20260921\"` implies the type: a check reading "
+          "only *'it is a str'* is satisfied by `\"\"`, which is the defect wearing the repair's "
+          "clothes",
+          _i_r1.get("timestamp") == "20260921")
+
+    _home_r1b = Path(_td_r1) / "home"
+    _home_r1b.mkdir()
+    _proj_r1b = Path(_td_r1) / "proj"
+    _proj_r1b.mkdir()
+    _nat_r1b = Path(_home_r1b) / ".claude" / "projects" / ms.slug_for(_proj_r1b) / "memory"
+    _nat_r1b.mkdir(parents=True)
+    (_nat_r1b / ms.STATE_FILE).write_text(_json43.dumps({"timestamp": 20260921}), encoding="utf-8")
+    # ⚠ HOME must move IN-PROCESS: `build_context` resolves the store from `os.environ` at call
+    # time, so a fixture that only sets it for a subprocess would read the AMBIENT home and pin the
+    # real store instead of this one.
+    _old_r1b = _os43.environ.get("HOME")
+    _os43.environ["HOME"] = str(_home_r1b)
+    try:
+        _ctx_r1b = ms.build_context(_proj_r1b)
+    finally:
+        _os43.environ["HOME"] = _old_r1b if _old_r1b is not None else ""
+    check("v0.4.41 R1 (PIN): the SEED coerces a non-`str` `last_ts` and the VALUE survives — it is "
+          "not blanked (R1c). Blanking is the tempting repair and the wrong one: the predicate "
+          "compares `str()` forms, so `20260921` and `\"20260921\"` give ONE verdict, whereas "
+          "blanking REMOVES a baseline that matches and lands on the vacuous-admit arm — taking "
+          "the file's possibly-stale stamp, i.e. re-minting the incident on this repair's own "
+          "target input. Pre-fix `before_timestamp` is the raw JSON int",
+          _ctx_r1b.get("last_ts") == "20260921")
+
+# --- v0.4.41 R2: the wrong operand, refused at the POOL --------------------------------------
+# `resolve_store` is deliberately non-strict and the positional is unvalidated, so a store handed
+# in as PROJECT_DIR derives a PHANTOM slug rather than failing: the census reads every file as
+# DELETED, and the native-plane tree is minted under a project id no enrollment can reclaim.
+# Guard 1 sits at the POSITIONAL POOL — where one insertion covers all three `audit_snapshot`
+# producers — and its predicate is the tool's OWN ownership guard (`render_dashboard.py:627-631`),
+# not a new heuristic: a marker whose script-written `project_path` resolves to a store that IS
+# the operand. A project directory cannot satisfy it, which is what the control below measures.
+with _tf43.TemporaryDirectory() as _td_r2:
+    _home_r2 = str(Path(_td_r2) / "home")
+    Path(_home_r2).mkdir()
+    _proj_r2 = Path(_td_r2) / "proj"
+    _proj_r2.mkdir()
+    _nat_r2 = Path(_home_r2) / ".claude" / "projects" / ms.slug_for(_proj_r2) / "memory"
+    _nat_r2.mkdir(parents=True)
+    (_nat_r2 / "fact-0.md").write_text(
+        "---\nname: fact-0\ndescription: d0\n---\nbody\n", encoding="utf-8")
+    # The marker is what makes the operand RECOGNIZABLE rather than merely store-shaped.
+    (_nat_r2 / ms.STATE_FILE).write_text(_json43.dumps(
+        {"commit": "0" * 12, "timestamp": "2026-01-01T00:00:00.000Z",
+         "project_path": str(_proj_r2)}), encoding="utf-8")
+    _ms_r2 = str(_scripts54 / "memory_status.py")
+    _snap_r2 = Path(_td_r2) / "snap.json"
+    _snap_r2.write_text(_json43.dumps({"x": {"store": "memory", "hash": "h", "tokens": 4}}),
+                        encoding="utf-8")
+    _inv_r2 = sorted(str(_x.relative_to(_nat_r2)) for _x in _nat_r2.rglob("*"))
+
+    _oAr2, _eAr2, _rAr2 = _run_home_a1(_home_r2, _ms_r2, "--audit", str(_snap_r2), str(_nat_r2))
+    check("v0.4.41 R2 (PIN): a STORE handed in as PROJECT_DIR is refused and mints nothing. "
+          "Pre-fix: exit 0, and a census reporting every file in `--before` as DELETED — injected "
+          "into the record and rendered. The guard is at the POOL, which is also what covers the "
+          "two producers below; from inside the `--audit` arm it could not reach them",
+          _rAr2 == 2 and "is a MEMORY STORE" in _eAr2 and "{" not in _oAr2
+          and sorted(str(_x.relative_to(_nat_r2)) for _x in _nat_r2.rglob("*")) == _inv_r2)
+    _oAr2, _eAr2, _rAr2 = _run_home_a1(_home_r2, _ms_r2, "--snapshot", str(_nat_r2))
+    check("v0.4.41 R2 (PIN): the `--snapshot` producer refuses the same operand — the arm that "
+          "shows WHY the guard had to move to the pool. Guard 2's predicate names TWO operands "
+          "(`before` non-empty AND `after` empty); `--snapshot` supplies no before-operand at all, "
+          "so there the predicate is UNDEFINED rather than false and no insertion inside that arm "
+          "could fire. Pre-fix: exit 0 and a `{}` written to a phantom slug's temp path, which the "
+          "next `--audit` reads as its before-tree and reports the whole project as CREATED",
+          _rAr2 == 2 and "is a MEMORY STORE" in _eAr2 and _oAr2.strip() == "")
+    _oAr2, _eAr2, _rAr2 = _run_home_a1(_home_r2, _ms_r2, "--audit", str(_snap_r2), str(_proj_r2))
+    check("v0.4.41 R2 (GUARD, the control): the same command against the REAL project directory is "
+          "NOT refused — the guard fires on ownership, not on looking like a store. Without this "
+          "arm both pins above are satisfied by a guard that refuses everything",
+          _rAr2 == 0 and "MEMORY STORE" not in _eAr2)
+    _bare_r2 = Path(_td_r2) / "bare"
+    _bare_r2.mkdir()
+    _oAr2, _eAr2, _rAr2 = _run_home_a1(_home_r2, _ms_r2, "--audit", str(_snap_r2), str(_bare_r2))
+    check("v0.4.41 R2 (PIN): an operand resolving to NOTHING at all, against a non-empty before, is "
+          "refused as an INSTRUMENT FAULT rather than reported as a census — pre-fix: exit 0 with "
+          "every file in `--before` reading DELETED. ⚠ The `before` half is load-bearing: it is "
+          "what keeps the refusal CLEARABLE, since a guard on `not _after` alone would wedge the "
+          "legitimately emptied tree it must accept",
+          _rAr2 == 2 and "snapshots EMPTY" in _eAr2 and "{" not in _oAr2)
+
+# --- v0.4.41 R3: the disagreement names BOTH operands and blames neither ----------------------
+# §3 row 12 — a **PIN**, and this comment previously said GUARD on reasoning worth keeping visible,
+# because it is the exact mistake the section exists to catch: a TRUE PREMISE with a FALSE
+# CONCLUSION drawn from it. The premise holds — the phrase the selector keys on and the
+# `(after=…, before=…, audit delta=…)` parenthetical ARE byte-identical before and after this
+# repair. The conclusion "nothing a test can observe flips" does not follow, because the clause
+# that FOLLOWS the parenthetical is itself an observable and it exists only post-fix. Asserting its
+# presence is therefore an assertion that REDDENS on `29cdfb33`. The check was right; the label was
+# the false half, so the label is what changed (code-to-promise, pointing the other way: when the
+# code is already honest and only the prose over-states, the repair is to the description).
+# MEASURED 2026-09-21 across the matched pair — one harness (`sha256 0352aeab…`), pre-fix scripts
+# from `29cdfb33`: this check is PRE ✗ / POST ✓.
+# ⚠ The half that genuinely CANNOT be covered, stated rather than tested: the wrong attribution
+# lived in the surrounding COMMENT ("a disagreement means the record contradicts itself"), which is
+# not observable from here at all. Asserting the ABSENCE of a phrase that was never in the MESSAGE
+# would be a check whose observable cannot carry the difference, so it is deliberately not written.
+_r3_msg = _why30(_mkrec30(1746, 1746))
+check("v0.4.41 R3 (PIN): the reconcile warning carries the provenance clause naming BOTH "
+      "operands as script-computed — it reports a DISAGREEMENT between two computations rather "
+      "than blaming the record alone. ⚠ It DOES flip on pre-fix code: all four phrases below are "
+      "introduced by this repair, so the check reddens by their absence there. The selector phrase "
+      "and the parenthetical are unchanged, which is why the check keys on the added CLAUSE "
+      "instead — a distinction the label previously got backwards",
+      len(_r3_msg) == 1
+      and "BOTH operands are script-computed" in _r3_msg[0]
+      and "`after_tokens` is a measurement of the store" in _r3_msg[0]
+      and "`--audit-into` diff computed" in _r3_msg[0]
+      and "does NOT name which of them is wrong" in _r3_msg[0])
+
+# --- v0.4.41 R4: one sentence, two conditions — the archive's exit-1 arm ------------------------
+# The assertion is the RC-1d shape: the two arms must produce DIFFERENT sentences, "which is exactly
+# what a two-cause sentence cannot do" — so this check can FLIP, and it is the only observable that
+# separates a fault from a verdict when both end at the same exit code.
+# ⚠ The fixture is _Env73 because the identity resolver opens the registry. Without the enrollment
+# BOTH arms would refuse one screen earlier for an unrelated reason and would then differ for a cause
+# that has nothing to do with this defect — the a-fixture-green-for-an-ambient-reason class running
+# the other way (a fixture RED for an ambient reason is just as blind as a green one).
+# ⚠ The anchors are read with `getattr` because they do not exist on the pre-fix tree: a bare
+# attribute read would ERROR the suite instead of reddening this one check — the same defense
+# RC-1d's own block uses for `_WRITE_ACTIONS_MARKER`.
+# ⚠ `--no-open` on both (the v0.4.13 discipline pin counts these), and `main()` is driven with an
+# argv LIST in-process: no browser can open, and the pair costs no subprocesses.
+with _Env73() as _eR4, _tf73.TemporaryDirectory(prefix="r4out-") as _oR4:
+    _logR4 = _eR4.store / ".consolidation-log.jsonl"
+    # ⚠ The fixture precondition is a CONJUNCT of the check, not an `assert`, and that is deliberate:
+    # an AssertionError here would ABORT the suite, and the D6 pin below only counts what REACHES it —
+    # so a changed fixture would take out 2200 checks instead of reddening this one. Stating it in
+    # the condition keeps the failure where a reader can see it and keeps the count honest.
+
+    def _runR4(argv: list) -> "tuple[int, str]":
+        _oR4b, _eR4b = _io73.StringIO(), _io73.StringIO()
+        _cR4 = _os73.getcwd()
+        try:
+            _os73.chdir(str(_eR4.proj))       # the fault arm's subject is the cwd, so cwd must be
+            with _ctx73.redirect_stdout(_oR4b), _ctx73.redirect_stderr(_eR4b):   # the ENROLLED project
+                _rc = rhtml.main(argv)
+        finally:
+            _os73.chdir(_cR4)                 # restored even on a raise: a leaked cwd would silently
+        return _rc, " ".join(_eR4b.getvalue().splitlines())   # re-home every later check
+
+    _rcV4, _erV4 = _runR4(["--project", str(_eR4.proj), "--no-open", "--out", str(Path(_oR4) / "v.html")])
+    _rcF4, _erF4 = _runR4(["--no-open", "--out", str(Path(_oR4) / "f.html")])
+    _ancV4 = getattr(rhtml, "_ARM_NO_CYCLES", "\x00absent-on-this-tree")
+    _ancF4 = getattr(rhtml, "_ARM_NO_STORE", "\x00absent-on-this-tree")
+    check("v0.4.41 R4 (PIN): the archive's two 'nothing to render' conditions are told apart — a "
+          "VERIFIED store whose log is absent, and an invocation that named no store at all (so no "
+          "log was located, let alone opened). Each carries its own anchor and its own remedy, and "
+          "neither still asserts a file fact. (pre-fix MEASURED 2026-09-21: both arms print the "
+          "identical sentence `no dreams to render — run a dream first (no cycle given + an empty "
+          ".consolidation-log)`, which claims the log is empty on an arm that never opened one — so "
+          "the `!=` conjunct is false)",
+          not _logR4.exists()                   # the fixture precondition, stated here on purpose
+          and _rcV4 == 1 and _rcF4 == 1
+          and _erV4 != _erF4
+          and _ancV4 in _erV4 and _ancF4 in _erF4
+          and "empty .consolidation-log" not in _erV4
+          and "empty .consolidation-log" not in _erF4)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
@@ -22762,7 +23001,17 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                             + 10
                             + 2
                             + 1
-                            + 2)
+                            + 2
+                            + 4        # v0.4.41 R2 — the wrong operand: 3 PINs + 1 control
+                            + 1        # v0.4.41 R3 — the disagreement names both operands (PIN — measured to flip:
+                                                        #      the four asserted phrases are this
+                                                        #      repair's own clause)
+                            + 1        # v0.4.41 R4 — one sentence, two conditions (PIN)
+                            + 1        # v0.4.41 R5 — the token has one home, not two (PIN, structural)
+                            + 4)       # v0.4.41 R1 — the timestamp fill: 4 PINs (the
+                                                        #      "admit table" is a PIN too — its (e)
+                                                        #      conjunct asserts the REFUSAL, measured
+                                                        #      PRE ✗ / POST ✓)
                                                         # +2: v0.4.40 pin — the SIBLING plugin's
                                                         #     STATUS header, in-tree. ⚠ Counted
                                                         #     separately from the +2 above, which is
@@ -23343,6 +23592,24 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                                         #      as this comment's own former `12` did
                                                         #      not. The TOTAL is the number the D6
                                                         #      pin owns, and it is measured.
+                                                        # +4: v0.4.41 R2 — guard 1 at the
+                                                        #      POSITIONAL POOL, and guard 2's
+                                                        #      impossible census. THREE PINs plus one
+                                                        #      GUARD: the store-shaped `--audit`
+                                                        #      operand, the `--snapshot` producer,
+                                                        #      the operand that resolves to nothing
+                                                        #      against a non-empty before, and the
+                                                        #      CONTROL that the same command against
+                                                        #      the REAL project is NOT refused (or
+                                                        #      the pins are satisfied by a guard
+                                                        #      that refuses everything). ⚠ The two
+                                                        #      guard-1 pins are counted SEPARATELY:
+                                                        #      `--snapshot` samples a different
+                                                        #      producer, and it is the one whose arm
+                                                        #      has no before-operand — which is the
+                                                        #      whole of the placement argument, so a
+                                                        #      reader who collapses them loses the
+                                                        #      reason the guard moved.
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

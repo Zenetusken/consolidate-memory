@@ -2020,8 +2020,16 @@ def main() -> int:
         # 5 unstamped (re-stamp the marker); 1/2 stay read/arg.
         status = _persist(record, persist_dir)
         if status == "unstamped":
-            print("⚠ UNSTAMPED CYCLE · no marker.timestamp in the record and no stamp in "
-                  ".consolidation-state.json", file=sys.stderr)
+            # R1d: this panel asserted ABSENCE — "no stamp in .consolidation-state.json" —
+            # unconditionally. After R1a that clause is false whenever the file HOLDS a stamp the
+            # pass refused for being the cycle's own baseline, and the reader cannot tell the two
+            # states apart. So name the cause; when no cause can be named, assert LESS rather than
+            # keep the false universal (the line still carries UNSTAMPED, which the exit-5 pin
+            # matches on — `tests/smoke.py:3424-3426`).
+            from memory_status import stamp_refusal_note as _stamp_note
+            _clause = _stamp_note(_dget(record, "marker"), persist_dir)
+            print("⚠ UNSTAMPED CYCLE · no marker.timestamp in the record%s"
+                  % ((" — " + _clause) if _clause else ""), file=sys.stderr)
             print("  → run memory_status.py --stamp-marker HEAD (resolved to the SHA for you, "
                   "v0.4.21) and fill marker.timestamp, then re-render", file=sys.stderr)
             _ui.dream_cue("NOT persisted — the cycle is unstamped: run --stamp-marker HEAD "
