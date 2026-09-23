@@ -23454,6 +23454,37 @@ check("v0.4.44 item 5 (CONTROL): a readable file is still MEASURED — the guard
       "the ordinary case",
       ms._measure(_f44) == (1, 2, 1))
 
+# ⚠ v0.4.44 item 5, the FAULT ARM (PIN — RED at the cut where `_measure` degraded every operand
+# class identically). The degrade is right for the STORE INDEX, whose caller only displays the
+# figure. It is WRONG for a GAUGE operand: `budget.claude_md.over` is `tokens > budget`, so an
+# unreadable CLAUDE.md reading 0 renders as `over=False` and the over-budget warning silently
+# vanishes — a loud fault turned into a clean reading, in the direction this repo's
+# teeth-loss-never-clean rule forbids. Absent and unreadable are different facts.
+# ⚠ The fixture is SELF-CONTAINED: `_f44` was chmod-ed back to readable by the block above, so
+# re-asserting the mode here is what makes this pin independent of the earlier block's order — a
+# pin whose precondition is another block's cleanup is a pin that breaks the day that block moves.
+_e44 = _d44 / "empty.md"
+_e44.write_text("", encoding="utf-8")
+_ok44 = _d44 / "ok2.md"
+_ok44.write_text("a\n", encoding="utf-8")
+_f44.write_text("x\n", encoding="utf-8")
+_os44.chmod(_f44, 0)
+check("v0.4.44 item 5 (PIN): `measure_or_fault` separates the TWO zeros — an operand that exists "
+      "but cannot be measured is a FAULT (a gate input reading 0 there would be a false pass), "
+      "while absent and empty are honest zeros. A mode-000 file and a DIRECTORY both fault",
+      ms.measure_or_fault(_d44 / "nothing-here.md") == ((0, 0, 0), False)
+      and ms.measure_or_fault(_e44) == ((0, 0, 0), False)
+      and ms.measure_or_fault(_f44) == ((0, 0, 0), True)
+      and ms.measure_or_fault(_d44 / "MEMORY.md") == ((0, 0, 0), True)
+      and ms.measure_or_fault(_ok44)[1] is False)
+_os44.chmod(_f44, 0o644)
+check("v0.4.44 item 5 (CONTROL): `_measure` still returns the VALUE ALONE for its display-only "
+      "callers — the store index degrades to a plain (0,0,0) and never raises. ⚠ Asserted on the "
+      "DIRECTORY, whose state no other block restores, rather than on the chmod-ed file",
+      ms._measure(_d44 / "MEMORY.md") == (0, 0, 0)
+      and ms._measure(_ok44) == (1, 2, 1)
+      and ms._measure(_d44 / "nothing-here.md") == (0, 0, 0))
+
 # --- v0.4.44 item 4 (PIN — RED at `783cbde`: no `secret_pred` existed, so a row's cached
 # `secret` verdict survived a firewall change indefinitely). The manifest's documented
 # invalidation rides the transact choke point, which unlinks on a published/deleted PATH — and a
@@ -23511,7 +23542,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #          + 6: the D1c review round — 4 masking-arm
                                        #              pins + 1 control + the disclosure
                                        #              reaching the operator surface.
-                            + 18)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
+                            + 20)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
                                         #     re-derivation, the QUOTED-description arm, two

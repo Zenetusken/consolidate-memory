@@ -29,13 +29,25 @@ unreadable store degrades instead of crashing the report.**
    to a rebuild when it does not match. Derived, never a hand-kept version constant: forgetting to
    bump such a constant IS the defect, restated.
 
-3. **A store the tool cannot read degrades instead of raising.** `_measure` guarded with
+3. **A store the tool cannot read degrades instead of raising — and a GATE input that cannot be
+   read is NAMED rather than absorbed.** `_measure` guarded with `exists()`, which a DIRECTORY and
+   a mode-000 file both satisfy, so `read_text` raised `IsADirectoryError` / `PermissionError` out
+   of the report path. The inline block this replaced carried both guards; routing through
+   `_measure` dropped them. ⚠ Degrading alone was NOT sufficient and would have traded a loud
+   crash for a silent false pass: `budget.claude_md.over` is `tokens > budget`, so an unreadable
+   `CLAUDE.md` reading 0 renders as `over=False` and the over-budget warning VANISHES.
+   `measure_or_fault` therefore returns the value **and** whether the operand existed but could
+   not be measured, the three gauge operands use it, and a fault is named on stderr — while
+   `_measure` keeps its value-only form for callers that merely display the figure (the store
+   index, which is what the crash was reported against). Absent and unreadable are different
+   facts and no longer share one number.
+ `_measure` guarded with
    `exists()`, which a DIRECTORY and a mode-000 file both satisfy, so `read_text` raised
    `IsADirectoryError` / `PermissionError` out of the report path. The inline block this replaced
    carried both guards; routing through `_measure` dropped them. Refusing an OPERAND is a
    different posture (v0.4.41 R2 does that at the positional pool) and is left alone.
 
-`tests/smoke.py` gains **7 checks tagged v0.4.44** — three pins with four controls — each RED on
+`tests/smoke.py` gains **9 checks tagged v0.4.44** — three pins with four controls — each RED on
 `783cbde`.
 
 ⚠ **Two things this patch does NOT include, stated rather than implied.** (a) The explicit refresh

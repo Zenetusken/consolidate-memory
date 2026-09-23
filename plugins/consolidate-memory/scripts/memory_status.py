@@ -2835,26 +2835,49 @@ def _run(cmd: list[str], cwd: Path) -> str:
         return ""
 
 
-def _measure(p: Path) -> tuple[int, int, int]:
-    """(lines, bytes, est_tokens) for a file — (0,0,0) if absent OR UNREADABLE.
+def measure_or_fault(p: Path) -> "tuple[tuple[int, int, int], bool]":
+    """((lines, bytes, est_tokens), faulted) — the ONE readable/absent measurement.
 
-    ⚠ `exists()` is NOT sufficient and both escapes are reachable. A DIRECTORY at the path
-    satisfies `exists()` and `read_text` raises `IsADirectoryError`; a mode-000 file satisfies it
-    and raises `PermissionError`. Either one propagates out of `build_context` (the report path)
-    as an unhandled exception, where the inline block this function replaced degraded to an empty
-    index text — it carried BOTH guards, and they were dropped when the read was routed through
-    here. The docstring above promised "(0,0,0) if absent"; it now promises it for unreadable too,
-    because a store the tool cannot read is a DEGRADATION to report, never a crash to raise —
-    refusing the OPERAND is a different posture (v0.4.41 R2 does that, at the positional pool,
-    for a store handed in as a project dir) and is not what this arm is for.
+    `faulted` is True only when the path EXISTS but could not be MEASURED. That distinction is the
+    whole point of this function existing beside `_measure`, and it is NOT pedantic:
+
+    ⚠ A measurement of a file that exists is a GATE INPUT. `budget.claude_md.over` is
+    `tokens > budget`, so an unreadable `CLAUDE.md` degrading to 0 tokens renders as `over=False`
+    — the over-budget warning silently VANISHES, and a loud fault becomes a clean reading in
+    exactly the direction this repo's `teeth-loss-never-clean` rule forbids. Absent and unreadable
+    are different facts and must not share a value.
+
+    ⚠ `exists()` alone was not sufficient either, and BOTH escapes are reachable: a DIRECTORY
+    satisfies it and `read_text` raises `IsADirectoryError`; a mode-000 file satisfies it and
+    raises `PermissionError`. (`Path.exists` itself re-raises anything outside
+    ENOENT/ENOTDIR/EBADF/ELOOP — EACCES among them — so even the old guard could raise.) The
+    `try` below covers all of it.
+
+    Why degrade at all rather than raise: the inline block this replaced degraded to an empty
+    index text, and a report that cannot be produced is worse than one that names what it could
+    not read. Refusing an OPERAND is a different posture (v0.4.41 R2 does that at the positional
+    pool, for a store handed in as a project dir) and is deliberately not what this arm is for.
     """
     try:
+        if not p.exists():
+            return (0, 0, 0), False          # truly absent: 0 IS the truth
         if not p.is_file():
-            return (0, 0, 0)
+            return (0, 0, 0), True           # EXISTS but is not a readable file (a directory
+                                             # where a doc belongs) — a fault, not an absence
         text = p.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return (0, 0, 0)
-    return (len(text.splitlines()), len(text.encode()), est_tokens(text))
+        return (0, 0, 0), True               # exists to someone; we could not read it
+    return (len(text.splitlines()), len(text.encode()), est_tokens(text)), False
+
+
+def _measure(p: Path) -> tuple[int, int, int]:
+    """(lines, bytes, est_tokens) — (0,0,0) if absent OR unreadable. The VALUE half only.
+
+    ⚠ Callers that feed a GATE must use `measure_or_fault` instead: a 0 that means "unreadable"
+    and a 0 that means "empty" are the same number here, and a gate comparing against a budget
+    cannot tell them apart. This form is for callers that only ever display or sum the figure.
+    """
+    return measure_or_fault(p)[0]
 
 
 def _claude_md_files(project_dir: Path) -> list[Path]:
@@ -3299,13 +3322,29 @@ def build_context(project_dir: Path) -> dict:
     proj_root = _ctx.session_dir
     auto_mem = _ctx.native_memory_dir
 
-    repo = {name: _measure(project_dir / name) for name in REPO_DOCS}
+    # ⚠ `measure_or_fault` at every GAUGE operand: each of these feeds a budget comparison, where
+    # a 0 from an unreadable file would read as "under budget". A named fault is staged and
+    # warned below rather than absorbed.
+    # ⚠ `_rdoc` not `_name`: this scope later binds `_name` to a regex Match, and the collision
+    # type-errors rather than shadowing quietly.
+    repo, repo_faults = {}, []
+    for _rdoc in REPO_DOCS:
+        _rm, _rfault = measure_or_fault(project_dir / _rdoc)
+        repo[_rdoc] = _rm
+        if _rfault:
+            repo_faults.append(str(project_dir / _rdoc))
 
     # The USER-GLOBAL CLAUDE.md (~/.claude/CLAUDE.md): loaded into EVERY session of EVERY
     # project, so it's part of THIS session's always-loaded tax even though it's neither a
     # repo doc nor an auto-memory file. Measured READ-ONLY (the skill never edits it) so
     # the per-session cost the dashboard reports is honest, not understated.
-    global_claude_md = _measure(_cfg_root() / "CLAUDE.md")
+    global_claude_md, _gcm_fault = measure_or_fault(_cfg_root() / "CLAUDE.md")
+    if _gcm_fault:
+        repo_faults.append(str(_cfg_root() / "CLAUDE.md"))
+    for _bad in repo_faults:
+        print(f"  ⚠ unreadable: {_bad} exists but cannot be measured — its budget figure below "
+              f"is UNKNOWN, not zero (a gate reading 0 here would be a false pass)",
+              file=sys.stderr)
 
     # The store-local always-loaded measurements live in ONE site (spec §2.2's "One site, not
     # two") so the post-state refresh cannot drift from this caller.
