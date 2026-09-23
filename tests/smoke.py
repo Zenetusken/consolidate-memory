@@ -23549,6 +23549,22 @@ check("v0.4.44 item 4 (CONTROL): invalidating an ALREADY-EMPTY set is a no-op, n
       "refresh is idempotent so an operator can run it twice",
       _fm44.invalidate_all(_pdir44b) == 0)
 
+# --- v0.4.45 (PIN — RED at `8db50a6`, where `store_local_index` measured the store index with the
+# value-only `_measure` and the fault was lost). This is THE gate operand: `index_lb` feeds
+# `prune_pressure`, `remediation_triage`, `over_ceiling` and the record's `over`, so an unreadable
+# index read as "under budget, nothing to remediate" — and SKILL makes the HEAVY remediation
+# hard-stop mandatory on the flag that had just gone quiet.
+_g45 = Path(_tf44.mkdtemp())
+(_g45 / "MEMORY.md").mkdir()
+(_g45 / "some-fact.md").write_text("---\nname: x\ndescription: y\n---\nbody\n", encoding="utf-8")
+_e45 = Path(_tf44.mkdtemp())
+check("v0.4.45 (PIN): an index that EXISTS but cannot be measured carries a FAULT — the value "
+      "stays (0,0,0) but the record must not read it as 'under budget'",
+      ms.store_local_index(_g45).get("index_fault") is True)
+check("v0.4.45 (CONTROL): an ABSENT index is not a fault — absent and unreadable must not share "
+      "an answer in this direction either",
+      ms.store_local_index(_e45).get("index_fault") is False)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
@@ -23574,7 +23590,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #          + 6: the D1c review round — 4 masking-arm
                                        #              pins + 1 control + the disclosure
                                        #              reaching the operator surface.
-                            + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
+                            + 24)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
                                         #     re-derivation, the QUOTED-description arm, two

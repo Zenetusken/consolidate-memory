@@ -133,6 +133,8 @@ class IndexBudget(TypedDict, total=False):
     hook_max_tokens: int   # v0.1.63 (Phase A): the fattest pointer line (est tok)
     cliff_pct: int         # v0.1.63 (Phase A): % of the native 25KB/200-line truncation cliff (exact units)
     ceiling_tokens: int    # v0.1.66 (Phase B): INDEX_CEILING_TOKENS, stored for display (the budget_tokens precedent)
+    unmeasurable: bool     # v0.4.45: the index EXISTS but could not be measured — `over` is not
+                           # trustworthy when this is set, and every rendered surface must say so
 
 
 class RecallFacts(TypedDict, total=False):
@@ -3282,7 +3284,14 @@ def store_local_index(auto_mem: Path) -> dict:
     repair is to remove the second site rather than keep two sites in step by discipline.
     """
     index_path = auto_mem / "MEMORY.md"
-    index_lb = _measure(index_path)
+    # ⚠ `measure_or_fault`, NOT `_measure`: this is THE gate operand. `index_lb` feeds
+    # `prune_pressure`, `remediation_triage`, `over_ceiling` and the record's `over` — six budget
+    # comparisons — so an unreadable `MEMORY.md` reading 0 tokens renders as "under budget,
+    # nothing to remediate", and SKILL makes the HEAVY remediation hard-stop mandatory on the very
+    # flag that just went quiet. An earlier cut of this patch converted the repo docs and the
+    # global CLAUDE.md and left THIS operand on the value-only path, turning the pre-fix tree's
+    # loud structured failure into a silent `index under budget (0/1500 tok)` at exit 0.
+    index_lb, index_fault = measure_or_fault(index_path)
     # C1 (v0.1.18.x): split store *.md into FACTS vs ARCHIVE-INDEX docs (link-lists like SHIPPED.md). Archive
     # indexes are NOT facts — exclude them so the triage never classifies/evicts a relocated archive (MEMORY.md
     # is already excluded by name; this generalizes). archive_docs double as a reference surface.
@@ -3293,7 +3302,8 @@ def store_local_index(auto_mem: Path) -> dict:
     # wrongly clear the over-budget gate — re-read ONCE to settle it. A persistent 0 is a genuine all-unindexed
     # store (schema_drift flags the mismatch), not "under budget / all well".
     if index_lb[2] == 0 and fact_files and index_path.exists():
-        index_lb = _measure(index_path)
+        index_lb, _f2 = measure_or_fault(index_path)
+        index_fault = index_fault or _f2
     # v0.1.63 (Phase A): hook-cost + native-cliff telemetry for the always-loaded index. This is a
     # SECOND, independent read of the same file — its text feeds hook_stats here and
     # demotion_candidates in build_context — so the two can legitimately disagree if the file is
@@ -3305,11 +3315,15 @@ def store_local_index(auto_mem: Path) -> dict:
     return {
         "index_path": index_path,
         "index_lb": index_lb,
+        "index_fault": index_fault,   # v0.4.45: the index EXISTS but was not measurable
         "index_text": index_text,
         "fact_files": fact_files,
         "archive_docs": archive_docs,
         "index_hooks": hook_stats(index_text),
         "index_cliff": cliff_pct(index_lb[1], index_lb[0]),
+        # ⚠ additive: the operand EXISTS but could not be measured. Its 0 is NOT "under budget" —
+        # the record must carry the fault, or every rendered surface shows a healthy store.
+        "index_fault": index_fault,
     }
 
 
@@ -3583,6 +3597,7 @@ def build_context(project_dir: Path) -> dict:
         "claude_md_hierarchy": claude_md_hierarchy(project_dir),   # v0.1.22: whole-hierarchy measure (read-only)
         "index_path": index_path,
         "index_lb": index_lb,
+        "index_fault": _local.get("index_fault", False),
         "index_hooks": index_hooks, "index_cliff": index_cliff,   # v0.1.63 (Phase A) telemetry
         "fact_files": fact_files,
         "stale_facts": stale_facts,
@@ -3822,6 +3837,11 @@ def seed_record(ctx: dict) -> CycleRecord:
                 "before_tokens": ctx["index_lb"][2], "after_tokens": ctx["index_lb"][2],
                 "budget_tokens": INDEX_TOKEN_BUDGET,
                 "over": ctx["index_lb"][2] > INDEX_TOKEN_BUDGET,
+                # ⚠ v0.4.45: an operand that EXISTS but could not be measured. Without this the
+                # record asserts `over: False` for an unmeasured index, and every rendered surface
+                # — dashboard, HTML archive — shows a healthy store. The number above is still
+                # the (0,0,0) measurement; this says not to believe it.
+                "unmeasurable": bool(ctx.get("index_fault", False)),
                 # v0.1.63 (Phase A): hook + cliff telemetry (observe-only; Phase B acts on them)
                 "fat_hooks": ctx["index_hooks"][0], "hook_max_tokens": ctx["index_hooks"][1],
                 "cliff_pct": ctx["index_cliff"],

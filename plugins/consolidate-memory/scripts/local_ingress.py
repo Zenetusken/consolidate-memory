@@ -601,12 +601,14 @@ def _placement_decline(ctx: StoreContext, stem: str, idx_text: str) -> list:
     # divergence class this check was written to avoid. Same reader, same operand, same test.
     if stem in set(_LINK_RE.findall(idx_text)):
         return []                                   # currently indexed → this is an update
-    # ⚠ The SCAN is shared with `_rebuild_plan`, not re-implemented. A first cut re-globbed the
-    # store, re-classified and re-extracted here — and the two copies DISAGREED: the rebuild skips
-    # `/quarantine/` and reads its pinned snapshots, this one did neither, so the upsert's notion
-    # of "placed" could differ from the docket's on exactly the stores the rebuild's guards were
-    # written for. That is the divergence class the check was added to close, reintroduced by the
-    # check. One selection, one extraction, two callers.
+    # ⚠ The SELECTION is shared with `_rebuild_plan` (`_archive_doc_paths`); the EXTRACTION
+    # (`_placements_from`) currently has ONE caller, this one. An earlier revision of this comment
+    # claimed "one selection, one extraction, two callers" and the second half was false — the
+    # rebuild still walks `archive_index(...)["targets"]` inline. Stated accurately because a
+    # docstring claiming a sharing that has not happened is the class this whole family exists to
+    # catch, and the caller count is one `grep` away. Before that, this check re-globbed the store
+    # and re-classified for itself, and the two copies DID disagree — the rebuild skips
+    # `/quarantine/` and reads pinned snapshots, this one did neither.
     return _placements_from(_archive_doc_paths(ctx.native_memory_dir)).get(stem, [])
 
 

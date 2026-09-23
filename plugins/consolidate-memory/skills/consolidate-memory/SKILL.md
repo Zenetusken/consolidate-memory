@@ -1573,7 +1573,7 @@ this once warned against; the dashboard remains the source of the figures.)
     "global_claude_md": {"present": false, "lines": 0, "tokens": 0,
                          "budget_tokens": 4000, "over": false},
     "index": {"before_lines": 0, "after_lines": 0, "before_bytes": 0, "after_bytes": 0,
-              "before_tokens": 0, "after_tokens": 0, "budget_tokens": 1500, "over": false,
+              "before_tokens": 0, "after_tokens": 0, "budget_tokens": 1500, "over": false, "unmeasurable": false,
               "fat_hooks": 0, "hook_max_tokens": 0, "cliff_pct": 0, "ceiling_tokens": 3840},
     "recall_facts": {"before": 0, "after": 0},
     "claude_md_hierarchy": {"files": [{"path": "CLAUDE.md", "tokens": 0}],

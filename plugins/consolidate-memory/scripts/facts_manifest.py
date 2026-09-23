@@ -79,20 +79,44 @@ def secret_pred() -> str:
     and every cached verdict survived the repair. The rows that matters for are exactly the ones
     whose bytes never change, i.e. precisely the ones a repair does not touch.
 
-    ⚠ DERIVED, never hand-maintained. The identity is a hash over the predicate's own source
-    (`_SECRET`'s pattern text plus `_entropy_blob`'s qualified name and code), so editing the
-    firewall moves it with no second thing to remember. A literal version constant would be a
-    second thing — and forgetting to bump it is the whole defect, restated.
+    ⚠ DERIVED, never hand-maintained — and COMPLETE over the predicate's inputs. An earlier cut
+    hashed only `_SECRET`'s pattern and `_entropy_blob`'s body, which left the knobs this
+    firewall's own repair history actually tunes OUTSIDE the identity: MEASURED, `_ENTROPY_SEG_FLOOR`
+    8 -> 40 and a replaced `_BLOB` each left the hash byte-identical while changing which inputs
+    `_entropy_blob` matches, and `_SECRET`'s `re.I | re.X` flags were invisible too.
+    ⚠ That failure runs the DANGEROUS way, which is why it is worth this much text: the cached
+    flag is the SOLE firewall gate on the warm-pull path (`sync_global` returns on
+    `r.get("secret")` and deliberately SKIPS the admit-side re-scan), so a firewall STRENGTHENED
+    after a manifest was built would leave stale `secret: False` rows being admitted cross-project
+    into context — against CLAUDE.md's "Secrets firewall at retrieval … don't weaken that".
+    A literal version constant would be the same defect restated: a second thing to remember.
     """
-    from memory_status import _SECRET, _entropy_blob
     import hashlib
     import inspect
-    try:
-        src = inspect.getsource(_entropy_blob)
-    except (OSError, TypeError):
-        src = _entropy_blob.__name__
-    payload = (_SECRET.pattern + "\x00" + src).encode("utf-8")
+    from memory_status import (_BLOB, _ENTROPY_SEG_FLOOR, _SECRET, _entropy_blob, _looks_secret)
+    parts = [_SECRET.pattern, str(_SECRET.flags), _BLOB.pattern, str(_ENTROPY_SEG_FLOOR)]
+    for _fn in (_looks_secret, _entropy_blob):
+        try:
+            parts.append(inspect.getsource(_fn))
+        except (OSError, TypeError):
+            # ⚠ NOT a silent narrowing to the regex alone. On an install without the source beside
+            # the bytecode (frozen/zipapp/pyc-only) the identity still MOVES — the marker differs
+            # from real source — so a repair invalidates here too, and it cannot claim a coverage
+            # it does not have.
+            parts.append(f"<source-unavailable:{_fn.__module__}.{_fn.__qualname__}>")
+    payload = "\x00".join(parts).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:16]
+
+
+# ⚠ The rebuild decision is TOTAL, and stated as one. An allow-list that silently defaults to
+# "do not rebuild" is how `"predicate-changed"` came to be ignored: the cache could then never
+# rebuild on exactly the change it exists to notice, so every pull and every SessionStart beacon
+# fell back to full enumeration permanently, with a hand-run `cm data facts-refresh` as the only
+# escape. A new reason must be classified by CONSTRUCTION, so the default is the safe direction.
+_NONREBUILDABLE = (
+    "kill-switch",      # the operator asked the cache to stand aside; rebuilding defeats it
+    "rebuild-failed",   # the rebuild already failed this call; do not loop
+)
 
 
 def build(facts_dir: Path) -> "tuple[list, str]":
@@ -203,8 +227,7 @@ def ensure(facts_dir: Path, plugin_data_dir: Path):
     rows, reason = load(facts_dir, plugin_data_dir)
     if rows is not None:
         return rows, reason
-    if reason in ("absent", "unparseable", "schema", "domain-mismatch",
-                  "files-shape", "row-shape"):
+    if reason not in _NONREBUILDABLE:
         rows, domain = _rebuild_locked(facts_dir, plugin_data_dir)
         if rows:
             return rows, "rebuilt"
