@@ -2590,7 +2590,7 @@ def _demotion_justify(dj: object) -> dict:
     return out
 
 
-def demotion_inputs(ctx: Any) -> dict:
+def demotion_inputs(ctx: Any, local: "dict | None" = None) -> dict:
     """v0.4.42 (D2): the demotion triage's ONE input builder — the docket and the gate read it.
 
     `demotion_candidates`' eligibility rule is stated in its own docstring as *"the probative
@@ -2622,22 +2622,23 @@ def demotion_inputs(ctx: Any) -> dict:
     """
     from control_plane import count_probative_after, usage_window_clock
     auto_mem = ctx.native_memory_dir
-    # C1 (v0.1.18.x): a store `*.md` that is an archive INDEX (a link-list like SHIPPED.md) is not
-    # a fact — never classify or evict a relocated archive. MEMORY.md is excluded by name.
-    store_md = (sorted(f for f in auto_mem.glob("*.md") if f.name != "MEMORY.md")
-                if auto_mem.exists() else [])
-    archive_docs = [f for f in store_md if _is_archive_index(f)]
-    fact_files = [f for f in store_md if f not in archive_docs]
-    index_path = auto_mem / "MEMORY.md"
-    index_text = ""
-    if index_path.is_file():
-        try:
-            index_text = index_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            index_text = ""
+    # ⚠ These four values are NOT derived here. `store_local_index` owns them, and its own
+    # docstring states why this must not be re-implemented: "the store-local always-loaded
+    # measurements, in ONE place… the repair is to remove the second site rather than keep two
+    # sites in step by discipline." A first cut of this builder re-globbed the store and re-read
+    # MEMORY.md, which is that second site — and the failure is the D2 defect itself, returning
+    # by a new route: `index_text` read HERE at one instant and `fact_files`/`index_names` taken
+    # from `store_local_index` at another are two revisions of one file inside a single record,
+    # and a future exclusion added to one site but not the other puts the docket and the gate
+    # back out of step. The caller passes what it already computed; `None` recomputes once for
+    # callers that hold nothing (the justify CLI), which is still ONE derivation, not two.
+    if local is None:
+        local = store_local_index(auto_mem)
+    fact_files = local["fact_files"]
+    index_text = local["index_text"]
     # The INDEXED set, not the fact-file set: only an indexed pointer taxes the always-loaded
     # tier, which is the population `demotion_candidates` gates on.
-    index_names = index_fact_names(index_path) - {f.stem for f in archive_docs}
+    index_names = index_fact_names(local["index_path"]) - {f.stem for f in local["archive_docs"]}
     hist = usage_history(auto_mem) if auto_mem.exists() else {
         "windows_full": 0, "window_starts": [], "per_fact": {}, "miss_stems": [], "mention_stems": []}
     hist = dict(hist)
@@ -3484,7 +3485,7 @@ def build_context(project_dir: Path) -> dict:
     # not leave a half-initialised input vector behind, and the report's locals (`fact_files`,
     # `index_names`, `_index_text`) are the same values it would have produced.
     try:
-        _demo_in = demotion_inputs(_ctx)
+        _demo_in = demotion_inputs(_ctx, _local)
     except Exception:
         _demo_in = None
     if _demo_in is not None:

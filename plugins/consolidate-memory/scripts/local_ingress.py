@@ -109,8 +109,7 @@ def _cue_is_current(stored_line: str, stem: str, desc: str) -> bool:
         hook = hook[:-1].rstrip()
     if not hook:
         return False
-    desc_n = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ", desc).split())
-    return desc_n.casefold().startswith(hook.casefold())
+    return _norm_desc(desc).casefold().startswith(hook.casefold())
 
 
 def _pointer_or_stored(idx_text: str, prev_text: str, stem: str, desc: str) -> str:
@@ -140,6 +139,22 @@ def _pointer_or_stored(idx_text: str, prev_text: str, stem: str, desc: str) -> s
     return _pointer(stem, desc, "project-local")
 
 
+def _norm_desc(desc: str) -> str:
+    """The ONE description normalisation for the local pointer constructor.
+
+    `_pointer` derives a cue from `description:`; `_cue_is_current` asks whether a stored cue is
+    one `_pointer` could have produced from a given description. Those two answers are only
+    consistent while both sides normalise IDENTICALLY, so the normalisation lives here and both
+    call it. ⚠ A first cut inlined a byte-identical copy at the second site, and the failure mode
+    is silent in BOTH directions: a divergence that makes `_cue_is_current` answer wrongly
+    either CEMENTS a stale cue (the lock its docstring warns about) or re-inflates a
+    hand-tightened line (+62 est tok measured). No test could catch it, because both arms build
+    their fixtures from the same literals. Same rule as `store_local_index`: remove the second
+    site rather than keep two sites in step by discipline.
+    """
+    return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ", desc).split())
+
+
 def _pointer(stem: str, description: str, scope: str = "") -> str:
     """Always-loaded index line for a project-authored local fact.
 
@@ -150,8 +165,7 @@ def _pointer(stem: str, description: str, scope: str = "") -> str:
     `[project-local]` when the fact is in-contract.
     """
     from memory_status import LOCAL_HOOK_TOKEN_WARN
-    desc = (description or "").strip().strip('"')
-    desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ", desc).split())
+    desc = _norm_desc((description or "").strip().strip('"'))
     tag = "project-local" if (scope or "").strip().strip('"') in ("", "project-local") else ""
     suffix = f" [{tag}]" if tag else ""
     prefix = f"- [{stem}]({stem}.md) — "
