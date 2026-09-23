@@ -23326,6 +23326,42 @@ check("v0.4.42 D3 (CONTROL): with no stored line the cue is DERIVED — the keep
       _d3_fn is not None
       and _d3_fn("", "", "d3fact", _D3_DESC).startswith("- [d3fact](d3fact.md) — "))
 
+# ⚠ v0.4.42 D3 (PIN — RED at the cut these were found against, where BOTH passed while the
+# behaviour was wrong). Two ways the keep silently did nothing or too much:
+#   (a) QUOTED descriptions: condition 1 compared a quote-STRIPPED value against the caller's raw
+#       `fm["description"]`, so the sides were never equal and the keep never fired. MEASURED
+#       prevalence: 166 of 525 fact files carry quoted descriptions — the re-inflation D3 exists
+#       to stop continued silently for about a third of the population. The fixture below passes
+#       the value the REAL caller passes (`ms._frontmatter(...)["description"]`), not a constant —
+#       passing the constant is exactly why the earlier pin could not see this.
+#   (b) A ONE-WAY prefix test accepted cues `_pointer` provably cannot write — a mid-word cut, or
+#       a truncation with no ellipsis — and would CEMENT a stale cue whose old hook prefixes the
+#       current description. `_fit_hook` emits exactly two shapes; the test now requires one.
+_D3Q = f'---\nname: d3fact\ndescription: "{_D3_DESC}"\n---\nbody text\n'
+_D3Q_DESC = str(ms._frontmatter(_D3Q).get("description") or "")
+check("v0.4.42 D3 (PIN): the keep fires for a QUOTED description too — asserted through the "
+      "value the real caller passes, not a constant, because a constant is what hid this",
+      _d3_fn is not None and "…" in _d3_fn(_D3_IDX, _D3Q, "d3fact", _D3Q_DESC))
+# ⚠ The two arms below are the SAME distinction read in opposite directions, and an earlier
+# cut of them encoded the wrong rule: it keyed on the ELLIPSIS MARKER (require `…` or exact
+# equality), which re-derived the shape a human actually produces — a tightened cue carries no
+# ellipsis, because the marker is the constructor's, not the editor's. The signal is
+# PRODUCIBILITY: `_fit_hook` cuts on a WHITESPACE boundary, so a producible cue is a casefolded
+# prefix that is either the whole description or is followed by a space.
+check("v0.4.42 D3 (PIN): a MID-WORD cut is not a cue `_fit_hook` can produce, so it is re-derived "
+      "(accepting it would cement a stale cue this rule exists to heal)",
+      _d3_fn is not None
+      and _d3_fn("# Memory Index\n\n- [d3fact](d3fact.md) — a very long descri [project-local]\n",
+                 _D3Q, "d3fact", _D3Q_DESC)
+      != "- [d3fact](d3fact.md) — a very long descri [project-local]")
+check("v0.4.42 D3 (PIN — the arm the previous cut got BACKWARDS): a WORD-BOUNDARY tightening "
+      "with NO ellipsis is KEPT — that is the shape a person writes, and requiring the marker "
+      "re-derived it, restoring the re-inflation this rule exists to stop",
+      _d3_fn is not None
+      and _d3_fn("# Memory Index\n\n- [d3fact](d3fact.md) — a very long description that would [project-local]\n",
+                 _D3Q, "d3fact", _D3Q_DESC)
+      == "- [d3fact](d3fact.md) — a very long description that would [project-local]")
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
@@ -23351,11 +23387,11 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #          + 6: the D1c review round — 4 masking-arm
                                        #              pins + 1 control + the disclosure
                                        #              reaching the operator surface.
-                            + 6)       # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
+                            + 9)       # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
-                                        #     + 4 D3 pins (body-only keeps the cue, the STALE-cue
-                                        #     re-derivation that stops the keep cementing a
-                                        #     frozen cue, a changed description, no stored line).
+                                        #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
+                                        #     re-derivation, the QUOTED-description arm, two
+                                        #     prefix-shape arms, a changed description, no cue).
                                                         #      "admit table" is a PIN too — its (e)
                                                         #      conjunct asserts the REFUSAL, measured
                                                         #      PRE ✗ / POST ✓)

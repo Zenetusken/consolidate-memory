@@ -120,10 +120,22 @@ def _cue_is_current(stored_line: str, stem: str, desc: str) -> bool:
     # no ellipsis — and both are cues `_pointer` provably cannot write, so accepting them
     # CEMENTS a stale cue whose old hook happens to prefix the current description. That is the
     # lock this function exists to prevent, reached through its own permissiveness.
-    if not truncated:
-        return desc_n.casefold() == hook_n           # untruncated ⇒ it must be the whole thing
-    return (desc_n.casefold().startswith(hook_n)
-            and desc_n[len(hook):len(hook) + 1] == " ")   # and cut on a WORD boundary
+    # ONE rule, in ONE coordinate system. `_fit_hook` emits either the whole description or a cut
+    # at a WHITESPACE boundary, so a cue it could have written is a casefolded prefix that either
+    # IS the whole description or is followed by a space.
+    #   ⚠ Requiring EXACT equality on the untruncated arm was a regression: a human tightening
+    #   carries no ellipsis at all (the marker is the constructor's, not the editor's), so the
+    #   shape a person actually produces was being re-derived — the very +est-tok inflation this
+    #   rule exists to stop. The marker is not the signal; PRODUCIBILITY is.
+    #   ⚠ The boundary index must be read from the CASEFOLDED string. Indexing the original-case
+    #   `desc_n` with the original-case `len(hook)` mixes two coordinate systems, and any
+    #   description whose casefold changes length (`ß` → `ss`, `İ` → two codepoints) reads the
+    #   wrong character and refuses a cue that is perfectly producible.
+    desc_cf = desc_n.casefold()
+    if not desc_cf.startswith(hook_n):
+        return False
+    _n = len(hook_n)
+    return len(desc_cf) == _n or desc_cf[_n:_n + 1] == " "
 
 
 def _pointer_or_stored(idx_text: str, prev_text: str, stem: str, desc: str) -> str:
