@@ -23292,19 +23292,35 @@ with _Env73() as _e_d2:
 # MEASURED: +62 est tok across five facts in one pass, then +31 across two more — all of it on
 # the tier paid every session, with nothing comparing the old cue to the new one.
 _D3_DESC = "a very long description that would derive a cue considerably longer than the stored one"
-_D3_IDX = "# Memory Index\n\n- [d3fact](d3fact.md) — a SHORT cue [project-local]\n"
+# ⚠ TRUNCATION-CONSISTENT on purpose: the keep fires only on a line `_pointer` could itself
+# have produced from THIS description. A hook that is not a prefix of it is a cue that has gone
+# stale (or been paraphrased), and the pin below for that case is the discriminating one.
+_D3_HOOK = "a very long description that would derive a cue…"
+_D3_IDX = f"# Memory Index\n\n- [d3fact](d3fact.md) — {_D3_HOOK} [project-local]\n"
 _D3_PREV = f'---\nname: d3fact\ndescription: "{_D3_DESC}"\n---\nbody text\n'
 _d3_fn = getattr(_li_ptr, "_pointer_or_stored", None)
-check("v0.4.42 D3 (PIN): a BODY-only write preserves the stored cue — the description did not "
-      "move, so the line it is derived from must not be re-derived",
+check("v0.4.42 D3 (PIN): a BODY-only write preserves a hand-tightened cue — the description did "
+      "not move and the stored line is a truncation of it, so re-deriving would inflate the "
+      "tier the store pays every session",
       _d3_fn is not None
       and _d3_fn(_D3_IDX, _D3_PREV, "d3fact", _D3_DESC)
-      == "- [d3fact](d3fact.md) — a SHORT cue [project-local]")
-check("v0.4.42 D3 (PIN, the discriminating arm): a CHANGED description DOES re-derive — the "
-      "keep must not become a way to freeze a cue whose input moved, which is the defect the "
-      "same pass measured on the roadmap (body v0.4.40, pointer v0.4.34)",
+      == f"- [d3fact](d3fact.md) — {_D3_HOOK} [project-local]")
+check("v0.4.42 D3 (PIN — the DISCRIMINATING arm, and the one that caught this design's own "
+      "trap): a STALE cue against the CURRENT description is re-derived. This is the case the "
+      "first cut of this rule would have CEMENTED: a cue goes stale exactly by its description "
+      "changing while the write path refuses the fact, so at the next write `prev_desc == "
+      "new_desc` and a keep keyed on that alone preserves the stale line forever — turning the "
+      "repair for one silent defect into the cause of another. MEASURED on the roadmap's own "
+      "case: body v0.4.40, pointer v0.4.34",
       _d3_fn is not None
-      and "SHORT" not in _d3_fn(_D3_IDX, _D3_PREV, "d3fact", "a DIFFERENT description entirely"))
+      and (lambda _r: "UNRELATED" not in _r and _D3_DESC in _r)(
+          _d3_fn("# Memory Index\n\n- [d3fact](d3fact.md) — an UNRELATED stale cue [project-local]\n",
+                 _D3_PREV, "d3fact", _D3_DESC)))
+check("v0.4.42 D3 (PIN, the other arm): a CHANGED description DOES re-derive — the keep must not "
+      "become a way to freeze a cue whose input moved",
+      _d3_fn is not None
+      and "a very long description" not in _d3_fn(_D3_IDX, _D3_PREV, "d3fact",
+                                                  "a DIFFERENT description entirely"))
 check("v0.4.42 D3 (CONTROL): with no stored line the cue is DERIVED — the keep is not a way to "
       "skip derivation altogether",
       _d3_fn is not None
@@ -23335,10 +23351,11 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #          + 6: the D1c review round — 4 masking-arm
                                        #              pins + 1 control + the disclosure
                                        #              reaching the operator surface.
-                            + 5)       # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
+                            + 6)       # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
-                                        #     + 3 D3 pins (body-only keeps the cue, a changed
-                                        #     description re-derives, and no stored line derives).
+                                        #     + 4 D3 pins (body-only keeps the cue, the STALE-cue
+                                        #     re-derivation that stops the keep cementing a
+                                        #     frozen cue, a changed description, no stored line).
                                                         #      "admit table" is a PIN too — its (e)
                                                         #      conjunct asserts the REFUSAL, measured
                                                         #      PRE ✗ / POST ✓)

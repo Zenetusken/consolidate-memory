@@ -80,26 +80,62 @@ def _stored_pointer(idx_text: str, stem: str) -> "str | None":
     return None
 
 
+def _cue_is_current(stored_line: str, stem: str, desc: str) -> bool:
+    """Could `_pointer` have produced `stored_line` from `desc`?
+
+    The second condition of the keep, and the one that stops it CEMENTING a stale cue.
+    Comparing only the previous description is not enough, and the failure is not hypothetical:
+    a cue whose description changed **while the write path was refusing it** (a firewall false
+    positive) is stale exactly when the next write compares `prev_desc == new_desc` — both are
+    the CURRENT description — so a keep keyed on that alone preserves the stale line forever.
+    MEASURED on the roadmap's own case: body v0.4.40, pointer v0.4.34, and the naive rule keeps
+    v0.4.34.
+
+    The test is truncation-consistency: `_pointer` derives the hook by taking a WORD-BOUNDARY
+    PREFIX of the normalised description (or all of it when it fits), so a line the constructor
+    could have written has a hook that is a prefix of that normalisation. Case-folded, because
+    the stores carry both (`a gate proves…` stored against `A gate proves…` derived) and the
+    hook's own case is not a signal.
+    """
+    hook = stored_line
+    for cut in (" [project-local]",):
+        if hook.endswith(cut):
+            hook = hook[: -len(cut)]
+    pref = f"- [{stem}]({stem}.md) — "
+    if not hook.startswith(pref):
+        return False
+    hook = hook[len(pref):].rstrip()
+    if hook.endswith("…"):
+        hook = hook[:-1].rstrip()
+    if not hook:
+        return False
+    desc_n = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ", desc).split())
+    return desc_n.casefold().startswith(hook.casefold())
+
+
 def _pointer_or_stored(idx_text: str, prev_text: str, stem: str, desc: str) -> str:
-    """v0.4.42 (D3): re-derive the cue only when its ONE input changed.
+    """v0.4.42 (D3): re-derive the cue only when it would actually change meaning.
 
     `_pointer` derives the line from `description:` alone, so the line is a FUNCTION of that
-    field — and a write that leaves the field untouched should leave the line untouched. It did
-    not, and the MEASURED harm was silent: a line a human had tightened below what `_fit_hook`
-    produces was re-inflated by ANY edit to the body — **+62 est tok across five facts** in one
-    pass, then **+31 across two more**, all of it landing on the tier paid every session, with
-    nothing comparing the old cue to the new one.
+    field — and a write that leaves the field untouched should leave a hand-tightened line
+    untouched. It did not, and the MEASURED harm was silent: a line a human had tightened below
+    what `_fit_hook` produces was re-inflated by ANY edit to the body — **+62 est tok across
+    five facts** in one pass, then **+31 across two more**, all of it landing on the tier paid
+    every session, with nothing comparing the old cue to the new one.
 
-    ⚠ The comparison is on the DESCRIPTION, never on the lines. Comparing lines cannot tell
-    *"the description changed"* from *"someone tightened the cue"*, and the caller MUST re-derive
-    in the first case — a line whose description moved is exactly the frozen-cue repair this
-    pair of changes exists for (D1c makes the write possible at all; this keeps it honest).
+    ⚠ TWO conditions, and BOTH are load-bearing. The first (the description did not move) is the
+    one the harm suggested; the second (`_cue_is_current`) is what stops the first from becoming
+    a LOCK: a cue goes stale precisely by its description changing while the write path refuses
+    the fact, at which point the previous and current descriptions are the SAME string and a
+    keep keyed on that alone would preserve the stale line forever — turning the repair for one
+    silent defect into the cause of another. A keep that fires only on a truncation-consistent
+    line heals those cues on their next write while still preserving a tightened one.
     """
     from memory_status import _frontmatter
     prev_desc = str(_frontmatter(prev_text).get("description") or "").strip().strip('"')
     if prev_desc == desc.strip():
         stored = _stored_pointer(idx_text, stem)
-        if stored is not None:
+        if stored is not None and _cue_is_current(stored, stem, desc):
             return stored
     return _pointer(stem, desc, "project-local")
 
