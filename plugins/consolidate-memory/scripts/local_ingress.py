@@ -208,14 +208,16 @@ def _warn_fat_hook(ptr: str, stem: str, *, source_path: str = "") -> None:
         print(f"  {lint}", file=sys.stderr)
 
 
-def _pointer_from_clean_description(stem: str, text: str) -> "str | None":
+def _pointer_from_clean_description(stem: str, text: str, *,
+                                    idx_text: str = "", prev_text: str = "") -> "str | None":
     """D1c: the index cue for a fact whose only refusal is the FIREWALL, or None.
 
     The cue is a function of `description:` ALONE (`_pointer`), but every pointer-producing
     path runs `prepare_local_fact`, which validates the WHOLE body — so a body refusal used
-    to block an unrelated concern. Measured harm: `consolidate-memory-roadmap`'s body read
-    v0.4.41 while its `MEMORY.md` pointer still read v0.4.34, frozen across six releases,
-    because no write could regenerate the cue and nothing compared body to cue.
+    to block an unrelated concern. Measured harm: one fact's body read
+    six releases ahead of its `MEMORY.md` pointer, frozen because no write could regenerate
+    the cue and nothing compared body to cue. (The fact is private, so it is described rather
+    than named: a slug from the maintainer's store is not a citation this tree can resolve.)
 
     ⚠ **"ONLY refusal" is the load-bearing word, and the first cut of this function did not
     have it.** It gated on `_looks_secret(text)` — a fact about the DOCUMENT — while
@@ -257,6 +259,12 @@ def _pointer_from_clean_description(stem: str, text: str) -> "str | None":
     desc = str(_frontmatter(text).get("description") or "").strip().strip('"')
     if not desc or _looks_secret(desc):
         return None                      # the cue's own input is dirty; nothing to derive
+    # ⚠ When the caller can supply the index, the KEEP applies here too — a hand-tightened cue
+    # is no less worth preserving because its body is refused, and this route is the only path
+    # a firewall-refused fact's cue can take. Without it, the rebuild's one write both healed a
+    # frozen cue and re-inflated every tightened one.
+    if idx_text:
+        return _pointer_or_stored(idx_text, prev_text or text, stem, desc)
     return _pointer(stem, desc, "project-local")
 
 
@@ -814,7 +822,16 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
                 # the BODY; the cue is a function of `description:` alone, so the two
                 # concerns can separate — and when they do, deriving the cue is what keeps it
                 # from freezing. `invalid` still catches every other refusal.
-                desc_ptr = _pointer_from_clean_description(f.stem, text)
+                # ⚠ The keep applies on THIS branch too, not only the evaluable one. The D1c
+                # route is reachable exactly for facts whose body the firewall refuses, and a
+                # hand-tightened cue is no less worth preserving because its body is: without
+                # this, `cm local rebuild-index --apply` re-inflated the tightened cue of every
+                # refused fact (MEASURED +25 est tok each) — and since this route lives ONLY in
+                # the rebuild, the one write that heals a frozen cue was also the one that
+                # re-inflated the tightened ones, in the same pass. The keep's operands are
+                # already in scope: `idx_text` is the pinned snapshot, `text` the fact's bytes.
+                desc_ptr = _pointer_from_clean_description(f.stem, text,
+                                                           idx_text=idx_text, prev_text=text)
                 if desc_ptr is not None:
                     _warn_fat_hook(desc_ptr, f.stem, source_path=str(f))
                     lines.append(desc_ptr)

@@ -23326,6 +23326,31 @@ check("v0.4.42 D3 (CONTROL): with no stored line the cue is DERIVED — the keep
       _d3_fn is not None
       and _d3_fn("", "", "d3fact", _D3_DESC).startswith("- [d3fact](d3fact.md) — "))
 
+# ⚠ v0.4.42 D3 (PIN — RED at the cut where the keep reached only the rebuild's EVALUABLE branch).
+# The D1c route is reachable exactly for facts whose BODY the firewall refuses, and it lives ONLY
+# in the rebuild — so without the keep there, the single write that heals a frozen cue also
+# re-inflated every tightened one whose body was refused (MEASURED +25 est tok each). The route
+# now takes the keep's operands, and the controls below assert it did not become a bypass.
+_d3_route = getattr(_li_ptr, "_pointer_from_clean_description", None)
+_D3R_DESC = "a deliberately long description that the constructor would expand into a longer cue"
+_D3R_TIGHT = "a deliberately long description that the constructor…"
+_D3R_TXT = f'---\nname: probefact\ndescription: "{_D3R_DESC}"\n---\npassword=hunter2longvalue\n'
+_D3R_IDX = f"# Memory Index\n\n- [probefact](probefact.md) — {_D3R_TIGHT} [project-local]\n"
+check("v0.4.42 D3 (PIN): the D1c route applies the keep too — a firewall-refused fact's "
+      "hand-tightened cue survives the rebuild, the one write that can heal or inflate it",
+      _d3_route is not None
+      and _d3_route("probefact", _D3R_TXT, idx_text=_D3R_IDX, prev_text=_D3R_TXT)
+      .startswith(f"- [probefact](probefact.md) — {_D3R_TIGHT} "))
+check("v0.4.42 D3 (CONTROL): the same route still DECLINES a dirty description and a clean body "
+      "— taking the keep's operands must not turn it into a bypass",
+      _d3_route is not None
+      and _d3_route("probefact",
+                    f'---\nname: probefact\ndescription: "password=hunter2longvalue"\n---\n'
+                    "password=hunter2longvalue\n", idx_text=_D3R_IDX, prev_text=_D3R_TXT) is None
+      and _d3_route("probefact",
+                    f'---\nname: probefact\ndescription: "{_D3R_DESC}"\n---\nordinary body\n',
+                    idx_text=_D3R_IDX, prev_text=_D3R_TXT) is None)
+
 # ⚠ v0.4.42 D3 (PIN — RED at the cut these were found against, where BOTH passed while the
 # behaviour was wrong). Two ways the keep silently did nothing or too much:
 #   (a) QUOTED descriptions: condition 1 compared a quote-STRIPPED value against the caller's raw
@@ -23387,7 +23412,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #          + 6: the D1c review round — 4 masking-arm
                                        #              pins + 1 control + the disclosure
                                        #              reaching the operator surface.
-                            + 9)       # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
+                            + 11)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
                                         #     re-derivation, the QUOTED-description arm, two
