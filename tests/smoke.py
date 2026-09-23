@@ -23454,6 +23454,11 @@ check("v0.4.44 item 5 (CONTROL): a readable file is still MEASURED — the guard
       "the ordinary case",
       ms._measure(_f44) == (1, 2, 1))
 
+# ⚠ RED-BY-ABSENCE, guarded: pre-fix `measure_or_fault` does not exist, and a bare call RAISES
+# out of module scope — killing the suite mid-file so every check AFTER it never runs, which a
+# runner cannot tell from an interrupted run. The first cut of this pin did exactly that and the
+# pre-fix measurement caught it. Same idiom as the v0.4.40 sibling-header pins.
+_mof44 = getattr(ms, "measure_or_fault", None)
 # ⚠ v0.4.44 item 5, the FAULT ARM (PIN — RED at the cut where `_measure` degraded every operand
 # class identically). The degrade is right for the STORE INDEX, whose caller only displays the
 # figure. It is WRONG for a GAUGE operand: `budget.claude_md.over` is `tokens > budget`, so an
@@ -23472,18 +23477,24 @@ _os44.chmod(_f44, 0)
 check("v0.4.44 item 5 (PIN): `measure_or_fault` separates the TWO zeros — an operand that exists "
       "but cannot be measured is a FAULT (a gate input reading 0 there would be a false pass), "
       "while absent and empty are honest zeros. A mode-000 file and a DIRECTORY both fault",
-      ms.measure_or_fault(_d44 / "nothing-here.md") == ((0, 0, 0), False)
-      and ms.measure_or_fault(_e44) == ((0, 0, 0), False)
-      and ms.measure_or_fault(_f44) == ((0, 0, 0), True)
-      and ms.measure_or_fault(_d44 / "MEMORY.md") == ((0, 0, 0), True)
-      and ms.measure_or_fault(_ok44)[1] is False)
+      _mof44 is not None
+      and _mof44(_d44 / "nothing-here.md") == ((0, 0, 0), False)
+      and _mof44(_e44) == ((0, 0, 0), False)
+      and _mof44(_f44) == ((0, 0, 0), True)
+      and _mof44(_d44 / "MEMORY.md") == ((0, 0, 0), True)
+      and _mof44(_ok44)[1] is False)
 _os44.chmod(_f44, 0o644)
+# ⚠ Same guard as above, and for the same reason: pre-fix `_measure` RAISES on the directory
+# (that is the defect), so a bare call here killed the suite before this check could redden.
+try:
+    _ctrl44 = (ms._measure(_d44 / "MEMORY.md"), ms._measure(_ok44),
+               ms._measure(_d44 / "nothing-here.md"))
+except OSError:
+    _ctrl44 = None
 check("v0.4.44 item 5 (CONTROL): `_measure` still returns the VALUE ALONE for its display-only "
       "callers — the store index degrades to a plain (0,0,0) and never raises. ⚠ Asserted on the "
       "DIRECTORY, whose state no other block restores, rather than on the chmod-ed file",
-      ms._measure(_d44 / "MEMORY.md") == (0, 0, 0)
-      and ms._measure(_ok44) == (1, 2, 1)
-      and ms._measure(_d44 / "nothing-here.md") == (0, 0, 0))
+      _ctrl44 == ((0, 0, 0), (1, 2, 1), (0, 0, 0)))
 
 # --- v0.4.44 item 4 (PIN — RED at `783cbde`: no `secret_pred` existed, so a row's cached
 # `secret` verdict survived a firewall change indefinitely). The manifest's documented
@@ -23492,7 +23503,11 @@ check("v0.4.44 item 5 (CONTROL): `_measure` still returns the VALUE ALONE for it
 # never change) kept their verdict forever. The identity is DERIVED from the predicate's own
 # source, so editing the firewall moves it with nothing to remember.
 _fm44 = __import__("facts_manifest")
-_p44 = _fm44.secret_pred()
+# ⚠ RED-BY-ABSENCE, guarded — the THIRD occurrence of this trap in one block, and the pre-fix
+# measurement caught all three. Pre-fix `secret_pred` does not exist; a bare call raises at MODULE
+# scope and kills every check after it, which a runner cannot tell from an interrupted run.
+_sp44 = getattr(_fm44, "secret_pred", None)
+_p44 = _sp44() if _sp44 is not None else ""
 _d44m = Path(_tf44.mkdtemp())
 _facts44 = _d44m / "domains" / "personal" / "facts"
 _facts44.mkdir(parents=True)
@@ -23512,10 +23527,11 @@ _stale44, _why249 = _fm44.load(_facts44, _pdir44)
 check("v0.4.44 item 4 (PIN): a cached `secret` verdict is bound to the PREDICATE that produced "
       "it — a row carrying a foreign `secret_pred` FAILS OPEN to a rebuild instead of serving a "
       "verdict the current firewall would not reach",
-      _served44 is not None and _why44 == "" and _stale44 is None and _why249 == "predicate-changed")
+      _sp44 is not None and _served44 is not None and _why44 == ""
+      and _stale44 is None and _why249 == "predicate-changed")
 check("v0.4.44 item 4 (CONTROL): the identity is DERIVED and stable — two calls agree, so it "
       "moves only when the predicate's own source does, never on a timer or a re-run",
-      _p44 == _fm44.secret_pred() and len(_p44) == 16)
+      _sp44 is not None and _p44 == _sp44() and len(_p44) == 16)
 
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
