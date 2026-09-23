@@ -1115,7 +1115,7 @@ def dangling_links(auto_mem: Path, global_dir: Path | None = None,
 # protocol shapes that carry no high-entropy blob.
 _SECRET = re.compile(
     r"""(
-        (?:[A-Za-z0-9]{1,40}[_.\-]){0,8}(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?:[_.\-][A-Za-z0-9]{1,40}){0,8}["']?\s*[:=]\s*["']?(?=\S{8,}|(?=\S{4,})\S*\d)\S+
+        (?:[A-Za-z0-9]{1,40}[_.\-]){0,8}(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?P<sfx>(?:[_.\-][A-Za-z0-9]{1,40}){1,8})?["']?\s*[:=]\s*["']?(?(sfx)(?=\S{8,}|(?=\S{4,})(?=[^\s]*[A-Za-z])\S*\d)\S+|(?=\S{8,}|(?=\S{4,})\S*\d)\S+)
                                                                      # keyword as a full SEGMENT of a compound id, with
                                                                      # optional quotes/brackets around the delimiter so
                                                                      # JSON {"password": "..."} / dict / YAML all match.
@@ -1147,7 +1147,7 @@ _SECRET = re.compile(
                                                                      # prose ("token: bump TTL to 3600", "pass: 5 fail:
                                                                      # 0"), which this firewall now also gates commit
                                                                      # subjects against (v0.1.70's _scrub_commit_log).
-      | --?(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)\b[= ](?=\S{8,}|(?=\S{4,})\S*\d)\S{4,}
+      | (?<![A-Za-z0-9_])--?(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)\b[= ](?=\S{8,}|(?=\S{4,})\S*\d)\S{4,}
                                                                      # v0.1.70: a CLI-FLAG-shaped keyword (a leading
                                                                      # `-`/`--` is the signal — ordinary prose essentially
                                                                      # never spells "-password") followed by `=` or a

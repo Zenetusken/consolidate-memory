@@ -92,6 +92,35 @@ def _warn_fat_hook(ptr: str, stem: str, *, source_path: str = "") -> None:
         print(f"  {lint}", file=sys.stderr)
 
 
+def _pointer_from_clean_description(stem: str, text: str) -> "str | None":
+    """D1c: the index cue for a fact whose BODY the firewall refuses, or None.
+
+    The cue is a function of `description:` ALONE (`_pointer`), but every pointer-producing
+    path runs `prepare_local_fact`, which validates the WHOLE body — so a body refusal used
+    to block an unrelated concern. Measured harm: `consolidate-memory-roadmap`'s body read
+    v0.4.41 while its `MEMORY.md` pointer still read v0.4.34, frozen across six releases,
+    because no write could regenerate the cue and nothing compared body to cue.
+
+    Returns a pointer only when the two concerns genuinely separate: the body is refused
+    **by the firewall** and the description is clean. Any other refusal (a bad stem, a
+    missing description, a bad scope) returns None so the caller keeps its existing
+    `invalid` handling — this is not a general bypass.
+
+    ⚠ The predicate is MEASURED (`_looks_secret`), never matched against the refusal's
+    message: a guard's label is not its predicate, and the refusal string is prose that may
+    be reworded. ⚠ It never admits a BODY — a secret in the body still blocks every content
+    write; what it removes is the coupling between two unrelated concerns.
+    """
+    from memory_status import _frontmatter, _looks_secret
+    if not _looks_secret(text):
+        return None                      # refused for some OTHER reason — not ours to route
+    desc = str(_frontmatter(text).get("description") or "").strip().strip('"')
+    if not desc or _looks_secret(desc):
+        return None                      # the cue's own input is dirty; nothing to derive
+    return _pointer(stem, desc, "project-local")
+
+
+
 def _frontmatter_entries(text: str) -> list:
     """Opening-frontmatter (key, value) pairs in order. Last-wins is the caller's problem."""
     if text.startswith("\ufeff"):
@@ -480,6 +509,12 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     idx_snap = read_snapshot(idxp)
     included: list = []
     invalid: list = []
+    # D1c: a fact whose BODY the firewall refuses but whose DESCRIPTION is clean. Its cue is
+    # still derived (and so stays FRESH), and reported rather than silently routed — the
+    # refusal is real and the operator must see it. It does NOT fail the plan closed: nothing
+    # in the index is wrong, and failing closed here is what froze the roadmap's cue for six
+    # releases. Distinct from `invalid`, which means "not evaluated at all".
+    body_refused: list = []
     unreadable: list = []
     # A `*.md` the directory listing carries but the read reports ABSENT. A broken symlink is
     # the reachable form: `glob("*.md")` lists the name, `read_snapshot` follows the link,
@@ -622,6 +657,19 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
                 continue
             prepared = prepare_local_fact(f.stem, text, inject=True)
             if not prepared.get("ok"):
+                # D1c: try the cue BEFORE failing closed. A firewall refusal is a verdict on
+                # the BODY; the cue is a function of `description:` alone, so the two
+                # concerns can separate — and when they do, deriving the cue is what keeps it
+                # from freezing. `invalid` still catches every other refusal.
+                desc_ptr = _pointer_from_clean_description(f.stem, text)
+                if desc_ptr is not None:
+                    _warn_fat_hook(desc_ptr, f.stem, source_path=str(f))
+                    lines.append(desc_ptr)
+                    included.append({"stem": f.stem, "sha256": snap.sha256})
+                    body_refused.append({"stem": f.stem,
+                                         "error": prepared.get("error") or "invalid",
+                                         "sha256": snap.sha256})
+                    continue
                 invalid.append({"stem": f.stem,
                                 "error": prepared.get("error") or "invalid",
                                 "sha256": snap.sha256})
@@ -750,6 +798,10 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     return {
         "included": included,
         "invalid": invalid,
+        # D1c (additive): facts whose BODY the firewall refused but whose cue was still
+        # derived. Reported rather than swallowed — the refusal is real, and a plan that
+        # routed it silently would be the same class of silence this pass exists to remove.
+        "body_refused": body_refused,
         "unreadable": unreadable,
         "absent": absent,
         "mirrors": mirrors,

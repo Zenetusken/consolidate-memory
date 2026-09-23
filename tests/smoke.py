@@ -1160,6 +1160,96 @@ for _name, _val in [
     check(f"firewall FALSE-POSITIVE guard: {_name!r} -> stays clean",
           es._looks_secret(_val) is False)
 
+# --- v0.4.42 D1a/D1b (PIN — MEASURED RED at `3ada6c7`, where all three read True). The two
+# prose shapes the firewall used to refuse, with no credential present. D1a: the dash is a
+# HYPHEN inside a compound (`audit-pass`, `vs-secret`), not a flag introducer. D1b: `token`
+# matches as a compound SEGMENT of a SCREAMING_SNAKE constant and the value is a bare integer.
+# MEASURED harm was not the refusal itself: the cue is derived from `description:`, so a
+# refused fact's pointer could not be REGENERATED at all — the roadmap's body read v0.4.41
+# while its pointer still read v0.4.34, frozen across six releases.
+for _name, _val in [
+    ("hyphen-compound ending in 'pass' (D1a: the dash does not introduce a flag)",
+     "the 2026-09-15 audit-pass sections, are archived verbatim in"),
+    ("hyphen-compound ending in 'secret' (D1a: same shape)",
+     "entropy-vs-secret firewall is solved.)"),
+    ("a code CONSTANT assignment (D1b: compound segment + a bare integer value)",
+     "   `ms.INDEX_TOKEN_BUDGET = 1600` -> `render_html` stayed 1500"),
+]:
+    check(f"firewall FALSE-POSITIVE guard (v0.4.42): {_name!r} -> stays clean",
+          es._looks_secret(_val) is False)
+
+# --- v0.4.42 D1b boundary (GUARDS on the accepted gap — each is an arm the narrowing does NOT
+# name, and a rule that ate them would be a silent security loss rather than a trade). The rule
+# declines a 4-7 char PURE-NUMERIC value only when a `[_.-]` segment FOLLOWS the keyword: a
+# prefix-only match is the env-var shape (`MY_TOKEN=1234`), which is a real secret, and a
+# standalone keyword is the ordinary `password=<secret>` shape. Suffix-only is the narrower,
+# safer reading of the same decision.
+for _name, _val, _want in [
+    ("prefix-only env-var shape (suffix-only rule: still caught)", "MY_TOKEN=1234", True),
+    ("standalone keyword, short numeric (still caught)", "password=1234", True),
+    ("standalone keyword, long numeric (the 8+ branch)", "password=12345678", True),
+    ("suffixed id + MIXED short value (already pinned above; re-pinned at the boundary)",
+     "MY_API_KEY=abc123", True),
+]:
+    check(f"firewall(v0.4.42 accepted-gap boundary): {_name} -> {'flagged' if _want else 'clean'}",
+          bool(es._looks_secret(_val)) is _want)
+
+# --- v0.4.42: the NO-FLIP CENSUS. The three cases above pin the SHAPES; this pins the CORPUS —
+# every firewall verdict this suite already asserts, re-evaluated against the changed regex.
+# ⚠ An instrument is only as wide as its match set (`gate-coverage-is-its-match-set`), and this
+# check's own first draft was that defect: it harvested EVERY `(str, bool)` tuple in this file
+# and reported seven tuples from UNRELATED tables — the error-signal noise filter, a
+# ruff-output block — as flips. The scope below is the loops whose body actually references
+# `_looks_secret`, which is what makes the census a census.
+_ast42 = __import__("ast")
+_ff42_cases = []
+for _n42 in _ast42.walk(_ast42.parse(Path(__file__).read_text())):
+    if not isinstance(_n42, _ast42.For) or not isinstance(_n42.iter, (_ast42.List, _ast42.Tuple)):
+        continue
+    if not any(isinstance(_x, _ast42.Attribute) and _x.attr == "_looks_secret"
+               for _s42 in _n42.body for _x in _ast42.walk(_s42)):
+        continue
+    for _e42 in _n42.iter.elts:
+        if not isinstance(_e42, _ast42.Tuple):
+            continue
+        try:
+            _v42 = [_ast42.literal_eval(_el) for _el in _e42.elts]
+        except Exception:
+            continue
+        if len(_v42) >= 2 and isinstance(_v42[-2], str) and isinstance(_v42[-1], bool):
+            _ff42_cases.append((_v42[-2], _v42[-1]))
+check(f"firewall(v0.4.42): every pinned firewall verdict survives the D1a/D1b changes "
+      f"({len(_ff42_cases)} cases harvested from this suite's own predicate-referencing tables; "
+      f"anti-vacuity floor 20, because a harvest that reads nothing prints a green proportional "
+      f"to how little it read)",
+      len(_ff42_cases) >= 20
+      and all(bool(es._looks_secret(_v)) is _w for _v, _w in _ff42_cases))
+
+# --- v0.4.42 D1c (PIN — RED at `3ada6c7` BY ABSENCE: the function does not exist there, so the
+# call cannot be satisfied by anything but the repair). A cue is a function of `description:`
+# ALONE, but every pointer path ran `prepare_local_fact`, which validates the WHOLE body — so a
+# firewall verdict on the body blocked an unrelated concern and froze the cue. This route
+# separates them. ⚠ It never admits a BODY: the controls below are the half that proves it is a
+# narrow route and not a general bypass.
+import local_ingress as _li42  # noqa: E402
+_D1C_BODY = '---\nname: cm-demo-42\ndescription: "a clean cue"\n---\npassword=hunter2longvalue\n'
+# ⚠ RED-BY-ABSENCE, reported as a FAILURE rather than a traceback out of the suite: on the
+# pre-fix tree the route does not exist, so `getattr` yields None and the pin reddens for the
+# reason it is about. Same idiom as v0.4.40's sibling-header pins.
+_d1c_fn = getattr(_li42, "_pointer_from_clean_description", None)
+check("v0.4.42 D1c (PIN): a firewall-refused BODY with a CLEAN description still yields a cue "
+      "(pre-fix the route does not exist, so this reddens BY ABSENCE rather than passing)",
+      _d1c_fn is not None and _d1c_fn("cm-demo-42", _D1C_BODY) is not None)
+check("v0.4.42 D1c (CONTROL): a DIRTY description yields NO cue — the route is not a bypass",
+      _d1c_fn is not None and _d1c_fn(
+          "cm-demo-42",
+          '---\nname: cm-demo-42\ndescription: "password=hunter2longvalue"\n---\n'
+          "password=hunter2longvalue\n") is None)
+check("v0.4.42 D1c (CONTROL): a CLEAN body yields no cue from this route — it is not the "
+      "ordinary path, and routing it here would skip the body validation that path performs",
+      _d1c_fn is not None and _d1c_fn(
+          "cm-demo-42", '---\nname: cm-demo-42\ndescription: "a clean cue"\n---\nordinary body\n') is None)
+
 # --- Gate-2a round 3 (accepted, documented gap — see _entropy_blob's docstring): a short,
 # no-digit, single-case value (a weak password) is indistinguishable in SHAPE from an ordinary
 # short English word ("flag", "usage") in the same 'keyword: value' position — no threshold
@@ -12096,7 +12186,7 @@ with _Env73() as _e_rb7:
     _ctx_rb7 = sc.resolve_store(_e_rb7.proj)
     import local_ingress as _li_rb7
     (_e_rb7.store / "sec-probe.md").write_text(
-        "---\nname: sec-probe\ndescription: registry access\n---\n"
+        "---\nname: sec-probe\ndescription: registry access via --password hunter2longvalue\n---\n"
         "Use `--token <value>` when the registry is private.\n", encoding="utf-8")
     (_e_rb7.store / "MEMORY.md").write_text(
         "# Memory Index\n\n- [sec-probe](sec-probe.md) — registry access\n", encoding="utf-8")
@@ -12111,9 +12201,26 @@ with _Env73() as _e_rb7:
           and "](sec-probe.md)" in _idx_rb7
           and _app_rb7.get("ok") is True
           and "sec-probe" in (_app_rb7.get("omitted") or []))
-    check("RC-1c (GUARD, the fixture's own teeth): the body really does trip the firewall — "
-          "if `_looks_secret` stops flagging it, the check above silently stops testing the case",
-          any(r.get("stem") == "sec-probe" for r in _plan_rb7["invalid"]))
+    # RE-AIMED at v0.4.42. The fixture used `Use `--token <value>` in ordinary prose` as its
+    # body, on the recorded grounds that this was the realistic route into `invalid`. D1a
+    # cured that shape, so the fixture's own trigger stopped firing; and D1c (see below) then
+    # re-routed the description-clean subset OUT of `invalid` entirely, because a cue is a
+    # function of `description:` alone and can be derived fresh. What survives in `invalid` is
+    # the case where the DESCRIPTION is dirty too — there is no clean string to derive from —
+    # so the fixture now trips the arm from the description. ⚠ The GUARD below is what keeps
+    # this honest: it asserts BOTH legs, so a future cure of either shape reddens the guard
+    # instead of leaving the pin above quietly testing nothing.
+    check("RC-1c (GUARD, the fixture's own teeth): the fact really is refused, and really is "
+          "one D1c declines to route — the body/description trip the firewall AND the "
+          "description has no clean cue to derive from",
+          any(r.get("stem") == "sec-probe" for r in _plan_rb7["invalid"])
+          and es._looks_secret(
+              (_e_rb7.store / "sec-probe.md").read_text(encoding="utf-8")) is True
+          and es._looks_secret("registry access via --password hunter2longvalue") is True
+          and getattr(_li_rb7, "_pointer_from_clean_description", None) is not None
+          and _li_rb7._pointer_from_clean_description(
+              "sec-probe",
+              (_e_rb7.store / "sec-probe.md").read_text(encoding="utf-8")) is None)
 
 with _Env73() as _e_rb8:
     _ctx_rb8 = sc.resolve_store(_e_rb8.proj)
@@ -12142,7 +12249,44 @@ with _Env73() as _e_rb8:
           and "](ghost-rbs.md)" in _idx_rb8
           and "](live-rbs.md)" in _idx_rb8)
 
-# --- v0.4.35 RC-1c (the carry's own SELECTION): which line a carried stem's pointer lives on -
+# --- v0.4.42 D1c (PIN — RED at `3ada6c7`, where the route does not exist: the fact lands in
+# `invalid`, the plan needs `--skip-invalid`, and its cue is carried STALE). The COMPLEMENT of
+# the RC-1c case above, and the pair is the whole design: RC-1c keeps the carry for what cannot
+# be derived, D1c derives what can. Here the DESCRIPTION is clean, so the cue is a function of a
+# string the firewall is happy with — and the plan derives it FRESH instead of freezing it.
+# MEASURED harm this closes: the roadmap's body read v0.4.41 while its pointer still read
+# v0.4.34, frozen across six releases, because no write path could regenerate the cue.
+with _Env73() as _e_d1c:
+    _ctx_d1c = sc.resolve_store(_e_d1c.proj)
+    import local_ingress as _li_d1c
+    (_e_d1c.store / "cue-fresh.md").write_text(
+        "---\nname: cue-fresh\ndescription: a clean cue for a refused body\n---\n"
+        "password=hunter2longvalue\n", encoding="utf-8")
+    (_e_d1c.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [cue-fresh](cue-fresh.md) — a STALE cue\n", encoding="utf-8")
+    _plan_d1c = _li_d1c._rebuild_plan(_ctx_d1c)
+    _app_d1c = _li_d1c.local_rebuild_index(_ctx_d1c, apply=True,
+                                           confirm="rebuild-local-index")
+    _idx_d1c = (_e_d1c.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("v0.4.42 D1c (PIN): a refused BODY with a CLEAN description does not fail the plan "
+          "closed — the cue is DERIVED FRESH (`a STALE cue` is gone), the fact is REPORTED in "
+          "`body_refused`, and it is not `invalid`",
+          not _plan_d1c.get("invalid")
+          and any(r.get("stem") == "cue-fresh" for r in _plan_d1c.get("body_refused") or [])
+          and any(r.get("stem") == "cue-fresh" for r in _plan_d1c.get("included") or [])
+          and _app_d1c.get("ok") is True
+          and "](cue-fresh.md)" in _idx_d1c
+          and "a STALE cue" not in _idx_d1c
+          and "a clean cue for a refused body" in _idx_d1c)
+    check("v0.4.42 D1c (GUARD, the fixture's own teeth): the body really is refused BY the "
+          "firewall while the description really is clean — the exact split this route exists "
+          "to serve, asserted on both legs so a cure of either reddens this guard rather than "
+          "leaving the pin testing nothing",
+          es._looks_secret(
+              (_e_d1c.store / "cue-fresh.md").read_text(encoding="utf-8")) is True
+          and es._looks_secret("a clean cue for a refused body") is False)
+
+
 # The carry exists so a HAND-EDITED index line survives a rebuild. Its selection answers one
 # question — "does this line carry a stem the plan could not evaluate?" — and the two readings of
 # it fail in OPPOSITE directions, which is why this block pins both halves rather than one:
@@ -23008,7 +23152,12 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                                         #      repair's own clause)
                             + 1        # v0.4.41 R4 — one sentence, two conditions (PIN)
                             + 1        # v0.4.41 R5 — the token has one home, not two (PIN, structural)
-                            + 4)       # v0.4.41 R1 — the timestamp fill: 4 PINs (the
+                            + 4        # v0.4.41 R1 — the timestamp fill: 4 PINs (the
+                            + 13)      # v0.4.42 D1 — 3 FP guards (D1a x2, D1b x1) +
+                                       #          4 accepted-gap boundary guards +
+                                       #          1 no-flip census +
+                                       #          D1c: 3 unit pins (PIN + 2 controls)
+                                       #          + 2 plan pins (routing PIN + its guard).
                                                         #      "admit table" is a PIN too — its (e)
                                                         #      conjunct asserts the REFUSAL, measured
                                                         #      PRE ✗ / POST ✓)
