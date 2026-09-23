@@ -105,11 +105,25 @@ def _cue_is_current(stored_line: str, stem: str, desc: str) -> bool:
     if not hook.startswith(pref):
         return False
     hook = hook[len(pref):].rstrip()
-    if hook.endswith("…"):
+    # ⚠ The ellipsis must be read as the TRUNCATION MARKER before it is removed: stripping it
+    # first makes the shape test above unreachable and the keep never fires on a real
+    # truncation — measured, that turned every tightened cue back into a re-derivation.
+    truncated = hook.endswith("…")
+    if truncated:
         hook = hook[:-1].rstrip()
     if not hook:
         return False
-    return _norm_desc(desc).casefold().startswith(hook.casefold())
+    desc_n, hook_n = _norm_desc(desc), hook.casefold()
+    # ⚠ `_fit_hook` emits EXACTLY two shapes: the whole description, or a WORD-BOUNDARY prefix
+    # ending in `…`. A one-way `startswith` accepts strictly more than the constructor can
+    # produce — a mid-word cut (`config` out of `configuration drift`), or a truncation carrying
+    # no ellipsis — and both are cues `_pointer` provably cannot write, so accepting them
+    # CEMENTS a stale cue whose old hook happens to prefix the current description. That is the
+    # lock this function exists to prevent, reached through its own permissiveness.
+    if not truncated:
+        return desc_n.casefold() == hook_n           # untruncated ⇒ it must be the whole thing
+    return (desc_n.casefold().startswith(hook_n)
+            and desc_n[len(hook):len(hook) + 1] == " ")   # and cut on a WORD boundary
 
 
 def _pointer_or_stored(idx_text: str, prev_text: str, stem: str, desc: str) -> str:
@@ -131,8 +145,8 @@ def _pointer_or_stored(idx_text: str, prev_text: str, stem: str, desc: str) -> s
     line heals those cues on their next write while still preserving a tightened one.
     """
     from memory_status import _frontmatter
-    prev_desc = str(_frontmatter(prev_text).get("description") or "").strip().strip('"')
-    if prev_desc == desc.strip():
+    prev_desc = str(_frontmatter(prev_text).get("description") or "")
+    if _norm_desc(prev_desc) == _norm_desc(desc):
         stored = _stored_pointer(idx_text, stem)
         if stored is not None and _cue_is_current(stored, stem, desc):
             return stored
@@ -152,7 +166,8 @@ def _norm_desc(desc: str) -> str:
     their fixtures from the same literals. Same rule as `store_local_index`: remove the second
     site rather than keep two sites in step by discipline.
     """
-    return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ", desc).split())
+    return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ",
+                           (desc or "").strip().strip('"')).split())
 
 
 def _pointer(stem: str, description: str, scope: str = "") -> str:
@@ -165,7 +180,7 @@ def _pointer(stem: str, description: str, scope: str = "") -> str:
     `[project-local]` when the fact is in-contract.
     """
     from memory_status import LOCAL_HOOK_TOKEN_WARN
-    desc = _norm_desc((description or "").strip().strip('"'))
+    desc = _norm_desc(description)
     tag = "project-local" if (scope or "").strip().strip('"') in ("", "project-local") else ""
     suffix = f" [{tag}]" if tag else ""
     prefix = f"- [{stem}]({stem}.md) — "
@@ -801,8 +816,18 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
                                 "sha256": snap.sha256})
                 continue
             fm = prepared["fm"]
-            ptr = _pointer(f.stem, str(fm.get("description") or f.stem),
-                           "project-local")
+            # v0.4.42 (D3): the rebuild needs the SAME keep, not just the D1c route. The
+            # design-of-record says so ("`_rebuild_plan` … re-derives every line from
+            # descriptions and needs the same rule") and the carry comment beside it states the
+            # principle ("a hand-edited index line has to survive a rebuild") — honoured here
+            # only for the UNEVALUABLE class. Without this, the documented repair re-derives
+            # every hand-tightened cue, so `cm local rebuild-index --apply` silently undoes D3
+            # for every evaluable fact — and since the D1c route lives ONLY here, the write that
+            # heals one frozen cue re-inflates all the tightened ones in the same pass. The
+            # operands are already in scope: `text` is the fact's own bytes, `idx_text` is the
+            # pinned snapshot of the index being rebuilt.
+            ptr = _pointer_or_stored(idx_text, text, f.stem,
+                                     str(fm.get("description") or f.stem))
             _warn_fat_hook(ptr, f.stem, source_path=str(f))
             lines.append(ptr)
             included.append({"stem": f.stem, "sha256": snap.sha256})

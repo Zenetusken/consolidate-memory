@@ -2407,12 +2407,17 @@ def run_justify_demotion(project_dir: Path, stems: list, *,
                 "error": "no .consolidation-state.json — run a dream's marker write first",
                 "stamped": [], "skipped": [], "windows_full": 0, "sequence": 0}
     hist = usage_history(ctx.native_memory_dir)
-    wf = _pi_int(hist.get("windows_full"))
     clock = usage_window_clock(ctx)
     seq = int(clock.get("sequence") or 0)
     starts = list(clock.get("starts") or [])
     if not starts:
         starts = [s for s in (hist.get("window_starts") or []) if isinstance(s, (int, float))]
+    # ⚠ `wf` is read from the BUILDER's vector below, not from `usage_history()` here. It used
+    # to be taken before the builder call, so one invocation gated on the clock's `probative`
+    # count and then REPORTED and STAMPED the log's own `windows_full` — two readings of one
+    # quantity inside the very function D2 was fixed in, and the printed count was the one the
+    # docstring calls non-authoritative (39 vs 23 on the measured store).
+    wf = 0
     iso = now_iso or _utc_iso_now()
     if not force:
         try:
@@ -2428,6 +2433,8 @@ def run_justify_demotion(project_dir: Path, stems: list, *,
         # set, and `hist` without the clock override — and the two paths then disagreed about
         # which facts were candidates, so the docket named stems this gate refused.
         _demo_in = demotion_inputs(ctx)
+        # the same vector the gate consumed — one source, reported and stamped alike
+        wf = _pi_int(_demo_in["hist"].get("windows_full"))
         facts = _demo_in["fact_files"]
         idx_text = _demo_in["index_text"]
         idx_names = _demo_in["index_names"]
