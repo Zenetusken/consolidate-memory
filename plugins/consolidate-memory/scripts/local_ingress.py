@@ -546,8 +546,13 @@ def _placement_decline(ctx: StoreContext, stem: str, idx_text: str) -> list:
     must not fire on either.
     """
     from index_admission import archive_index
-    from memory_status import _is_archive_index_text
-    if _stored_pointer(idx_text, stem) is not None:
+    from memory_status import _LINK_RE, _is_archive_index_text
+    # ⚠ "Currently indexed" must mean exactly what `_rebuild_plan` means by it: the rebuild's
+    # `existing_ptrs` is `set(_LINK_RE.findall(idx_text))` — ANY `](stem.md)` occurrence — not
+    # the pointer-SHAPE test `_stored_pointer` performs. Those are different sets, and using the
+    # stricter one here would let this decline fire where the rebuild would not, which is the
+    # divergence class this check was written to avoid. Same reader, same operand, same test.
+    if stem in set(_LINK_RE.findall(idx_text)):
         return []                                   # currently indexed → this is an update
     native = ctx.native_memory_dir
     try:
