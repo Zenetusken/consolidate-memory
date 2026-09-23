@@ -5,6 +5,86 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.42] — 2026-09-23
+
+**Patch — three defects a dream pass measured in its OWN tooling: a secrets-firewall false
+positive and the index cue it froze, a demotion docket that named candidates its own gate
+refused, and a body-only edit that silently inflated the always-loaded tier. No `CycleRecord`
+field, CLI flag, or manifest contract changes.**
+
+One shape, three instances: **a derived artifact or a consumer disagreeing with the thing that
+produced it** — a firewall verdict against a body's real content, a docket against the gate that
+reads it, an index cue against its own cost. Design-of-record:
+`docs/producer-consumer-parity.spec.md`. Ships as two PRs.
+
+1. **The CLI-flag arm's dash must INTRODUCE a flag.** Its signal is a bare leading dash, and its
+   keyword alternation ends in short common English nouns (`pass`, `secret`, `token`, `cred`)
+   that are ordinary English as a compound's **final element**. Both measured false positives
+   have the dash preceded by a **word character** — `audit-pass`, `vs-secret` — i.e. a hyphen
+   inside a compound, not a flag introducer. A negative lookbehind closes both with **no recall
+   loss**: a real flag's dash follows start-of-string or whitespace.
+
+2. **A compound-id constant assignment is not a keyword credential.** In
+   `ms.INDEX_TOKEN_BUDGET = 1600`, `token` matches as the **middle segment** of a SCREAMING_SNAKE
+   identifier, and the value gate's digit branch admits a bare integer. The match is now declined
+   when the value is 4–7 characters **and** purely numeric **and** a `[_.-]` segment **follows**
+   the keyword. Suffix-only, not "prefix or suffix": a prefix-only match is the env-var shape
+   (`MY_TOKEN=1234`), which is a real secret worth catching. This is an **accepted gap** in the
+   sense `_entropy_blob`'s docstring already establishes — *"the firewall favors fewer false
+   positives on ordinary commit prose… Widening it is a product decision, not a fix."* It is
+   documented in `_SECRET`'s comment and pinned in the accepted-gap block.
+
+3. **Why (1) and (2) were a BUG and not a preference.** The always-loaded index pointer is
+   **derived** from `description:` by `local_ingress._pointer`, and every pointer-producing path
+   ran `prepare_local_fact`, which validates the **whole body** — so a firewall verdict on a body
+   blocked an unrelated concern. Measured: `consolidate-memory-roadmap`'s body read **v0.4.41**
+   while its `MEMORY.md` pointer still read **v0.4.34**, frozen across six releases, and nothing
+   compared body to cue. `_pointer_from_clean_description` now derives the cue when the body is
+   refused **by the firewall** and the description is clean; `_rebuild_plan` uses it instead of
+   failing closed, reporting the fact in a new **additive** `body_refused` key. It admits no
+   BODY — a secret in a body still blocks every content write. The recursion is worth recording:
+   the fact documenting this was itself refused when the correction was written into it, **twice
+   in one pass**, because its own trigger is prose.
+
+4. **The demotion docket and the demotion gate now read ONE input builder.** They used to
+   assemble their inputs separately: the Phase-0 report overrode `windows_full`/`window_starts`
+   from `usage_window_clock(ctx)` and derived `index_names` from the real index, while
+   `run_justify_demotion` passed `usage_history()`'s own values and `index_names = {p.stem for p
+   in facts}` — **every** fact file, indexed or not. Isolating each input showed `index_names`
+   moves `eligible` (11→8) but **not** the candidate set, while `hist` **changes the set**:
+   measured `usage_history().windows_full` = **39** against the clock's `probative` = **23**, and
+   the clock's field is the one `demotion_candidates`' docstring means. Harm: the report's
+   `demotion.surfaced` named stems the gate then refused as *"not a current demotion candidate"*,
+   whose only printed remedy was `--force` (labelled administrative repair) — the counter-justify
+   route the cycle record prescribes could not be applied to the facts it named.
+   `demotion_inputs(ctx)` is now the single source for both.
+
+5. **A body-only edit no longer inflates the always-loaded tier.** `local_ingress._pointer`
+   re-derived the cue on every write, so a line a human had tightened below what `_fit_hook`
+   produces was **re-inflated by any edit to the body** — measured **+62 est tok across five
+   facts** in one pass, then **+31 across two more**, all of it on the tier paid every session,
+   with nothing comparing the old cue to the new one. The cue is a function of `description:`
+   alone, so it is now re-derived **only when that field moved**; the comparison is on the
+   description, never on the lines, because comparing lines cannot tell *"the description
+   changed"* from *"someone tightened the cue"* — and a moved description is exactly the
+   frozen-cue repair (3) exists for.
+
+`tests/smoke.py` gains **18 checks tagged v0.4.42** across the two PRs. **MEASURED, not
+asserted:** on a `git worktree` of `3ada6c7` carrying this release's pins, the suite reads
+`2202 passed, 14 failed` for PR 1's pins and the shipping tree reads green; the pre-fix reds are
+enumerated in the spec's §3 with each check's kind (PIN vs **GUARD** — a check that cannot fail
+on pre-fix code is labelled a guard, not counted as a pin). Two pre-existing `RC-1c` checks were
+**re-aimed, not deleted**: one asserted the fixture *"really does trip the firewall"* using
+`` Use `--token <value>` `` — the false positive itself, so curing that shape cured the fixture's
+trigger — and the other's fact now takes route (3), so its description was made dirty to keep it
+in the `invalid` case that route declines.
+
+⚠ **A ceiling this does not close:** `facts_manifest` caches a `secret` verdict per canonical row
+keyed on mtime/size/ctime/body_hash, so a predicate fix does **not** clear a cached verdict
+unless the file's bytes change. It does not affect the three facts here — they are *local* facts
+and that manifest is canonical-tier — but a canonical that trips will need an explicit
+invalidation, and there is no such path today.
+
 ## [0.4.41] — 2026-09-21
 
 **Patch — a dream pass that reported success while appending nothing, and five smaller

@@ -2407,12 +2407,17 @@ def run_justify_demotion(project_dir: Path, stems: list, *,
                 "error": "no .consolidation-state.json — run a dream's marker write first",
                 "stamped": [], "skipped": [], "windows_full": 0, "sequence": 0}
     hist = usage_history(ctx.native_memory_dir)
-    wf = _pi_int(hist.get("windows_full"))
     clock = usage_window_clock(ctx)
     seq = int(clock.get("sequence") or 0)
     starts = list(clock.get("starts") or [])
     if not starts:
         starts = [s for s in (hist.get("window_starts") or []) if isinstance(s, (int, float))]
+    # ⚠ `wf` is read from the BUILDER's vector below, not from `usage_history()` here. It used
+    # to be taken before the builder call, so one invocation gated on the clock's `probative`
+    # count and then REPORTED and STAMPED the log's own `windows_full` — two readings of one
+    # quantity inside the very function D2 was fixed in, and the printed count was the one the
+    # docstring calls non-authoritative (39 vs 23 on the measured store).
+    wf = 0
     iso = now_iso or _utc_iso_now()
     if not force:
         try:
@@ -2423,16 +2428,17 @@ def run_justify_demotion(project_dir: Path, stems: list, *,
         if not isinstance(raw_pre, dict):
             return {"ok": False, "error": "marker is not an object", "stamped": [],
                     "skipped": [], "windows_full": wf, "sequence": seq}
-        facts = sorted(p for p in ctx.native_memory_dir.glob("*.md")
-                       if p.name not in ("MEMORY.md", "SHIPPED.md"))
-        idx_text = ""
-        idxp = ctx.native_memory_dir / "MEMORY.md"
-        if idxp.is_file():
-            try:
-                idx_text = idxp.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                idx_text = ""
-        idx_names = {p.stem for p in facts}
+        # v0.4.42 (D2): the SAME builder the Phase-0 report uses. These inputs used to be
+        # assembled here separately — `index_names` from every fact file rather than the INDEXED
+        # set, and `hist` without the clock override — and the two paths then disagreed about
+        # which facts were candidates, so the docket named stems this gate refused.
+        _demo_in = demotion_inputs(ctx)
+        # the same vector the gate consumed — one source, reported and stamped alike
+        wf = _pi_int(_demo_in["hist"].get("windows_full"))
+        facts = _demo_in["fact_files"]
+        idx_text = _demo_in["index_text"]
+        idx_names = _demo_in["index_names"]
+        hist = _demo_in["hist"]
         demo = demotion_candidates(
             facts, idx_names, hist, idx_text,
             justify=_demotion_justify(raw_pre.get("demotion_justify")))
@@ -2589,6 +2595,78 @@ def _demotion_justify(dj: object) -> dict:
                     rec["sequence"] = jseq
                 out[k] = rec
     return out
+
+
+def demotion_inputs(ctx: Any, local: "dict | None" = None) -> dict:
+    """v0.4.42 (D2): the demotion triage's ONE input builder — the docket and the gate read it.
+
+    `demotion_candidates`' eligibility rule is stated in its own docstring as *"the probative
+    windows (`hist.window_starts`) whose epoch start >= the fact's st_mtime"*. Two callers used
+    to assemble those inputs **separately**, and they disagreed:
+
+    - the Phase-0 report **overrode** `windows_full`/`window_starts` from
+      `usage_window_clock(ctx)`, and derived `index_names` from the real index;
+    - `run_justify_demotion` passed `usage_history()`'s **own** values and
+      `index_names = {p.stem for p in facts}` — every fact file, indexed or not.
+
+    MEASURED on a live store: `usage_history().windows_full` = **39** against the clock's
+    `probative` = **23**, and the per-fact zero-read count follows `window_starts`. Isolating each
+    input showed `index_names` moves `eligible` (11 -> 8) but **not** the candidate set, while
+    `hist` **changes the set** — so the two paths produced different candidate sets for one store.
+    Harm: the report's `demotion.surfaced` named stems that `--justify-demotion` then refused as
+    *"not a current demotion candidate"*, whose only printed remedy was `--force` (labelled
+    administrative repair) — the counter-justify route the cycle record itself prescribes could
+    not be applied to the facts it named. That is the repo's own
+    `a-refusals-remedy-must-move-its-operand` class.
+
+    ⚠ The clock's `probative` is the authoritative count, and the name says why: it is the field
+    `demotion_candidates`' docstring means, and `usage_history()`'s `windows_full` is a different
+    aggregate. The override is therefore the CORRECT half of the pair, and the justify path was
+    the wrong one — this builder adopts the override rather than a third reading of it.
+
+    READ-ONLY: reads the store and the control plane; writes nothing. Returns
+    `{fact_files, index_names, index_text, hist}`.
+    """
+    from control_plane import count_probative_after, usage_window_clock
+    auto_mem = ctx.native_memory_dir
+    # ⚠ These four values are NOT derived here. `store_local_index` owns them, and its own
+    # docstring states why this must not be re-implemented: "the store-local always-loaded
+    # measurements, in ONE place… the repair is to remove the second site rather than keep two
+    # sites in step by discipline." A first cut of this builder re-globbed the store and re-read
+    # MEMORY.md, which is that second site — and the failure is the D2 defect itself, returning
+    # by a new route: `index_text` read HERE at one instant and `fact_files`/`index_names` taken
+    # from `store_local_index` at another are two revisions of one file inside a single record,
+    # and a future exclusion added to one site but not the other puts the docket and the gate
+    # back out of step. The caller passes what it already computed; `None` recomputes once for
+    # callers that hold nothing (the justify CLI), which is still ONE derivation, not two.
+    if local is None:
+        local = store_local_index(auto_mem)
+    fact_files = local["fact_files"]
+    index_text = local["index_text"]
+    # The INDEXED set, not the fact-file set: only an indexed pointer taxes the always-loaded
+    # tier, which is the population `demotion_candidates` gates on.
+    index_names = index_fact_names(local["index_path"]) - {f.stem for f in local["archive_docs"]}
+    hist = usage_history(auto_mem) if auto_mem.exists() else {
+        "windows_full": 0, "window_starts": [], "per_fact": {}, "miss_stems": [], "mention_stems": []}
+    hist = dict(hist)
+    clock = usage_window_clock(ctx)
+    hist["sequence"] = int(clock.get("sequence") or 0)
+    if clock.get("rows"):
+        hist["windows_full"] = int(clock.get("probative") or 0)
+        if clock.get("starts"):
+            hist["window_starts"] = list(clock["starts"])
+    n_after: dict = {}
+    try:
+        raw_state = json.loads((auto_mem / STATE_FILE).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        raw_state = {}
+    if isinstance(raw_state, dict):
+        for stem, rec in _demotion_justify(raw_state.get("demotion_justify")).items():
+            if isinstance(rec, dict) and isinstance(rec.get("sequence"), int):
+                n_after[stem] = count_probative_after(ctx, int(rec["sequence"]))
+    hist["n_after_seq"] = n_after
+    return {"fact_files": fact_files, "index_names": index_names,
+            "index_text": index_text, "hist": hist}
 
 
 def demotion_candidates(fact_files: list, index_names: set, hist: Mapping[str, Any],
@@ -3409,26 +3487,27 @@ def build_context(project_dir: Path) -> dict:
     # evidence-gated rank. Cheap on the always-run Phase-0 path: one tail-capped log read + one store
     # scan (the archive/defrag candidate scans already set that cost precedent). DORMANT (eligible 0,
     # empty candidates) until probative windows accrue — see the §Phase C evidence gate.
-    usage_hist = usage_history(auto_mem) if auto_mem.exists() else {
-        "windows_full": 0, "window_starts": [], "per_fact": {}, "miss_stems": [], "mention_stems": []}
+    # v0.4.42 (D2): ONE builder, shared with `run_justify_demotion`. The fallback below keeps
+    # this arm's own readings rather than a partially-built result: a builder that raised must
+    # not leave a half-initialised input vector behind, and the report's locals (`fact_files`,
+    # `index_names`, `_index_text`) are the same values it would have produced.
     try:
-        from control_plane import count_probative_after, usage_window_clock
-        _clock = usage_window_clock(_ctx)
-        usage_hist = dict(usage_hist)
-        usage_hist["sequence"] = int(_clock.get("sequence") or 0)
-        if _clock.get("rows"):
-            usage_hist["windows_full"] = int(_clock.get("probative") or 0)
-            if _clock.get("starts"):
-                usage_hist["window_starts"] = list(_clock["starts"])
-        _n_map: dict = {}
-        for _stem, _rec in _demotion_justify(demotion_justify).items():
-            if isinstance(_rec, dict) and isinstance(_rec.get("sequence"), int):
-                _n_map[_stem] = count_probative_after(_ctx, int(_rec["sequence"]))
-        usage_hist["n_after_seq"] = _n_map
+        _demo_in = demotion_inputs(_ctx, _local)
     except Exception:
-        pass
-    demotion = demotion_candidates(fact_files, index_names, usage_hist, _index_text,
+        _demo_in = None
+    if _demo_in is not None:
+        _d_facts, _d_names, _d_text, _d_hist = (
+            _demo_in["fact_files"], _demo_in["index_names"],
+            _demo_in["index_text"], _demo_in["hist"])
+    else:
+        _d_facts, _d_names, _d_text = fact_files, index_names, _index_text
+        _d_hist = usage_history(auto_mem) if auto_mem.exists() else {
+            "windows_full": 0, "window_starts": [], "per_fact": {}, "miss_stems": [], "mention_stems": []}
+    demotion = demotion_candidates(_d_facts, _d_names, _d_hist, _d_text,
                                    justify=_demotion_justify(demotion_justify))
+    # The report's returned contract keeps the key (v0.1.67 Phase C) and now carries the
+    # BUILDER's vector — the one the triage actually consumed, rather than a parallel copy.
+    usage_hist = _d_hist
 
     return {
         "project_dir": project_dir,

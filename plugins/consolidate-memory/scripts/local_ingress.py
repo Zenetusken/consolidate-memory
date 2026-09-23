@@ -65,6 +65,123 @@ def _fit_hook(prefix: str, desc: str, suffix: str, budget: int) -> str:
     return chunk + "…"
 
 
+def _stored_pointer(idx_text: str, stem: str) -> "str | None":
+    """The pointer LINE `MEMORY.md` currently holds for `stem`, or None.
+
+    Requires the pointer SHAPE (`- [title](stem.md)…`), not merely a link target equal to the
+    stem: a line that connects the stem but is not a pointer for it is a hand-edit, and the
+    index's other readers already have to reason about those.
+    """
+    from memory_status import _LINK_RE
+    for ln in idx_text.splitlines():
+        m = _LINK_RE.search(ln)
+        if m and m.group(1) == stem and ln.lstrip().startswith("- ["):
+            return ln
+    return None
+
+
+def _cue_is_current(stored_line: str, stem: str, desc: str) -> bool:
+    """Could `_pointer` have produced `stored_line` from `desc`?
+
+    The second condition of the keep, and the one that stops it CEMENTING a stale cue.
+    Comparing only the previous description is not enough, and the failure is not hypothetical:
+    a cue whose description changed **while the write path was refusing it** (a firewall false
+    positive) is stale exactly when the next write compares `prev_desc == new_desc` — both are
+    the CURRENT description — so a keep keyed on that alone preserves the stale line forever.
+    MEASURED on the roadmap's own case: body v0.4.40, pointer v0.4.34, and the naive rule keeps
+    v0.4.34.
+
+    The test is truncation-consistency: `_pointer` derives the hook by taking a WORD-BOUNDARY
+    PREFIX of the normalised description (or all of it when it fits), so a line the constructor
+    could have written has a hook that is a prefix of that normalisation. Case-folded, because
+    the stores carry both (`a gate proves…` stored against `A gate proves…` derived) and the
+    hook's own case is not a signal.
+    """
+    hook = stored_line
+    for cut in (" [project-local]",):
+        if hook.endswith(cut):
+            hook = hook[: -len(cut)]
+    pref = f"- [{stem}]({stem}.md) — "
+    if not hook.startswith(pref):
+        return False
+    hook = hook[len(pref):].rstrip()
+    # ⚠ The ellipsis must be read as the TRUNCATION MARKER before it is removed: stripping it
+    # first makes the shape test above unreachable and the keep never fires on a real
+    # truncation — measured, that turned every tightened cue back into a re-derivation.
+    truncated = hook.endswith("…")
+    if truncated:
+        hook = hook[:-1].rstrip()
+    if not hook:
+        return False
+    desc_n, hook_n = _norm_desc(desc), hook.casefold()
+    # ⚠ `_fit_hook` emits EXACTLY two shapes: the whole description, or a WORD-BOUNDARY prefix
+    # ending in `…`. A one-way `startswith` accepts strictly more than the constructor can
+    # produce — a mid-word cut (`config` out of `configuration drift`), or a truncation carrying
+    # no ellipsis — and both are cues `_pointer` provably cannot write, so accepting them
+    # CEMENTS a stale cue whose old hook happens to prefix the current description. That is the
+    # lock this function exists to prevent, reached through its own permissiveness.
+    # ONE rule, in ONE coordinate system. `_fit_hook` emits either the whole description or a cut
+    # at a WHITESPACE boundary, so a cue it could have written is a casefolded prefix that either
+    # IS the whole description or is followed by a space.
+    #   ⚠ Requiring EXACT equality on the untruncated arm was a regression: a human tightening
+    #   carries no ellipsis at all (the marker is the constructor's, not the editor's), so the
+    #   shape a person actually produces was being re-derived — the very +est-tok inflation this
+    #   rule exists to stop. The marker is not the signal; PRODUCIBILITY is.
+    #   ⚠ The boundary index must be read from the CASEFOLDED string. Indexing the original-case
+    #   `desc_n` with the original-case `len(hook)` mixes two coordinate systems, and any
+    #   description whose casefold changes length (`ß` → `ss`, `İ` → two codepoints) reads the
+    #   wrong character and refuses a cue that is perfectly producible.
+    desc_cf = desc_n.casefold()
+    if not desc_cf.startswith(hook_n):
+        return False
+    _n = len(hook_n)
+    return len(desc_cf) == _n or desc_cf[_n:_n + 1] == " "
+
+
+def _pointer_or_stored(idx_text: str, prev_text: str, stem: str, desc: str) -> str:
+    """v0.4.42 (D3): re-derive the cue only when it would actually change meaning.
+
+    `_pointer` derives the line from `description:` alone, so the line is a FUNCTION of that
+    field — and a write that leaves the field untouched should leave a hand-tightened line
+    untouched. It did not, and the MEASURED harm was silent: a line a human had tightened below
+    what `_fit_hook` produces was re-inflated by ANY edit to the body — **+62 est tok across
+    five facts** in one pass, then **+31 across two more**, all of it landing on the tier paid
+    every session, with nothing comparing the old cue to the new one.
+
+    ⚠ TWO conditions, and BOTH are load-bearing. The first (the description did not move) is the
+    one the harm suggested; the second (`_cue_is_current`) is what stops the first from becoming
+    a LOCK: a cue goes stale precisely by its description changing while the write path refuses
+    the fact, at which point the previous and current descriptions are the SAME string and a
+    keep keyed on that alone would preserve the stale line forever — turning the repair for one
+    silent defect into the cause of another. A keep that fires only on a truncation-consistent
+    line heals those cues on their next write while still preserving a tightened one.
+    """
+    from memory_status import _frontmatter
+    prev_desc = str(_frontmatter(prev_text).get("description") or "")
+    if _norm_desc(prev_desc) == _norm_desc(desc):
+        stored = _stored_pointer(idx_text, stem)
+        if stored is not None and _cue_is_current(stored, stem, desc):
+            return stored
+    return _pointer(stem, desc, "project-local")
+
+
+def _norm_desc(desc: str) -> str:
+    """The ONE description normalisation for the local pointer constructor.
+
+    `_pointer` derives a cue from `description:`; `_cue_is_current` asks whether a stored cue is
+    one `_pointer` could have produced from a given description. Those two answers are only
+    consistent while both sides normalise IDENTICALLY, so the normalisation lives here and both
+    call it. ⚠ A first cut inlined a byte-identical copy at the second site, and the failure mode
+    is silent in BOTH directions: a divergence that makes `_cue_is_current` answer wrongly
+    either CEMENTS a stale cue (the lock its docstring warns about) or re-inflates a
+    hand-tightened line (+62 est tok measured). No test could catch it, because both arms build
+    their fixtures from the same literals. Same rule as `store_local_index`: remove the second
+    site rather than keep two sites in step by discipline.
+    """
+    return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ",
+                           (desc or "").strip().strip('"')).split())
+
+
 def _pointer(stem: str, description: str, scope: str = "") -> str:
     """Always-loaded index line for a project-authored local fact.
 
@@ -75,8 +192,7 @@ def _pointer(stem: str, description: str, scope: str = "") -> str:
     `[project-local]` when the fact is in-contract.
     """
     from memory_status import LOCAL_HOOK_TOKEN_WARN
-    desc = (description or "").strip().strip('"')
-    desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ", desc).split())
+    desc = _norm_desc(description)
     tag = "project-local" if (scope or "").strip().strip('"') in ("", "project-local") else ""
     suffix = f" [{tag}]" if tag else ""
     prefix = f"- [{stem}]({stem}.md) — "
@@ -352,7 +468,12 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
     elif create_only:
         pass
     fm = prepared["fm"]
-    ptr = _pointer(stem, str(fm.get("description") or stem), "project-local")
+    # v0.4.42 (D3): the cue is a function of `description:` alone, so re-derive it only when
+    # that field moved — otherwise a body-only edit re-inflates a hand-tightened line.
+    _desc = str(fm.get("description") or stem)
+    _prev_text = cur if dest_snap.exists else ""
+    _prev_idx = (idx_snap.data or b"").decode("utf-8", errors="replace") if idx_snap.exists else ""
+    ptr = _pointer_or_stored(_prev_idx, _prev_text, stem, _desc)
     _warn_fat_hook(ptr, stem, source_path=str(dest))
     expected = {}
     expected.update(_expected_from_snap(dest_snap))
@@ -707,8 +828,18 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
                                 "sha256": snap.sha256})
                 continue
             fm = prepared["fm"]
-            ptr = _pointer(f.stem, str(fm.get("description") or f.stem),
-                           "project-local")
+            # v0.4.42 (D3): the rebuild needs the SAME keep, not just the D1c route. The
+            # design-of-record says so ("`_rebuild_plan` … re-derives every line from
+            # descriptions and needs the same rule") and the carry comment beside it states the
+            # principle ("a hand-edited index line has to survive a rebuild") — honoured here
+            # only for the UNEVALUABLE class. Without this, the documented repair re-derives
+            # every hand-tightened cue, so `cm local rebuild-index --apply` silently undoes D3
+            # for every evaluable fact — and since the D1c route lives ONLY here, the write that
+            # heals one frozen cue re-inflates all the tightened ones in the same pass. The
+            # operands are already in scope: `text` is the fact's own bytes, `idx_text` is the
+            # pinned snapshot of the index being rebuilt.
+            ptr = _pointer_or_stored(idx_text, text, f.stem,
+                                     str(fm.get("description") or f.stem))
             _warn_fat_hook(ptr, f.stem, source_path=str(f))
             lines.append(ptr)
             included.append({"stem": f.stem, "sha256": snap.sha256})
