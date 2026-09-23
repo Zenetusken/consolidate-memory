@@ -93,7 +93,7 @@ def _warn_fat_hook(ptr: str, stem: str, *, source_path: str = "") -> None:
 
 
 def _pointer_from_clean_description(stem: str, text: str) -> "str | None":
-    """D1c: the index cue for a fact whose BODY the firewall refuses, or None.
+    """D1c: the index cue for a fact whose only refusal is the FIREWALL, or None.
 
     The cue is a function of `description:` ALONE (`_pointer`), but every pointer-producing
     path runs `prepare_local_fact`, which validates the WHOLE body — so a body refusal used
@@ -101,19 +101,43 @@ def _pointer_from_clean_description(stem: str, text: str) -> "str | None":
     v0.4.41 while its `MEMORY.md` pointer still read v0.4.34, frozen across six releases,
     because no write could regenerate the cue and nothing compared body to cue.
 
-    Returns a pointer only when the two concerns genuinely separate: the body is refused
-    **by the firewall** and the description is clean. Any other refusal (a bad stem, a
-    missing description, a bad scope) returns None so the caller keeps its existing
-    `invalid` handling — this is not a general bypass.
+    ⚠ **"ONLY refusal" is the load-bearing word, and the first cut of this function did not
+    have it.** It gated on `_looks_secret(text)` — a fact about the DOCUMENT — while
+    `prepare_local_fact` is first-refusal-wins and runs the firewall check FIRST, so a fact
+    that was ALSO badly named, badly scoped, or carrying a duplicate key reported only the
+    firewall. MEASURED against the shipped cut: `name: totally-different`, `scope:
+    domain-global`, `status: retired`, `sensitivity: topsecret`, a duplicated `description:`
+    key and `content_modified: yesterday` EACH produced a pointer when paired with a
+    firewall-tripping body — every one of them filed as `included`, every one of them
+    silently released from the plan's fail-closed handling. The docstring claimed "this is
+    not a general bypass" and the claim was false.
 
-    ⚠ The predicate is MEASURED (`_looks_secret`), never matched against the refusal's
-    message: a guard's label is not its predicate, and the refusal string is prose that may
-    be reworded. ⚠ It never admits a BODY — a secret in the body still blocks every content
-    write; what it removes is the coupling between two unrelated concerns.
+    So the test is two-call: ask once (refused, and we do not care why), then ask again with
+    the firewall off. The route fires only when the second call is CLEAN — i.e. the firewall
+    was the only thing standing in the way. ⚠ It still never admits a BODY: the caller emits
+    a cue derived from `description:`, and a secret in the description returns None here.
+
+    ⚠ `prepared["error"]` is deliberately not consulted. The refusal's message is prose that
+    may be reworded, and a guard's label is not its predicate; the operative question is
+    answered by the second call, not by reading the first one's error string.
     """
     from memory_status import _frontmatter, _looks_secret
-    if not _looks_secret(text):
-        return None                      # refused for some OTHER reason — not ours to route
+    from identifiers import IdentifierRefused, validate_fact_stem
+    # ⚠ The stem is validated HERE, not inherited from the caller. `_pointer` sanitises only the
+    # description, and this route builds an index line by concatenation — so without this check
+    # the route's safety would be an unwritten precondition of its one call site, which is
+    # `weakest-enforcement-site-wins` exactly. A second caller would inherit an unguarded
+    # constructor. (Today's caller does pre-validate at `_rebuild_plan`, so this is a BELT: it
+    # cannot change behaviour, and it makes the guard live at the site that needs it.)
+    try:
+        stem = validate_fact_stem(stem)
+    except IdentifierRefused:
+        return None
+    if prepare_local_fact(stem, text).get("ok"):
+        return None                      # nothing was refused — this is not the route
+    lenient = prepare_local_fact(stem, text, check_secrets=False)
+    if not lenient.get("ok"):
+        return None                      # ANOTHER refusal is real; `invalid` keeps it
     desc = str(_frontmatter(text).get("description") or "").strip().strip('"')
     if not desc or _looks_secret(desc):
         return None                      # the cue's own input is dirty; nothing to derive
@@ -176,8 +200,16 @@ def _render_local(fm: dict, body: str) -> str:
 
 
 def prepare_local_fact(stem: str, text: str, *, now: Optional[str] = None,
-                       inject: bool = True) -> dict:
-    """Normalize + validate LocalFactV1. Returns {ok, text, fm, error}."""
+                       inject: bool = True, check_secrets: bool = True) -> dict:
+    """Normalize + validate LocalFactV1. Returns {ok, text, fm, error}.
+
+    ⚠ `check_secrets=False` is a DIAGNOSTIC and nothing else — it answers *"is this fact valid
+    apart from the firewall?"* and must never be used to ADMIT a fact (no write path passes
+    False). It exists because this function is first-refusal-wins and the firewall check runs
+    FIRST (below), so every other refusal is MASKED by a firewall refusal: a fact that is also
+    badly named, badly scoped, or carrying a duplicate key reports only the firewall. A caller
+    that needs to know whether the firewall was the ONLY refusal has to ask twice.
+    """
     from fact_schema import _real_rfc3339
     from identifiers import IdentifierRefused, validate_fact_stem
     from memory_status import _frontmatter
@@ -185,7 +217,7 @@ def prepare_local_fact(stem: str, text: str, *, now: Optional[str] = None,
         stem = validate_fact_stem(stem)
     except IdentifierRefused as e:
         return {"ok": False, "error": str(e), "text": text, "fm": {}}
-    if _looks_secret_fn()(text):
+    if check_secrets and _looks_secret_fn()(text):
         # v0.4.35 (RC-1d): name the ARM, and name the ROUTE. Every refusal below shares one
         # `{ok: False, error}` channel, so a caller — `local_archive` hands this string
         # straight to the operator, and `_rebuild_plan` files it as that fact's `error` —
@@ -844,6 +876,14 @@ def local_rebuild_index(ctx: StoreContext, *, apply: bool = False,
         "included", "invalid", "unreadable", "absent", "mirrors",
         "would_remove_existing_pointers", "would_keep_stale_pointers",
         "would_keep_archived_pointers",
+        # v0.4.42 D1c: `_rebuild_plan` discloses a firewall-refused body here, and this tuple
+        # is the ONLY operator-facing route — the plan dict itself is not returned. Omitting the
+        # key made the plan's own comment ("Reported rather than swallowed — a plan that routed
+        # it silently would be the same class of silence this pass exists to remove") false at
+        # the consumer: the stem appeared as a bare entry in `included` and nothing anywhere
+        # said its body had been refused. The disclosure has to reach the surface that reports
+        # it, or it is not a disclosure.
+        "body_refused",
         "would_keep_archived_sources")}
     blocked = bool(plan["invalid"] or plan["unreadable"]) and not skip_invalid
     if not apply:

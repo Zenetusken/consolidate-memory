@@ -1115,7 +1115,7 @@ def dangling_links(auto_mem: Path, global_dir: Path | None = None,
 # protocol shapes that carry no high-entropy blob.
 _SECRET = re.compile(
     r"""(
-        (?:[A-Za-z0-9]{1,40}[_.\-]){0,8}(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?P<sfx>(?:[_.\-][A-Za-z0-9]{1,40}){1,8})?["']?\s*[:=]\s*["']?(?(sfx)(?=\S{8,}|(?=\S{4,})(?=[^\s]*[A-Za-z])\S*\d)\S+|(?=\S{8,}|(?=\S{4,})\S*\d)\S+)
+        (?:[A-Za-z0-9]{1,40}[_.\-]){0,8}(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?P<sfx>(?:[_.\-][A-Za-z0-9]{1,40}){1,8})?["']?\s*[:=]\s*["']?(?(sfx)(?=\S{8,}|(?=\S{4,})(?=[^\s]{0,7}[A-Za-z])\S*\d)\S+|(?=\S{8,}|(?=\S{4,})\S*\d)\S+)
                                                                      # keyword as a full SEGMENT of a compound id, with
                                                                      # optional quotes/brackets around the delimiter so
                                                                      # JSON {"password": "..."} / dict / YAML all match.
@@ -1228,6 +1228,35 @@ _SECRET = re.compile(
     )""",
     re.I | re.X,
 )
+
+# ── v0.4.42 (D1a/D1b): two prose false positives, and the MEASURED gaps each closed with ──────
+# The defects, both measured on real fact bodies with no credential present: a hyphen-compound
+# whose final element is one of the arm's short common English nouns (`audit-pass sections,`,
+# `entropy-vs-secret firewall`) tripped the CLI-FLAG arm, and a SCREAMING_SNAKE constant whose
+# middle segment is a keyword and whose value is a bare integer (`` INDEX_TOKEN_BUDGET = 1600 ``)
+# tripped the main arm. The harm was not the refusal: the index cue is DERIVED from
+# `description:`, so a refused fact's cue could not be regenerated at all — measured, one fact's
+# body read v0.4.40 while its pointer still read v0.4.34, frozen across six releases.
+#
+# The two changes and what each COSTS. ⚠ Neither is free; an earlier revision of this record
+# said "recall cost: none" for D1a and the claim was false — it rested on a pinned corpus in
+# which every case is `[:=]`-delimited, so the corpus could not express the shape it lost.
+#   D1a — the CLI arm now requires the dash to INTRODUCE a flag (`(?<![A-Za-z0-9_])`). ⚠ GAP:
+#     a single dash preceded by a word character is no longer a flag introducer at all, so the
+#     whole SPACE-delimited sub-arm is lost for that shape — `redis-password hunter2value`,
+#     `api-token abc123def456`, `db-password correcthorsebattery` were each flagged before and
+#     are clean now, and no other arm covers them (the main arm requires `[:=]`; `_entropy_blob`
+#     is False on each). The shape is indistinguishable from the false positive it shares its
+#     form with (`audit-pass sections,`), so separating them is not possible at this arm.
+#   D1b — a compound-id match is declined on the conditional below. ⚠ GAP, stated exactly
+#     because the loose form under-counts it: the declining class is NOT "4–7 chars, purely
+#     numeric" but "4–7 chars carrying a digit and NO ASCII letter", so `TOKEN_KEY=12-345`,
+#     `api_key_v2=1234!`, `token_v2=1.2.34` and `pwd_9=12.34` are declined too. A standalone
+#     keyword keeps both branches (`password=1234`, `password=12345678`), and a prefix-only
+#     match is the env-var shape (`MY_TOKEN=1234`) which stays caught — suffix-only is the
+#     narrower, safer reading.
+# Both gaps follow the posture `_entropy_blob`'s docstring already states: the firewall favours
+# fewer false positives on ordinary commit prose, and widening it is a product decision.
 
 # A contiguous run of base64-ish chars (incl. '/' and '+' so slash-bearing AWS secret
 # access keys are caught). Case-SENSITIVE on purpose (see _entropy_blob).

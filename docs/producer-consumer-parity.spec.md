@@ -107,8 +107,16 @@ final element**. Both measured instances have the dash preceded by a **word char
 This is the direction the recording fact already names, and it closes **only** this arm — which is
 why D1b is a separate change and not a substitute for it.
 
-**Recall cost: none.** A genuine flag's dash follows start-of-string or whitespace; the lookbehind
-rejects only a dash glued to a preceding word character.
+**Recall cost: NOT none — and an earlier revision of this section said it was.** MEASURED on the
+pre-fix tree: the lookbehind also removes the CLI arm's **space-delimited sub-arm for any single
+dash preceded by a word character**, so `redis-password hunter2value`,
+`api-token abc123def456` and `db-password correcthorsebattery` were each flagged at `3ada6c7` and
+are clean on the shipping tree — and **no other arm covers them** (the main arm requires `[:=]`;
+`_entropy_blob` is False on each). The shape is *structurally identical* to the false positive it
+shares its form with (`audit-pass sections,`), so this arm cannot separate them. It is therefore a
+second **accepted gap**, recorded in `_SECRET`'s own comment block and pinned. That the claim was
+wrong is itself the corpus lesson: every pinned case was `[:=]`-delimited, so the corpus could not
+express the shape D1a would lose — `gate-coverage-is-its-match-set`, one level up.
 
 ### §2.2 D1b — a compound-id constant assignment is not a keyword credential *(PR 1)*
 
@@ -135,11 +143,16 @@ identifier segment (`TOKEN_BUDGET = 1600`), the code-constant shape. Suffix-only
 (catches more) and still delivers both approved outcomes: `INDEX_TOKEN_BUDGET = 1600` clean,
 `password=1234` caught (standalone keyword), `password=12345678` caught (8+ branch).
 
-**This is an ACCEPTED GAP, in the established sense.** The residual hole is a 4–7-digit pure-numeric
-value on a *suffixed* identifier. It follows the precedent `_entropy_blob`'s docstring sets
-(`memory_status.py:1254`): *"the firewall favors fewer false positives on ordinary commit prose…
-This is a real tradeoff, not a bug to keep tuning… Widening it is a product decision, not a fix."*
-It will be documented in `_SECRET`'s comment and pinned in the accepted-gap test block.
+**This is an ACCEPTED GAP, in the established sense — and its class is wider than the sentence
+above says.** MEASURED: the declining class is not "4–7 characters and purely numeric" but
+**"4–7 characters carrying a digit and no ASCII letter"**, so `TOKEN_KEY=12-345`,
+`api_key_v2=1234!`, `token_v2=1.2.34`, `secret_v1=12_34`, `pwd_9=12.34` and `x_token_id=1:23` were
+each flagged before and are clean now. An auditor sizing the loss from the narrow sentence
+under-counts it — the same defect as this document's own 43-vs-28 note. Both figures are recorded
+in `_SECRET`'s comment block. The tradeoff itself follows the precedent `_entropy_blob`'s
+docstring sets (`memory_status.py:1254`): *"the firewall favors fewer false positives on ordinary
+commit prose… This is a real tradeoff, not a bug to keep tuning… Widening it is a product
+decision, not a fix."*
 
 **Verified before implementation.** Applying both D1a and D1b to the real `_SECRET` and evaluating
 all **28** pinned firewall case tuples flips **zero** verdicts. This check becomes a pin (§3).
@@ -312,10 +325,83 @@ never authors); `--expect patch`.
 - **The accepted gap in §2.2** is a real recall loss, deliberately taken.
 - **Line-number anchors rot.** The pins cite behaviour, not coordinates, wherever possible.
 
-## Contract impact
+## §6 Review round (PR 1) — what it found, and what it corrected here
+
+An adversarial `/code-review` round ran against PR 1's head. It filed 15 findings; two were
+repaired while it ran (both flagged by it as "REPAIRED UNCOMMITTED, still live at head"), two it
+refuted and dropped, and the remainder are dispositioned here. **The round's cost was earned by
+its first two findings alone**, which were defects in this arc's own D1c:
+
+1. **The D1c route's gate was a fact about the DOCUMENT, not about WHY the fact was refused.**
+   `prepare_local_fact` is first-refusal-wins and runs the firewall check FIRST, so a fact that
+   was *also* badly named, badly scoped, badly statused or badly sensed reported **only** the
+   firewall — and the route fired on it, filing it as `included` and **silently releasing it from
+   the plan's fail-closed handling**. MEASURED: `name: totally-different`, `scope: domain-global`,
+   `status: retired`, `sensitivity: topsecret` each produced a pointer. The route's docstring
+   claimed *"this is not a general bypass"* and the claim was false. Fixed by a **two-call** test
+   (`prepare_local_fact(..., check_secrets=False)`), so the route fires only when the firewall is
+   the **only** refusal; four masking pins now hold it.
+2. **The D1c disclosure never reached an operator.** `local_rebuild_index` returns a fixed
+   key-allowlist and the plan dict is not returned, so `body_refused` was invisible on the only
+   route anyone uses — while the plan's own comment read *"Reported rather than swallowed"*.
+   Fixed by adding the key. ⚠ It had also defeated a verification: a probe reading the CLI output
+   **cannot distinguish "nothing was refused" from "the key never propagated"** — the observable
+   could not carry the difference, and this document's author read it as the former.
+
+**Corrections this round forced on the text above** — each was a claim, not a typo:
+
+- **§2.1's "Recall cost: none" was FALSE** and is corrected in place with the measurement.
+- **§2.2's gap class was too narrow** and is corrected in place.
+- **The RC-1c re-aim reason recorded in §3 and in the PR-1 commit message is FALSE.** It said D1a
+  cured the fixture's trigger. MEASURED: `` _looks_secret('Use `--token <value>` …') `` is `True`
+  at `3ada6c7` **and** at head — the match's dash is preceded by a **backtick**, which D1a
+  permits, so that fixture was never a D1a case. **Only D1c forced the re-aim.** A maintainer
+  trusting the recorded reason would size D1a's blast radius wrongly, and might delete the guard
+  that proves the body still trips. (The pin labels carry the same correction.)
+- **§3's totals could not be reconciled with its own table** — `2202 passed, 14 failed` beside
+  eight RED rows. The 14 counts the pre-fix run *as it stood at that moment*; the table lists the
+  arms. Stated rather than silently re-based, because a claim whose stated support does not sum to
+  it is this store's `a-claims-support-is-an-unaudited-claim`.
+- **§4's pin assignments contradicted §3** (D1c's pins appear under PR 1's row while §4 assigned
+  P8/P9 to PR 2). §3 is authoritative; D1c ships in PR 1.
+- **The frozen-cue figure disagreed across surfaces** — the code and pins said the body read
+  `v0.4.41`, this document said `v0.4.40`, and "six releases" is arithmetically consistent only
+  with `v0.4.40`. Unified on `v0.4.40` / six.
+- **The no-flip census's harvest skipped every two-tuple table** — 33 of 65 entries, including the
+  16-row false-positive corpus and the three D1a rows §3 depends on. It read 32 and printed a
+  number that read as the whole corpus. Now derives each loop's expected polarity from that loop's
+  own assertion and reads **51**. This is `gate-coverage-is-its-match-set` recurring **inside the
+  check written to honour it** — twice, in two drafts.
+- **`(?=[^\s]*[A-Za-z])` was the only unbounded quantifier the change added** to a regex whose
+  documented invariant is that every quantifier is bounded. Harmless by measurement (linear), but
+  safe only by a non-local argument and uncovered by the structural ReDoS pin, which anchors the
+  JWT arm alone. Rewritten to the bounded `(?=[^\s]{0,7}[A-Za-z])`.
+- **The D1a lookbehind tests the wrong operand for compounds ending in punctuation** —
+  `(audit)-pass sections,` is still refused. Recorded, **not fixed**: it is a narrower instance of
+  the class D1a already accepts a gap on, and chasing it in a review round is the tuning the
+  firewall's own docstring warns against.
+- **Two findings were refuted and dropped**: stem injection into `MEMORY.md` (unreachable —
+  `validate_fact_stem` refuses first, verified empirically) and a claimed narrowing from the
+  suffix clause's `{0,8}` → `{1,8}` (language-identical; the group is still optional). Recorded
+  because a dropped finding is a decision. **The refuted stem-injection case nevertheless left a
+  real gap** — the route concatenated its `stem` unvalidated, making its safety an unwritten
+  precondition of one call site — so the route now validates the stem itself.
+
+
 
 **None.** No `CycleRecord` field, CLI flag, manifest contract, or marketplace change. The
 `demotion_candidates` signature is unchanged; §2.4 changes only *who supplies its arguments*.
+
+## Contract impact
+
+**No `CycleRecord` field, CLI flag, manifest contract, or marketplace change.** The
+`demotion_candidates` signature is unchanged (§2.4 changes only *who supplies its arguments*).
+
+**Two ADDITIVE internal changes, stated because "none" would be a claim too strong to make:**
+`_rebuild_plan`'s return dict gains `body_refused` (now propagated through
+`local_reindex`'s report allowlist — §6 finding 2), and `prepare_local_fact` gains the keyword-only
+`check_secrets` (§6 finding 1), which is a **diagnostic** and which no write path passes `False`
+to. Both are backward-compatible; nothing that read these surfaces before reads them differently.
 
 ## Acceptance
 

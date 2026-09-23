@@ -1194,21 +1194,30 @@ for _name, _val, _want in [
     check(f"firewall(v0.4.42 accepted-gap boundary): {_name} -> {'flagged' if _want else 'clean'}",
           bool(es._looks_secret(_val)) is _want)
 
-# --- v0.4.42: the NO-FLIP CENSUS. The three cases above pin the SHAPES; this pins the CORPUS —
-# every firewall verdict this suite already asserts, re-evaluated against the changed regex.
+# --- v0.4.42: the NO-FLIP CENSUS. The cases below pin the SHAPES; this pins the CORPUS — every
+# firewall verdict this suite already asserts, re-evaluated against the changed regex.
 # ⚠ An instrument is only as wide as its match set (`gate-coverage-is-its-match-set`), and this
-# check's own first draft was that defect: it harvested EVERY `(str, bool)` tuple in this file
-# and reported seven tuples from UNRELATED tables — the error-signal noise filter, a
-# ruff-output block — as flips. The scope below is the loops whose body actually references
-# `_looks_secret`, which is what makes the census a census.
+# check's own first draft was that defect TWICE. Draft 1 harvested EVERY `(str, bool)` tuple in
+# this file, including seven from UNRELATED tables (the error-signal noise filter, a ruff-output
+# block) and reported them as flips. Draft 2 scoped to the loops that reference `_looks_secret`
+# but still required a bool in the tuple's LAST slot — which silently skipped every TWO-tuple
+# table, 33 of the 65 entries, including the 16-row false-positive corpus AND the three D1a rows
+# above. All three verdicts that actually flip between the patterns live in a table the census
+# could not read, so the printed count read as the whole corpus while reading none of the flips.
+# The harvest therefore derives its EXPECTED VERDICT from each loop's own assertion:
+#   `_looks_secret(...) is False` -> every 2-tuple row in that loop is expected CLEAN
+#   `is _want`                    -> the 3-tuple's own last slot
 _ast42 = __import__("ast")
+_ff42_src = Path(__file__).read_text()
 _ff42_cases = []
-for _n42 in _ast42.walk(_ast42.parse(Path(__file__).read_text())):
+for _n42 in _ast42.walk(_ast42.parse(_ff42_src)):
     if not isinstance(_n42, _ast42.For) or not isinstance(_n42.iter, (_ast42.List, _ast42.Tuple)):
         continue
     if not any(isinstance(_x, _ast42.Attribute) and _x.attr == "_looks_secret"
                for _s42 in _n42.body for _x in _ast42.walk(_s42)):
         continue
+    _body42 = " ".join((_ast42.get_source_segment(_ff42_src, _b42) or "") for _b42 in _n42.body)
+    _polarity42 = not __import__("re").search(r"_looks_secret\([^)]*\)\s*is\s+False", _body42)
     for _e42 in _n42.iter.elts:
         if not isinstance(_e42, _ast42.Tuple):
             continue
@@ -1216,13 +1225,16 @@ for _n42 in _ast42.walk(_ast42.parse(Path(__file__).read_text())):
             _v42 = [_ast42.literal_eval(_el) for _el in _e42.elts]
         except Exception:
             continue
-        if len(_v42) >= 2 and isinstance(_v42[-2], str) and isinstance(_v42[-1], bool):
+        if len(_v42) >= 3 and isinstance(_v42[-2], str) and isinstance(_v42[-1], bool):
             _ff42_cases.append((_v42[-2], _v42[-1]))
+        elif len(_v42) == 2 and all(isinstance(_x, str) for _x in _v42):
+            _ff42_cases.append((_v42[-1], _polarity42))
 check(f"firewall(v0.4.42): every pinned firewall verdict survives the D1a/D1b changes "
-      f"({len(_ff42_cases)} cases harvested from this suite's own predicate-referencing tables; "
-      f"anti-vacuity floor 20, because a harvest that reads nothing prints a green proportional "
-      f"to how little it read)",
-      len(_ff42_cases) >= 20
+      f"({len(_ff42_cases)} cases harvested from this suite's own predicate-referencing tables — "
+      f"BOTH tuple widths, with the polarity read off each loop's own assertion; anti-vacuity "
+      f"floor 45, raised from 20 because the two-tuple tables are now read and a harvest that "
+      f"silently skips them prints a green proportional to how little it read)",
+      len(_ff42_cases) >= 45
       and all(bool(es._looks_secret(_v)) is _w for _v, _w in _ff42_cases))
 
 # --- v0.4.42 D1c (PIN — RED at `3ada6c7` BY ABSENCE: the function does not exist there, so the
@@ -1249,6 +1261,47 @@ check("v0.4.42 D1c (CONTROL): a CLEAN body yields no cue from this route — it 
       "ordinary path, and routing it here would skip the body validation that path performs",
       _d1c_fn is not None and _d1c_fn(
           "cm-demo-42", '---\nname: cm-demo-42\ndescription: "a clean cue"\n---\nordinary body\n') is None)
+
+# ⚠ v0.4.42 D1c (PIN — the MASKING arm, and the one the first cut of the route got wrong).
+# `prepare_local_fact` is FIRST-REFUSAL-WINS and runs the firewall check FIRST, so every other
+# refusal is MASKED by a firewall refusal. The first cut gated on `_looks_secret(text)` — a fact
+# about the DOCUMENT — so a fact that was ALSO badly named, badly scoped, badly statused or badly
+# sensed produced a pointer and was filed as `included`, silently released from the plan's
+# fail-closed handling. Its docstring claimed "this is not a general bypass"; the claim was
+# false. The route is now two-call: refused, then asked again with the firewall off, and it fires
+# ONLY when the second call is clean. Every row below is a refusal the firewall was masking.
+for _mask_name, _mask_fm in [
+    ("bad NAME", "name: totally-different"),
+    ("bad SCOPE", "scope: domain-global"),
+    ("bad STATUS", "status: retired"),
+    ("bad SENSITIVITY", "sensitivity: topsecret"),
+]:
+    check(f"v0.4.42 D1c (PIN, masking arm): a firewall refusal that MASKS a {_mask_name} "
+          f"refusal does NOT route — the other defect is real and `invalid` keeps it",
+          _d1c_fn is not None
+          and _d1c_fn("cm-demo-42",
+                      f'---\ndescription: "a clean cue"\n{_mask_fm}\n---\npassword=hunter2longvalue\n')
+          is None)
+check("v0.4.42 D1c (CONTROL for the masking arm): the SAME firewall body with no other defect "
+      "does route — without this, the four pins above are satisfied by a route that never fires",
+      _d1c_fn is not None
+      and _d1c_fn("cm-demo-42",
+                  '---\nname: cm-demo-42\ndescription: "a clean cue"\n---\npassword=hunter2longvalue\n')
+      is not None)
+
+# ⚠ v0.4.42 D1c (PIN — the DISCLOSURE reaches the operator-facing surface). `_rebuild_plan`
+# discloses a firewall-refused body in `body_refused`, but `local_rebuild_index` builds its
+# report from a FIXED key tuple — and the plan dict itself is never returned, so a key missing
+# from that tuple is invisible on the ONLY route an operator uses (`cm local rebuild-index`,
+# `--json` included). MEASURED harm in the first cut: the disclosure was dropped at the
+# consumer while the plan's own comment claimed "Reported rather than swallowed". ⚠ Worse, it
+# defeated a verification: a probe reading the CLI output cannot tell "nothing was refused" from
+# "the key never propagated" — the observable could not carry the difference.
+_d1c_pin_exists = _d1c_fn is not None
+check("v0.4.42 D1c (PIN): `body_refused` survives into the REPORT that operators receive, not "
+      "only into the private plan dict (a disclosure that stops at the producer is not one)",
+      _d1c_pin_exists and "body_refused" in
+      __import__("inspect").getsource(_li42.local_rebuild_index))
 
 # --- Gate-2a round 3 (accepted, documented gap — see _entropy_blob's docstring): a short,
 # no-digit, single-case value (a weak password) is indistinguishable in SHAPE from an ordinary
@@ -12201,12 +12254,16 @@ with _Env73() as _e_rb7:
           and "](sec-probe.md)" in _idx_rb7
           and _app_rb7.get("ok") is True
           and "sec-probe" in (_app_rb7.get("omitted") or []))
-    # RE-AIMED at v0.4.42. The fixture used `Use `--token <value>` in ordinary prose` as its
-    # body, on the recorded grounds that this was the realistic route into `invalid`. D1a
-    # cured that shape, so the fixture's own trigger stopped firing; and D1c (see below) then
-    # re-routed the description-clean subset OUT of `invalid` entirely, because a cue is a
-    # function of `description:` alone and can be derived fresh. What survives in `invalid` is
-    # the case where the DESCRIPTION is dirty too — there is no clean string to derive from —
+    # RE-AIMED at v0.4.42. ⚠ The reason first recorded here was FALSE and is corrected rather
+    # than deleted: it said D1a cured the fixture's trigger. MEASURED — `_looks_secret('Use
+    # `--token <value>` when the registry is private.')` is True at `3ada6c7` AND at this head,
+    # because the match's dash is preceded by a BACKTICK, which D1a's lookbehind permits. That
+    # fixture was never a D1a case, so D1a's blast radius is smaller than the false version
+    # claimed — and a maintainer trusting it might have deleted the GUARD that proves the body
+    # still trips. The re-aim was forced by D1c alone: it re-routed the description-clean subset
+    # OUT of `invalid` entirely, because a cue is a function of `description:` alone and can be
+    # derived fresh. What survives in `invalid` is the case where the DESCRIPTION is dirty too —
+    # there is no clean string to derive from —
     # so the fixture now trips the arm from the description. ⚠ The GUARD below is what keeps
     # this honest: it asserts BOTH legs, so a future cure of either shape reddens the guard
     # instead of leaving the pin above quietly testing nothing.
@@ -23153,11 +23210,14 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                             + 1        # v0.4.41 R4 — one sentence, two conditions (PIN)
                             + 1        # v0.4.41 R5 — the token has one home, not two (PIN, structural)
                             + 4        # v0.4.41 R1 — the timestamp fill: 4 PINs (the
-                            + 13)      # v0.4.42 D1 — 3 FP guards (D1a x2, D1b x1) +
+                            + 19)      # v0.4.42 D1 — 3 FP guards (D1a x2, D1b x1) +
                                        #          4 accepted-gap boundary guards +
                                        #          1 no-flip census +
                                        #          D1c: 3 unit pins (PIN + 2 controls)
-                                       #          + 2 plan pins (routing PIN + its guard).
+                                       #          + 2 plan pins (routing PIN + its guard)
+                                       #          + 6: the D1c review round — 4 masking-arm
+                                       #              pins + 1 control + the disclosure
+                                       #              reaching the operator surface.
                                                         #      "admit table" is a PIN too — its (e)
                                                         #      conjunct asserts the REFUSAL, measured
                                                         #      PRE ✗ / POST ✓)
