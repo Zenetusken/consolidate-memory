@@ -23486,6 +23486,7 @@ check("v0.4.44 item 5 (PIN): `measure_or_fault` separates the TWO zeros — an o
 _os44.chmod(_f44, 0o644)
 # ⚠ Same guard as above, and for the same reason: pre-fix `_measure` RAISES on the directory
 # (that is the defect), so a bare call here killed the suite before this check could redden.
+_ctrl44: "tuple[tuple[int, int, int], ...] | None" = None
 try:
     _ctrl44 = (ms._measure(_d44 / "MEMORY.md"), ms._measure(_ok44),
                ms._measure(_d44 / "nothing-here.md"))
@@ -23515,7 +23516,7 @@ _pdir44 = _d44m / "data"
 _pdir44.mkdir()
 _mp44 = _fm44.manifest_path(_pdir44, "personal")
 _mp44.parent.mkdir(parents=True, exist_ok=True)
-_row44 = {"stem": "x", "mtime_ns": 1, "size": 1, "ctime_ns": 1, "body_hash": "h", "sem": "s",
+_row44: dict = {"stem": "x", "mtime_ns": 1, "size": 1, "ctime_ns": 1, "body_hash": "h", "sem": "s",
           "class": "", "secret": True, "secret_pred": _p44, "fm": {}}
 _mp44.write_text(__import__("json").dumps({"schema_version": _fm44.SCHEMA_VERSION, "domain": "personal",
                              "files": [_row44]}), encoding="utf-8")
