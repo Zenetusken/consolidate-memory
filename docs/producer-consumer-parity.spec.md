@@ -268,8 +268,16 @@ ambiguity was introduced — re-read `docs/redos-guard-linearity.spec.md` before
 - **PR 1** `firewall-precision-and-recovery` — §2.1, §2.2, §2.3; pins P1–P7.
 - **PR 2** `demotion-parity-and-cue-stability` — §2.4, §2.5; pins P8–P9.
 
-`plugin.json` is hand-bumped to `0.4.42` on the PR 1 branch (pre-bump path: `release.sh --stage`
-verifies, never authors). CHANGELOG `## [0.4.42]` authored before release. `--expect patch`.
+`plugin.json` is hand-bumped to `0.4.42` **on the PR 2 branch**, not PR 1, and the CHANGELOG
+`## [0.4.42]` is authored with it. The pre-bump path applies (`release.sh --stage` verifies,
+never authors); `--expect patch`.
+
+> **Corrected 2026-09-23, before either PR merged.** An earlier revision of this section put the
+> bump on the PR 1 branch. That would have left `main` **red between the two merges**: the
+> version and the CHANGELOG section are a pair, and `check_changelog_dated` asserts exactly that
+> pair — `plugin.json` naming a version the CHANGELOG does not date is the state its own
+> docstring says it closes. The bump belongs on the last PR of the arc, so the pair lands
+> together.
 
 ## §5 Known ceilings (documented, not solved)
 
