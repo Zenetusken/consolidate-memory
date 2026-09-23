@@ -5,6 +5,37 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.43] — 2026-09-23
+
+**Patch — the review round that followed 0.4.42 found six defects in it, three of them regressions
+introduced by its own fixes. This is the repair pass, each fix reproduced before it landed.**
+
+1. **`--force` was a silent no-op.** `wf` — an operand of the WRITE path's own suppression test —
+   was initialised to `0` ABOVE the `if not force:` branch and assigned from the builder only
+   INSIDE it. So `--force`, the only remedy the refusal message prints, judged that test against
+   zero: the stamp the remedy exists to move was never moved, the stem re-nagged every dream, and
+   the command returned `ok: true` with an empty `stamped`. MEASURED. The vector is now built
+   once, above the branch, and one source feeds both the gate and the write.
+2. **The justify CLI reported a count it never measured.** The same `wf = 0` reached the
+   early-error returns, so a store whose log held 39 probative windows printed `windows_full: 0`.
+   The value is now derived from the same vector on every path, and a builder fault degrades to
+   the log's own aggregate — a measured count, never a fabricated zero.
+3. **`cm local rebuild-index --apply` re-inflated tightened cues.** The D3 keep reached the
+   rebuild's EVALUABLE branch only; the D1c route — reachable exactly for facts whose body the
+   firewall refuses, and living ONLY in the rebuild — still derived unconditionally (MEASURED
+   +25 est tok per refused fact). So the single write that heals a frozen cue was also the one
+   that re-inflated the tightened ones, in the same pass. The route now takes the keep's
+   operands, with controls asserting it did not become a bypass.
+4. **Two prose repairs.** The `0.4.42` section claimed **18** checks; the shipped suite has
+   **28** — a pre-review-round figure the round outgrew. And three new prose sites named private
+   memory-fact slugs, which resolve to nothing for any reader of this public tree; each is now
+   stated inline, and the measured span is described rather than named.
+
+⚠ **A known, unfixed surface, stated rather than discovered later:** routing the justify CLI
+through `store_local_index` means an index that is a DIRECTORY or mode-000 degrades through the
+new fallback rather than raising, but the same read is unguarded for the report path — a surface
+that has existed since v0.4.30, not a regression here.
+
 ## [0.4.42] — 2026-09-23
 
 **Patch — three defects a dream pass measured in its OWN tooling: a secrets-firewall false
@@ -37,9 +68,11 @@ reads it, an index cue against its own cost. Design-of-record:
 3. **Why (1) and (2) were a BUG and not a preference.** The always-loaded index pointer is
    **derived** from `description:` by `local_ingress._pointer`, and every pointer-producing path
    ran `prepare_local_fact`, which validates the **whole body** — so a firewall verdict on a body
-   blocked an unrelated concern. Measured: `consolidate-memory-roadmap`'s body read **v0.4.41**
-   while its `MEMORY.md` pointer still read **v0.4.34**, frozen across six releases, and nothing
-   compared body to cue. `_pointer_from_clean_description` now derives the cue when the body is
+   blocked an unrelated concern. Measured on the maintainer's own store: a fact whose BODY read
+   **v0.4.40** while the `MEMORY.md` pointer derived from it still read **v0.4.34** — frozen
+   across six releases, because no write path could regenerate the cue and nothing compared body
+   to cue. (The fact is private and uncommitted, so the span is described rather than named: a
+   slug from that store is a citation no reader of this tree can resolve.) `_pointer_from_clean_description` now derives the cue when the body is
    refused **by the firewall** and the description is clean; `_rebuild_plan` uses it instead of
    failing closed, reporting the fact in a new **additive** `body_refused` key. It admits no
    BODY — a secret in a body still blocks every content write. The recursion is worth recording:
@@ -69,7 +102,10 @@ reads it, an index cue against its own cost. Design-of-record:
    changed"* from *"someone tightened the cue"* — and a moved description is exactly the
    frozen-cue repair (3) exists for.
 
-`tests/smoke.py` gains **18 checks tagged v0.4.42** across the two PRs. **MEASURED, not
+`tests/smoke.py` gains **28 checks tagged v0.4.42** across the two PRs — MEASURED on the
+committed tree (the D6 surface constant's own breakdown adds `+ 22` D1-family and `+ 6`
+D2/D3 = 28); an earlier draft of this entry said 18, a pre-review-round figure the round's
+pins outgrew and which a reviewer auditing the released suite could not reconcile. **MEASURED, not
 asserted:** on a `git worktree` of `3ada6c7` carrying this release's pins, the suite reads
 `2202 passed, 14 failed` for PR 1's pins and the shipping tree reads green; the pre-fix reds are
 enumerated in the spec's §3 with each check's kind (PIN vs **GUARD** — a check that cannot fail

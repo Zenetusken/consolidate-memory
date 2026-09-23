@@ -2412,12 +2412,23 @@ def run_justify_demotion(project_dir: Path, stems: list, *,
     starts = list(clock.get("starts") or [])
     if not starts:
         starts = [s for s in (hist.get("window_starts") or []) if isinstance(s, (int, float))]
-    # ⚠ `wf` is read from the BUILDER's vector below, not from `usage_history()` here. It used
-    # to be taken before the builder call, so one invocation gated on the clock's `probative`
-    # count and then REPORTED and STAMPED the log's own `windows_full` — two readings of one
-    # quantity inside the very function D2 was fixed in, and the printed count was the one the
-    # docstring calls non-authoritative (39 vs 23 on the measured store).
-    wf = 0
+    # v0.4.42 (D2): the SAME builder the Phase-0 report uses — built HERE, above the
+    # `if not force:` branch, because `wf` is an operand of the WRITE path's own suppression
+    # test as well as of the candidate gate. Taking it inside that branch made `--force` — the
+    # only remedy the refusal below prints — judge the suppression against a zeroed count: the
+    # stamp the remedy exists to move was never moved, the stem re-nagged every dream, and the
+    # command returned `ok: true` with an empty `stamped`. One vector, both paths, one source.
+    # ⚠ A fault here degrades to the log's own aggregate rather than raising: this arm is
+    # reachable on stores the builder cannot read (an index that is a directory, a mode-000
+    # file), where the pre-D2 code degraded to an empty index text. `wf` is then whatever the
+    # log says — a MEASURED count, never a fabricated zero.
+    try:
+        _demo_in = demotion_inputs(ctx)
+        _dhist = _demo_in["hist"]
+    except Exception:
+        _demo_in, _dhist = None, hist
+    hist = _dhist
+    wf = _pi_int(hist.get("windows_full"))
     iso = now_iso or _utc_iso_now()
     if not force:
         try:
@@ -2428,13 +2439,11 @@ def run_justify_demotion(project_dir: Path, stems: list, *,
         if not isinstance(raw_pre, dict):
             return {"ok": False, "error": "marker is not an object", "stamped": [],
                     "skipped": [], "windows_full": wf, "sequence": seq}
-        # v0.4.42 (D2): the SAME builder the Phase-0 report uses. These inputs used to be
-        # assembled here separately — `index_names` from every fact file rather than the INDEXED
-        # set, and `hist` without the clock override — and the two paths then disagreed about
-        # which facts were candidates, so the docket named stems this gate refused.
-        _demo_in = demotion_inputs(ctx)
-        # the same vector the gate consumed — one source, reported and stamped alike
-        wf = _pi_int(_demo_in["hist"].get("windows_full"))
+        if _demo_in is None:
+            return {"ok": False,
+                    "error": "demotion inputs unavailable (the store index could not be read); "
+                             "the candidate gate cannot be evaluated",
+                    "stamped": [], "skipped": [], "windows_full": wf, "sequence": seq}
         facts = _demo_in["fact_files"]
         idx_text = _demo_in["index_text"]
         idx_names = _demo_in["index_names"]
@@ -2616,8 +2625,9 @@ def demotion_inputs(ctx: Any, local: "dict | None" = None) -> dict:
     Harm: the report's `demotion.surfaced` named stems that `--justify-demotion` then refused as
     *"not a current demotion candidate"*, whose only printed remedy was `--force` (labelled
     administrative repair) — the counter-justify route the cycle record itself prescribes could
-    not be applied to the facts it named. That is the repo's own
-    `a-refusals-remedy-must-move-its-operand` class.
+    not be applied to the facts it named. Stated inline rather than by fact name (the store is
+    private and uncommitted): a refusal must be CLEARABLE by the remedy its own message prints,
+    and the remedy must move the operand the predicate reads.
 
     ⚠ The clock's `probative` is the authoritative count, and the name says why: it is the field
     `demotion_candidates`' docstring means, and `usage_history()`'s `windows_full` is a different
