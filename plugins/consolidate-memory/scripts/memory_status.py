@@ -1115,7 +1115,7 @@ def dangling_links(auto_mem: Path, global_dir: Path | None = None,
 # protocol shapes that carry no high-entropy blob.
 _SECRET = re.compile(
     r"""(
-        (?:[A-Za-z0-9]{1,40}[_.\-]){0,8}(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?P<sfx>(?:[_.\-][A-Za-z0-9]{1,40}){1,8})?["']?\s*[:=]\s*["']?(?(sfx)(?=\S{8,}|(?=\S{4,})(?=[^\s]{0,7}[A-Za-z])\S*\d)\S+|(?=\S{8,}|(?=\S{4,})\S*\d)\S+)
+        (?:[A-Za-z0-9]{1,40}[_.\-]){0,8}(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?P<sfx>(?:[_.\-][A-Za-z0-9]{1,40}){1,8})?["']?\s*[:=]\s*["']?(?(sfx)(?=\S{8,}|(?=\S{4,})\S*\d)(?!\d{4,7}(?!\w))\S+|(?=\S{8,}|(?=\S{4,})\S*\d)\S+)
                                                                      # keyword as a full SEGMENT of a compound id, with
                                                                      # optional quotes/brackets around the delimiter so
                                                                      # JSON {"password": "..."} / dict / YAML all match.
@@ -1248,13 +1248,20 @@ _SECRET = re.compile(
 #     are clean now, and no other arm covers them (the main arm requires `[:=]`; `_entropy_blob`
 #     is False on each). The shape is indistinguishable from the false positive it shares its
 #     form with (`audit-pass sections,`), so separating them is not possible at this arm.
-#   D1b — a compound-id match is declined on the conditional below. ⚠ GAP, stated exactly
-#     because the loose form under-counts it: the declining class is NOT "4–7 chars, purely
-#     numeric" but "4–7 chars carrying a digit and NO ASCII letter", so `TOKEN_KEY=12-345`,
-#     `api_key_v2=1234!`, `token_v2=1.2.34` and `pwd_9=12.34` are declined too. A standalone
-#     keyword keeps both branches (`password=1234`, `password=12345678`), and a prefix-only
-#     match is the env-var shape (`MY_TOKEN=1234`) which stays caught — suffix-only is the
-#     narrower, safer reading.
+#   D1b — a compound-id match is declined on the conditional below: the value's LEADING RUN is
+#     4-7 digits and is not followed by a word character. ⚠ Stated by SHAPE, not by example,
+#     because two earlier revisions of this record described a WIDER class than the code applies
+#     and the examples would only be wrong a third time: "4–7 chars, purely numeric" was the
+#     first draft, and the second named `TOKEN_KEY=12-345`, `token_v2=1.2.34`, `secret_v1=12_34`
+#     and `pwd_9=12.34` as declined when the shipped predicate FLAGS all four. The version that
+#     holds is the leading-run test, and it is deliberately narrower than "purely numeric": it
+#     has to be, or a compact structure keeps the arm alive (`{"INDEX_TOKEN_BUDGET":1600,"max":8}`
+#     stayed flagged under both earlier drafts, because the 8+ branch matched the whole non-space
+#     run and never reached the numeric test at all — measured, and the reason the test is now a
+#     negative lookahead on the shape rather than a letter test on the run).
+#     A standalone keyword keeps BOTH branches (`password=1234`, `password=12345678`), and a
+#     prefix-only match is the env-var shape (`MY_TOKEN=1234`) which stays caught — suffix-only
+#     is the narrower, safer reading.
 # Both gaps follow the posture `_entropy_blob`'s docstring already states: the firewall favours
 # fewer false positives on ordinary commit prose, and widening it is a product decision.
 

@@ -143,16 +143,21 @@ identifier segment (`TOKEN_BUDGET = 1600`), the code-constant shape. Suffix-only
 (catches more) and still delivers both approved outcomes: `INDEX_TOKEN_BUDGET = 1600` clean,
 `password=1234` caught (standalone keyword), `password=12345678` caught (8+ branch).
 
-**This is an ACCEPTED GAP, in the established sense — and its class is wider than the sentence
-above says.** MEASURED: the declining class is not "4–7 characters and purely numeric" but
-**"4–7 characters carrying a digit and no ASCII letter"**, so `TOKEN_KEY=12-345`,
-`api_key_v2=1234!`, `token_v2=1.2.34`, `secret_v1=12_34`, `pwd_9=12.34` and `x_token_id=1:23` were
-each flagged before and are clean now. An auditor sizing the loss from the narrow sentence
-under-counts it — the same defect as this document's own 43-vs-28 note. Both figures are recorded
-in `_SECRET`'s comment block. The tradeoff itself follows the precedent `_entropy_blob`'s
-docstring sets (`memory_status.py:1254`): *"the firewall favors fewer false positives on ordinary
-commit prose… This is a real tradeoff, not a bug to keep tuning… Widening it is a product
-decision, not a fix."*
+**This is an ACCEPTED GAP — and its class has now been stated wrongly TWICE, which is why the
+shipped comment states it by SHAPE rather than by example.** Draft 1 said "4–7 characters and
+purely numeric"; draft 2 widened it to "4–7 chars carrying a digit and no ASCII letter" and named
+`TOKEN_KEY=12-345`, `token_v2=1.2.34`, `secret_v1=12_34`, `pwd_9=12.34` as declined. **Both were
+wrong, and the second was wrong in the other direction**: the shipped predicate now FLAGS all four
+of those (a recall *gain*, since they carry non-digit characters). What actually holds is a test on
+the value's **leading run**: a compound-id value whose first 4–7 characters are digits and are not
+followed by a word character is declined. It had to become a shape test rather than a letter test
+because **both earlier formulations left the class only partly cured** — measured,
+`{"INDEX_TOKEN_BUDGET":1600,"max":8}` stayed flagged, since the 8+ branch matched the whole
+non-space run and never reached the numeric test at all. The tradeoff's posture is still
+`_entropy_blob`'s (`memory_status.py:1254`): *"the firewall favors fewer false positives on
+ordinary commit prose… This is a real tradeoff, not a bug to keep tuning."* **The lesson worth
+keeping is not the predicate but the pattern: three successive statements of one measured class,
+each written with confidence and each falsified by a sample the previous one had not taken.**
 
 **Verified before implementation.** Applying both D1a and D1b to the real `_SECRET` and evaluating
 all **28** pinned firewall case tuples flips **zero** verdicts. This check becomes a pin (§3).

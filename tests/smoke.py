@@ -1194,6 +1194,25 @@ for _name, _val, _want in [
     check(f"firewall(v0.4.42 accepted-gap boundary): {_name} -> {'flagged' if _want else 'clean'}",
           bool(es._looks_secret(_val)) is _want)
 
+# --- v0.4.42 D1b (PIN — RED at HEAD of this branch before the token-shape fix, though the
+# ORIGINAL D1b pin at the block above was GREEN: it samples the shape with a backtick after
+# the integer, where the non-space run ends. Both earlier formulations of the cure failed here
+# — a letter test on the run passed `{"INDEX_TOKEN_BUDGET":1600,"max":8}` because the RUN
+# continues into `,"max":8}` and its letters satisfy it, and the 8+ branch matched that run
+# outright. MEASURED harm: the false positive class D1b exists to cure was still refused, and a
+# refused body cannot be rewritten at all (D1c keeps its CUE alive, not its body).
+# The rule is now a negative lookahead on the value's LEADING RUN, so it holds wherever the
+# integer sits. ⚠ This is the pin the census could not stand in for: the census reads pinned
+# rows, and no row sampled this shape.
+for _n42b, _v42b in [
+    ('a compact JSON object with a SCREAMING_SNAKE compound key and a bare integer',
+     '{"INDEX_TOKEN_BUDGET":1600,"max":8}'),
+    ('the same shape as a comma-joined assignment pair',
+     'INDEX_TOKEN_BUDGET=1600,INDEX_CAP=8'),
+]:
+    check(f"firewall(v0.4.42 D1b): {_n42b} stays clean",
+          es._looks_secret(_v42b) is False)
+
 # --- v0.4.42: the NO-FLIP CENSUS. The cases below pin the SHAPES; this pins the CORPUS — every
 # firewall verdict this suite already asserts, re-evaluated against the changed regex.
 # ⚠ An instrument is only as wide as its match set (`gate-coverage-is-its-match-set`), and this
@@ -1208,8 +1227,32 @@ for _name, _val, _want in [
 #   `_looks_secret(...) is False` -> every 2-tuple row in that loop is expected CLEAN
 #   `is _want`                    -> the 3-tuple's own last slot
 _ast42 = __import__("ast")
-_ff42_src = Path(__file__).read_text()
-_ff42_cases = []
+_ff42_src = Path(__file__).read_text(encoding="utf-8")   # ⚠ NOT the ambient locale codec: this
+#   file carries >14k non-ASCII bytes, and a bare read_text() under a non-UTF-8 preferred
+#   encoding (reproduced with LC_ALL=C PYTHONUTF8=0) raises UnicodeDecodeError at MODULE level —
+#   killing the suite mid-file so every check after it never runs, which is a crash the runner
+#   cannot tell from an interrupted run. Every other read_text() in this diff names utf-8.
+_NO42 = object()          # an EXPLICIT sentinel: "shape I do not harvest" must be countable, so
+                          # `except Exception: continue` can never hide "row I failed to evaluate".
+
+
+def _fold42(node):        # noqa: E305 — folds `"AKIA" + "EXAMPLE0…"` / `"a" * 8`, the SHAPE the
+    try:                  # provider-token tables are built in precisely so no contiguous real
+        return _ast42.literal_eval(node)   # token literal exists in this source file. Without
+    except Exception:                      # folding, 8 of the highest-precision rows were silently
+        pass                               # skipped and the census read ~half its corpus.
+    if isinstance(node, _ast42.BinOp):
+        _l, _r = _fold42(node.left), _fold42(node.right)
+        if _l is _NO42 or _r is _NO42:
+            return _NO42
+        if isinstance(node.op, _ast42.Add) and isinstance(_l, str) and isinstance(_r, str):
+            return _l + _r
+        if isinstance(node.op, _ast42.Mult) and isinstance(_l, str) and isinstance(_r, int):
+            return _l * _r
+    return _NO42
+
+
+_ff42_cases, _ff42_unread = [], []
 for _n42 in _ast42.walk(_ast42.parse(_ff42_src)):
     if not isinstance(_n42, _ast42.For) or not isinstance(_n42.iter, (_ast42.List, _ast42.Tuple)):
         continue
@@ -1221,21 +1264,26 @@ for _n42 in _ast42.walk(_ast42.parse(_ff42_src)):
     for _e42 in _n42.iter.elts:
         if not isinstance(_e42, _ast42.Tuple):
             continue
-        try:
-            _v42 = [_ast42.literal_eval(_el) for _el in _e42.elts]
-        except Exception:
+        _v42 = [_fold42(_el) for _el in _e42.elts]
+        if any(_x is _NO42 for _x in _v42):
+            _ff42_unread.append(getattr(_e42, "lineno", 0))
             continue
         if len(_v42) >= 3 and isinstance(_v42[-2], str) and isinstance(_v42[-1], bool):
             _ff42_cases.append((_v42[-2], _v42[-1]))
         elif len(_v42) == 2 and all(isinstance(_x, str) for _x in _v42):
             _ff42_cases.append((_v42[-1], _polarity42))
 check(f"firewall(v0.4.42): every pinned firewall verdict survives the D1a/D1b changes "
-      f"({len(_ff42_cases)} cases harvested from this suite's own predicate-referencing tables — "
-      f"BOTH tuple widths, with the polarity read off each loop's own assertion; anti-vacuity "
-      f"floor 45, raised from 20 because the two-tuple tables are now read and a harvest that "
-      f"silently skips them prints a green proportional to how little it read)",
-      len(_ff42_cases) >= 45
+      f"({len(_ff42_cases)} cases harvested from this suite's own predicate-referencing tables, "
+      f"BOTH tuple widths, concatenation-built values folded, and the polarity read off each "
+      f"loop's own assertion; anti-vacuity floor 55)",
+      len(_ff42_cases) >= 55
       and all(bool(es._looks_secret(_v)) is _w for _v, _w in _ff42_cases))
+check(f"firewall(v0.4.42): the census reads its WHOLE corpus — every `_looks_secret` row in "
+      f"this suite is either harvested or NAMED, never silently skipped (unread rows: "
+      f"{_ff42_unread or 'none'}). ⚠ A harvest with an `except: continue` cannot tell "
+      f"'shape I do not harvest' from 'row I failed to evaluate', and two earlier drafts of "
+      f"this check each read about half the corpus while printing their count as the whole",
+      _ff42_unread == [])
 
 # --- v0.4.42 D1c (PIN — RED at `3ada6c7` BY ABSENCE: the function does not exist there, so the
 # call cannot be satisfied by anything but the repair). A cue is a function of `description:`
@@ -1298,10 +1346,6 @@ check("v0.4.42 D1c (CONTROL for the masking arm): the SAME firewall body with no
 # defeated a verification: a probe reading the CLI output cannot tell "nothing was refused" from
 # "the key never propagated" — the observable could not carry the difference.
 _d1c_pin_exists = _d1c_fn is not None
-check("v0.4.42 D1c (PIN): `body_refused` survives into the REPORT that operators receive, not "
-      "only into the private plan dict (a disclosure that stops at the producer is not one)",
-      _d1c_pin_exists and "body_refused" in
-      __import__("inspect").getsource(_li42.local_rebuild_index))
 
 # --- Gate-2a round 3 (accepted, documented gap — see _entropy_blob's docstring): a short,
 # no-digit, single-case value (a weak password) is indistinguishable in SHAPE from an ordinary
@@ -12342,6 +12386,16 @@ with _Env73() as _e_d1c:
           es._looks_secret(
               (_e_d1c.store / "cue-fresh.md").read_text(encoding="utf-8")) is True
           and es._looks_secret("a clean cue for a refused body") is False)
+    # ⚠ Asserted on the RETURNED OBJECT, not on the function's source text. An earlier cut of
+    # this pin checked `"body_refused" in inspect.getsource(local_rebuild_index)` — an observable
+    # WIDER than the defect it names, satisfied by a comment, docstring, or any other mention of
+    # the name, so dropping the key from the report tuple while leaving the word in prose would
+    # keep it green and silently lose the disclosure again. MEASURED harm this pin exists for:
+    # the report tuple omitted the key entirely and a probe reading CLI output could not tell
+    # "nothing was refused" from "the key never propagated".
+    check("v0.4.42 D1c (PIN): `body_refused` survives into the REPORT that operators receive — "
+          "not only into the private plan dict, which `local_rebuild_index` never returns",
+          any(r.get("stem") == "cue-fresh" for r in _app_d1c.get("body_refused") or []))
 
 
 # The carry exists so a HAND-EDITED index line survives a rebuild. Its selection answers one
@@ -23210,7 +23264,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                             + 1        # v0.4.41 R4 — one sentence, two conditions (PIN)
                             + 1        # v0.4.41 R5 — the token has one home, not two (PIN, structural)
                             + 4        # v0.4.41 R1 — the timestamp fill: 4 PINs (the
-                            + 19)      # v0.4.42 D1 — 3 FP guards (D1a x2, D1b x1) +
+                            + 22)      # v0.4.42 D1 — 3 FP guards (D1a x2, D1b x1) +
                                        #          4 accepted-gap boundary guards +
                                        #          1 no-flip census +
                                        #          D1c: 3 unit pins (PIN + 2 controls)
