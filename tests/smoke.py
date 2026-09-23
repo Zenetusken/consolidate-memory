@@ -23247,6 +23247,69 @@ with _Env73() as _eR4, _tf73.TemporaryDirectory(prefix="r4out-") as _oR4:
           and "empty .consolidation-log" not in _erV4
           and "empty .consolidation-log" not in _erF4)
 
+# --- v0.4.42 D2 (PIN — RED at `3ada6c7` BY ABSENCE: `demotion_inputs` does not exist, so the
+# call cannot be satisfied by anything but the repair). The demotion docket and the demotion GATE
+# used to assemble their inputs SEPARATELY and disagreed: the Phase-0 report overrode
+# `windows_full`/`window_starts` from `usage_window_clock(ctx)` and derived `index_names` from
+# the real index, while `run_justify_demotion` passed `usage_history()`'s own values and
+# `index_names = {p.stem for p in facts}` — EVERY fact file, indexed or not. MEASURED harm: the
+# report's `demotion.surfaced` named stems the gate then refused as "not a current demotion
+# candidate", whose only printed remedy was `--force` (labelled administrative repair) — the
+# counter-justify route the cycle record prescribes could not be applied to the facts it named.
+# One builder is the fix; these pins assert the two PROPERTIES that made the paths differ.
+with _Env73() as _e_d2:
+    _ctx_d2 = sc.resolve_store(_e_d2.proj)
+    (_e_d2.store / "indexed-fact.md").write_text(
+        "---\nname: indexed-fact\ndescription: this one has a pointer\n---\nbody\n", encoding="utf-8")
+    (_e_d2.store / "unindexed-fact.md").write_text(
+        "---\nname: unindexed-fact\ndescription: this one has NO pointer\n---\nbody\n", encoding="utf-8")
+    (_e_d2.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [indexed-fact](indexed-fact.md) — this one has a pointer\n",
+        encoding="utf-8")
+    # ⚠ RED-BY-ABSENCE, reported as a FAILURE rather than a traceback out of the suite: on the
+    # pre-fix tree the builder does not exist, so the pins below redden for the reason they are
+    # about. Same idiom as the v0.4.40 sibling-header pins.
+    _d2_fn = getattr(ms, "demotion_inputs", None)
+    _di_d2 = _d2_fn(_ctx_d2) if _d2_fn is not None else {}
+    _d2_names = _di_d2.get("index_names") or set()
+    check("v0.4.42 D2 (PIN): the demotion inputs name the INDEXED set — an unindexed fact file is "
+          "NOT a candidate (the justify path used to pass every stem; only an indexed pointer "
+          "taxes the always-loaded tier, which is the population the triage gates on)",
+          _d2_fn is not None
+          and "indexed-fact" in _d2_names
+          and "unindexed-fact" not in _d2_names)
+    check("v0.4.42 D2 (PIN): the builder supplies the PROBATIVE window vector — the clock's "
+          "count when it has rows, `usage_history()`'s otherwise, and never a third reading. The "
+          "report and the gate disagreed here by 39-vs-23 on a live store",
+          _d2_fn is not None
+          and isinstance((_di_d2.get("hist") or {}).get("windows_full"), int)
+          and isinstance((_di_d2.get("hist") or {}).get("window_starts"), list)
+          and isinstance((_di_d2.get("hist") or {}).get("n_after_seq"), dict))
+
+# --- v0.4.42 D3 (PIN — RED at `3ada6c7` BY ABSENCE: `_pointer_or_stored` does not exist). The
+# cue is a function of `description:` ALONE, but it was re-derived on EVERY write, so any edit to
+# a fact's BODY re-inflated a line a human had tightened below what `_fit_hook` produces.
+# MEASURED: +62 est tok across five facts in one pass, then +31 across two more — all of it on
+# the tier paid every session, with nothing comparing the old cue to the new one.
+_D3_DESC = "a very long description that would derive a cue considerably longer than the stored one"
+_D3_IDX = "# Memory Index\n\n- [d3fact](d3fact.md) — a SHORT cue [project-local]\n"
+_D3_PREV = f'---\nname: d3fact\ndescription: "{_D3_DESC}"\n---\nbody text\n'
+_d3_fn = getattr(_li_ptr, "_pointer_or_stored", None)
+check("v0.4.42 D3 (PIN): a BODY-only write preserves the stored cue — the description did not "
+      "move, so the line it is derived from must not be re-derived",
+      _d3_fn is not None
+      and _d3_fn(_D3_IDX, _D3_PREV, "d3fact", _D3_DESC)
+      == "- [d3fact](d3fact.md) — a SHORT cue [project-local]")
+check("v0.4.42 D3 (PIN, the discriminating arm): a CHANGED description DOES re-derive — the "
+      "keep must not become a way to freeze a cue whose input moved, which is the defect the "
+      "same pass measured on the roadmap (body v0.4.40, pointer v0.4.34)",
+      _d3_fn is not None
+      and "SHORT" not in _d3_fn(_D3_IDX, _D3_PREV, "d3fact", "a DIFFERENT description entirely"))
+check("v0.4.42 D3 (CONTROL): with no stored line the cue is DERIVED — the keep is not a way to "
+      "skip derivation altogether",
+      _d3_fn is not None
+      and _d3_fn("", "", "d3fact", _D3_DESC).startswith("- [d3fact](d3fact.md) — "))
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
@@ -23264,7 +23327,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                             + 1        # v0.4.41 R4 — one sentence, two conditions (PIN)
                             + 1        # v0.4.41 R5 — the token has one home, not two (PIN, structural)
                             + 4        # v0.4.41 R1 — the timestamp fill: 4 PINs (the
-                            + 22)      # v0.4.42 D1 — 3 FP guards (D1a x2, D1b x1) +
+                            + 22       # v0.4.42 D1 — 3 FP guards (D1a x2, D1b x1) +
                                        #          4 accepted-gap boundary guards +
                                        #          1 no-flip census +
                                        #          D1c: 3 unit pins (PIN + 2 controls)
@@ -23272,6 +23335,10 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #          + 6: the D1c review round — 4 masking-arm
                                        #              pins + 1 control + the disclosure
                                        #              reaching the operator surface.
+                            + 5)       # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
+                                        #     the INDEXED set, and the probative window vector)
+                                        #     + 3 D3 pins (body-only keeps the cue, a changed
+                                        #     description re-derives, and no stored line derives).
                                                         #      "admit table" is a PIN too — its (e)
                                                         #      conjunct asserts the REFUSAL, measured
                                                         #      PRE ✗ / POST ✓)

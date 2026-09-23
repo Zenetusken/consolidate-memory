@@ -65,6 +65,45 @@ def _fit_hook(prefix: str, desc: str, suffix: str, budget: int) -> str:
     return chunk + "…"
 
 
+def _stored_pointer(idx_text: str, stem: str) -> "str | None":
+    """The pointer LINE `MEMORY.md` currently holds for `stem`, or None.
+
+    Requires the pointer SHAPE (`- [title](stem.md)…`), not merely a link target equal to the
+    stem: a line that connects the stem but is not a pointer for it is a hand-edit, and the
+    index's other readers already have to reason about those.
+    """
+    from memory_status import _LINK_RE
+    for ln in idx_text.splitlines():
+        m = _LINK_RE.search(ln)
+        if m and m.group(1) == stem and ln.lstrip().startswith("- ["):
+            return ln
+    return None
+
+
+def _pointer_or_stored(idx_text: str, prev_text: str, stem: str, desc: str) -> str:
+    """v0.4.42 (D3): re-derive the cue only when its ONE input changed.
+
+    `_pointer` derives the line from `description:` alone, so the line is a FUNCTION of that
+    field — and a write that leaves the field untouched should leave the line untouched. It did
+    not, and the MEASURED harm was silent: a line a human had tightened below what `_fit_hook`
+    produces was re-inflated by ANY edit to the body — **+62 est tok across five facts** in one
+    pass, then **+31 across two more**, all of it landing on the tier paid every session, with
+    nothing comparing the old cue to the new one.
+
+    ⚠ The comparison is on the DESCRIPTION, never on the lines. Comparing lines cannot tell
+    *"the description changed"* from *"someone tightened the cue"*, and the caller MUST re-derive
+    in the first case — a line whose description moved is exactly the frozen-cue repair this
+    pair of changes exists for (D1c makes the write possible at all; this keeps it honest).
+    """
+    from memory_status import _frontmatter
+    prev_desc = str(_frontmatter(prev_text).get("description") or "").strip().strip('"')
+    if prev_desc == desc.strip():
+        stored = _stored_pointer(idx_text, stem)
+        if stored is not None:
+            return stored
+    return _pointer(stem, desc, "project-local")
+
+
 def _pointer(stem: str, description: str, scope: str = "") -> str:
     """Always-loaded index line for a project-authored local fact.
 
@@ -352,7 +391,12 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
     elif create_only:
         pass
     fm = prepared["fm"]
-    ptr = _pointer(stem, str(fm.get("description") or stem), "project-local")
+    # v0.4.42 (D3): the cue is a function of `description:` alone, so re-derive it only when
+    # that field moved — otherwise a body-only edit re-inflates a hand-tightened line.
+    _desc = str(fm.get("description") or stem)
+    _prev_text = cur if dest_snap.exists else ""
+    _prev_idx = (idx_snap.data or b"").decode("utf-8", errors="replace") if idx_snap.exists else ""
+    ptr = _pointer_or_stored(_prev_idx, _prev_text, stem, _desc)
     _warn_fat_hook(ptr, stem, source_path=str(dest))
     expected = {}
     expected.update(_expected_from_snap(dest_snap))
