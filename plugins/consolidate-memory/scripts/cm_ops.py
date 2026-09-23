@@ -1882,6 +1882,32 @@ def cmd_data(args: argparse.Namespace) -> int:
     if args.data_cmd == "retention":
         print(json.dumps(retention_show(), indent=2))
         return 0
+    if args.data_cmd == "facts-refresh":
+        # v0.4.44 (item 4, the EXPLICIT half): unlink the facts-manifest so the next load rebuilds
+        # it. The automatic half binds each cached `secret` verdict to the PREDICATE that produced
+        # it, so a firewall change already invalidates on its own; this is the operator's lever for
+        # everything that identity cannot see — a hand-edited store, a restored manifest, a store
+        # whose facts moved underneath it. Rebuild is lazy and double-checked under the global
+        # lock, so unlinking is the supported invalidation (the same thing the transact choke
+        # point does), NOT a second recompute path. ⚠ Reuses `facts_manifest`, never re-implements
+        # the unlink — a second invalidator is the divergence class this module keeps closing.
+        from facts_manifest import invalidate_all, manifest_path
+        if getattr(args, "all", False):
+            n = invalidate_all(ctx.plugin_data_dir)
+            print(f"facts-manifest: invalidated {n} domain manifest(s); "
+                  f"each rebuilds lazily on next read")
+        else:
+            mp = manifest_path(ctx.plugin_data_dir, ctx.domain_id)
+            existed = mp.exists()
+            try:
+                mp.unlink(missing_ok=True)
+            except OSError as e:
+                print(f"facts-manifest: could not unlink {mp}: {e}", file=sys.stderr)
+                return 1
+            print(f"facts-manifest: {ctx.domain_id} "
+                  f"{'invalidated' if existed else 'was already absent'} ({mp}); "
+                  f"rebuilds lazily on next read")
+        return 0
     if args.data_cmd == "compact":
         from retention import (cycle_log_write_path, fleet_ledger_write_path,
                                mutation_log_write_path)
@@ -2971,8 +2997,10 @@ def build_parser() -> argparse.ArgumentParser:
     da = sub.add_parser("data")
     da.add_argument("data_cmd", choices=["inventory", "compact", "export", "import",
                                          "purge", "purge-status", "purge-resume",
-                                         "purge-cancel", "retention"])
+                                         "purge-cancel", "retention", "facts-refresh"])
     da.add_argument("show", nargs="?", help="optional 'show' after retention (cm data retention show)")
+    da.add_argument("--all", action="store_true",
+                    help="facts-refresh: invalidate EVERY domain's manifest, not just this one")
     da.add_argument("--project", default=".")
     da.add_argument("--json", action="store_true")
     da.add_argument("--plan", action="store_true", help="explicit dry-run for compact (default is already a plan)")

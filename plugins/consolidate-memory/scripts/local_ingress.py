@@ -482,6 +482,8 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
     _prev_text = cur if dest_snap.exists else ""
     _prev_idx = (idx_snap.data or b"").decode("utf-8", errors="replace") if idx_snap.exists else ""
     ptr = _pointer_or_stored(_prev_idx, _prev_text, stem, _desc)
+    # v0.4.44 (item 3): an archived placement is not re-added as a side effect of a body edit.
+    _archived_placement = _placement_decline(ctx, stem, _prev_idx)
     _warn_fat_hook(ptr, stem, source_path=str(dest))
     expected = {}
     expected.update(_expected_from_snap(dest_snap))
@@ -489,25 +491,30 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
 
     def mutate(conn, temps):
         del conn
-        if idx_snap.exists:
-            idx = (idx_snap.data or b"").decode("utf-8", errors="replace")
-        else:
-            idx = "# Memory Index\n\n"
-        future = apply_pointer(idx, ptr, stem)
-        adm = project_index(future)
-        if not adm["admitted"]:
-            raise WriteRefused("index admission refused: " + adm["reason"])
-        temps[str(dest)] = text
-        temps[str(idxp)] = future if future.endswith("\n") else future + "\n"
         modes = {}
         extra = {}
+        temps[str(dest)] = text
         if not dest_snap.exists:
             modes[str(dest)] = "create"
             extra[str(dest)] = ABSENT
-        if not idx_snap.exists:
-            modes[str(idxp)] = "create"
-            extra[str(idxp)] = ABSENT
-        return {"stem": stem, "dest_modes": modes, "expected_revisions": extra}
+        # v0.4.44 (item 3): MEMORY.md is left UNTOUCHED for an archived placement — no pointer,
+        # no admission check (the index is not changing). The BODY still updates, so the operator
+        # can edit an archived fact; only the eviction is protected.
+        if not _archived_placement:
+            if idx_snap.exists:
+                idx = (idx_snap.data or b"").decode("utf-8", errors="replace")
+            else:
+                idx = "# Memory Index\n\n"
+            future = apply_pointer(idx, ptr, stem)
+            adm = project_index(future)
+            if not adm["admitted"]:
+                raise WriteRefused("index admission refused: " + adm["reason"])
+            temps[str(idxp)] = future if future.endswith("\n") else future + "\n"
+            if not idx_snap.exists:
+                modes[str(idxp)] = "create"
+                extra[str(idxp)] = ABSENT
+        return {"stem": stem, "dest_modes": modes, "expected_revisions": extra,
+                "archived_placement": _archived_placement}
 
     try:
         out = transact(ctx, "local-upsert", {"stem": stem}, mutate,
@@ -515,6 +522,92 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
         return {"ok": True, **(out.get("result") or {}), "op_id": out.get("op_id")}
     except WriteRefused as e:
         return {"ok": False, "error": str(e)}
+
+
+def _archive_doc_paths(native: Path) -> list:
+    """The store-root docs that CLASSIFY as archive indexes — the ONE selection rule.
+
+    Skips `MEMORY.md` and anything under `/quarantine/`, exactly as the rebuild's scan does; a
+    selection rule with two spellings is what makes two callers disagree about what "placed"
+    means.
+    """
+    from memory_status import _is_archive_index_text
+    try:
+        files = sorted(native.glob("*.md"))
+    except OSError:
+        return []
+    out: list = []
+    for f in files:
+        if f.name == "MEMORY.md" or "/quarantine/" in str(f):
+            continue
+        try:
+            if not f.is_file():
+                continue
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _is_archive_index_text(text):
+            out.append(f)
+    return out
+
+
+def _placements_from(paths) -> dict:
+    """stem -> the archive doc NAMES placing it, over `paths` — the ONE extraction.
+
+    Each caller supplies the doc paths (and, in the rebuild's case, reads them from its PINNED
+    snapshots); this owns the `archive_index(...)["targets"]` walk so the rule has one spelling.
+    Evidence-carrying by construction: the value names the doc that claimed the placement, which
+    is what makes an assertion checkable rather than vouched for.
+    """
+    from index_admission import archive_index
+    out: dict = {}
+    for ap in paths:
+        try:
+            text = (ap.read_text(encoding="utf-8", errors="replace")
+                    if isinstance(ap, Path) else str(ap[1]))
+        except OSError:
+            continue
+        for stem in (archive_index(text).get("targets") or set()):
+            out.setdefault(stem, []).append(Path(str(ap)).name)
+    return out
+
+
+def _placement_decline(ctx: StoreContext, stem: str, idx_text: str) -> list:
+    """v0.4.44 (item 3): the archive docs placing `stem`, when `MEMORY.md` does not index it.
+
+    Returns the doc NAMES (evidence, not a bare verdict) or `[]` — a NON-EMPTY return means the
+    caller must NOT re-add the pointer.
+
+    ⚠ The harm this exists for: `local_upsert` read only the fact file and `MEMORY.md`, so after
+    `cm local archive STEM` moved STEM's pointer into an archive doc, any later body-only upsert
+    found no `](stem.md)` line, took `apply_pointer`'s APPEND branch, and silently re-added the
+    pointer — undoing the eviction as a side effect of editing a body. `_rebuild_plan` has had a
+    rule for exactly this harm (and a pin) since v0.4.32; the upsert path never got it.
+
+    ⚠ The reader is `index_admission.archive_index` — the SAME one `_rebuild_plan` uses, reached
+    through the same `_is_archive_index_text` classifier. A second archive reader would be the
+    divergence class this repo keeps closing, and the two sites must agree about what "placed"
+    means or the docket and the writer disagree again.
+
+    ⚠ Both negatives are load-bearing: a stem that IS currently indexed is an ordinary update
+    (the caller keeps its pointer), and a stem no archive names was never archived — the check
+    must not fire on either.
+    """
+    from memory_status import _LINK_RE
+    # ⚠ "Currently indexed" must mean exactly what `_rebuild_plan` means by it: the rebuild's
+    # `existing_ptrs` is `set(_LINK_RE.findall(idx_text))` — ANY `](stem.md)` occurrence — not
+    # the pointer-SHAPE test `_stored_pointer` performs. Those are different sets, and using the
+    # stricter one here would let this decline fire where the rebuild would not, which is the
+    # divergence class this check was written to avoid. Same reader, same operand, same test.
+    if stem in set(_LINK_RE.findall(idx_text)):
+        return []                                   # currently indexed → this is an update
+    # ⚠ The SCAN is shared with `_rebuild_plan`, not re-implemented. A first cut re-globbed the
+    # store, re-classified and re-extracted here — and the two copies DISAGREED: the rebuild skips
+    # `/quarantine/` and reads its pinned snapshots, this one did neither, so the upsert's notion
+    # of "placed" could differ from the docket's on exactly the stores the rebuild's guards were
+    # written for. That is the divergence class the check was added to close, reintroduced by the
+    # check. One selection, one extraction, two callers.
+    return _placements_from(_archive_doc_paths(ctx.native_memory_dir)).get(stem, [])
 
 
 def local_forget(ctx: StoreContext, stem: str) -> dict:

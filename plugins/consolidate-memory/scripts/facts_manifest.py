@@ -70,6 +70,31 @@ def invalidate_all(plugin_data_dir: Path) -> int:
     return n
 
 
+def secret_pred() -> str:
+    """A short identity for the FIREWALL PREDICATE that produced each row's `secret` verdict.
+
+    v0.4.44 (item 4). The manifest serves a cached `secret` per canonical row, and its documented
+    invalidation rides the transact choke point — which unlinks the manifest when a fact file is
+    published or deleted. A change to the fireWALL changes no FILE, so nothing unlinked anything
+    and every cached verdict survived the repair. The rows that matters for are exactly the ones
+    whose bytes never change, i.e. precisely the ones a repair does not touch.
+
+    ⚠ DERIVED, never hand-maintained. The identity is a hash over the predicate's own source
+    (`_SECRET`'s pattern text plus `_entropy_blob`'s qualified name and code), so editing the
+    firewall moves it with no second thing to remember. A literal version constant would be a
+    second thing — and forgetting to bump it is the whole defect, restated.
+    """
+    from memory_status import _SECRET, _entropy_blob
+    import hashlib
+    import inspect
+    try:
+        src = inspect.getsource(_entropy_blob)
+    except (OSError, TypeError):
+        src = _entropy_blob.__name__
+    payload = (_SECRET.pattern + "\x00" + src).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
 def build(facts_dir: Path) -> "tuple[list, str]":
     """Enumerate + classify the facts dir once. Returns (rows, domain).
 
@@ -81,6 +106,7 @@ def build(facts_dir: Path) -> "tuple[list, str]":
     from memory_status import _frontmatter, _looks_secret
     from mirror_conflict import semantic_hash
     from sync_global import _body_hash, _is_reserved_stem, _safe_stem
+    _PRED = secret_pred()
     rows: list = []
     domain = Path(facts_dir).parent.name
     if not Path(facts_dir).is_dir():
@@ -124,6 +150,7 @@ def build(facts_dir: Path) -> "tuple[list, str]":
             "sem": semantic_hash(text),
             "class": cls.get("class") or "",
             "secret": bool(_looks_secret(text)),
+            "secret_pred": _PRED,
             "fm": fm,
         })
     rows.sort(key=lambda r: r["stem"])
@@ -151,6 +178,7 @@ def load(facts_dir: Path, plugin_data_dir: Path):
     files = doc.get("files")
     if not isinstance(files, list):
         return None, "files-shape"
+    _now = secret_pred()
     rows: dict = {}
     for r in files:
         if not isinstance(r, dict):
@@ -159,6 +187,13 @@ def load(facts_dir: Path, plugin_data_dir: Path):
         fm = r.get("fm")
         if not stem or not isinstance(fm, dict):
             return None, "row-fields"
+        # ⚠ The verdict's PRODUCER must still be the one that produced it. A row from before a
+        # firewall change carries a foreign `secret_pred`; serving it would keep a wrongly-flagged
+        # canonical flagged (and withheld or GC'd) long after the predicate was repaired. Failing
+        # open rebuilds — the module's stated posture ("can slow you down but never serves wrong
+        # facts"), applied to the predicate half of "wrong" that the file keys could not see.
+        if str(r.get("secret_pred") or "") != _now:
+            return None, "predicate-changed"
         rows[stem] = r
     return rows, ""
 

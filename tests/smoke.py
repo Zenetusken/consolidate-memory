@@ -23387,6 +23387,168 @@ check("v0.4.42 D3 (PIN — the arm the previous cut got BACKWARDS): a WORD-BOUND
                  _D3Q, "d3fact", _D3Q_DESC)
       == "- [d3fact](d3fact.md) — a very long description that would [project-local]")
 
+# --- v0.4.44 item 3 (PIN — RED at `783cbde`, where the upsert re-added the pointer and undid the
+# eviction). `local_upsert` read only the fact file and MEMORY.md and never consulted an archive
+# doc, so a body-only write of an ARCHIVED fact took `apply_pointer`'s append branch. The rule and
+# its rationale have existed in `_rebuild_plan` since v0.4.32; the upsert path never got them.
+# ⚠ The two controls are load-bearing: a stem that IS indexed is an ordinary update, and a stem no
+# archive names was never archived — a decline that fires on either is a different bug.
+with _Env73() as _e_a44:
+    _ctx_a44 = sc.resolve_store(_e_a44.proj)
+    import local_ingress as _li_a44
+    _FACT_V1 = '---\nname: shipped-fact\ndescription: "a fact that ships"\n---\nbody v1\n'
+    _FACT_V2 = '---\nname: shipped-fact\ndescription: "a fact that ships"\n---\nbody v2\n'
+    _li_a44.local_upsert(_ctx_a44, "shipped-fact", _FACT_V1)
+    _li_a44.local_archive(_ctx_a44, "shipped-fact")
+    _idx_pre = (_e_a44.store / "MEMORY.md").read_text(encoding="utf-8")
+    _out_a44 = _li_a44.local_upsert(_ctx_a44, "shipped-fact", _FACT_V2)
+    _idx_post = (_e_a44.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("v0.4.44 item 3 (PIN): a body-only upsert of an ARCHIVED fact does NOT re-add its "
+          "pointer — the eviction survives the edit, and the disposition is NAMED rather than "
+          "declined in silence",
+          "](shipped-fact.md)" not in _idx_pre
+          and _idx_post == _idx_pre
+          and _out_a44.get("archived_placement") == ["SHIPPED.md"]
+          and "body v2" in (_e_a44.store / "shipped-fact.md").read_text(encoding="utf-8"))
+    # the CONTROL: the same upsert of a fact NO archive places still gets its pointer
+    _li_a44.local_upsert(_ctx_a44, "live-fact", _FACT_V1.replace("shipped-fact", "live-fact"))
+    _live = (_e_a44.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("v0.4.44 item 3 (CONTROL): an unarchived fact's pointer IS still written — the decline "
+          "is not a general refusal to index",
+          "](live-fact.md)" in _live)
+    # the CONTROL: updating an ALREADY-INDEXED fact keeps its pointer (ordinary update path)
+    _out_live = _li_a44.local_upsert(
+        _ctx_a44, "live-fact", _FACT_V2.replace("shipped-fact", "live-fact"))
+    check("v0.4.44 item 3 (CONTROL): a fact that IS currently indexed is an ordinary update — the "
+          "placement check must not fire on it and report an empty decline",
+          "](live-fact.md)" in (_e_a44.store / "MEMORY.md").read_text(encoding="utf-8")
+          and _out_live.get("archived_placement") == [])
+
+# --- v0.4.44 item 5 (PIN — RED at `783cbde`, where both forms RAISED out of the report path).
+# `_measure` guarded with `exists()`, which a DIRECTORY and a mode-000 file both satisfy, so
+# `read_text` raised and the exception propagated out of `build_context`. The inline block this
+# replaced carried both guards; routing through `_measure` dropped them.
+_os44 = __import__("os")
+import tempfile as _tf44
+_d44 = Path(_tf44.mkdtemp())
+(_d44 / "MEMORY.md").mkdir()
+_f44 = _d44 / "perm.md"
+_f44.write_text("x\n", encoding="utf-8")
+_os44.chmod(_f44, 0)
+# ⚠ Pre-fix this arm RAISES; the `None` sentinel keeps the failure a RED CHECK rather than a
+# traceback out of the suite, and the annotation keeps mypy honest about the union.
+_dir_res: "tuple[int, int, int] | None" = None
+_perm_res: "tuple[int, int, int] | None" = None
+try:
+    _dir_res = ms._measure(_d44 / "MEMORY.md")
+    _perm_res = ms._measure(_f44)
+except OSError:
+    _dir_res = _perm_res = None
+finally:
+    _os44.chmod(_f44, 0o644)
+check("v0.4.44 item 5 (PIN): a DIRECTORY at the index path and a mode-000 file BOTH degrade to "
+      "(0,0,0) rather than raising out of the report path — a store the tool cannot read is a "
+      "degradation to report, never a crash to raise",
+      _dir_res == (0, 0, 0) and _perm_res == (0, 0, 0))
+check("v0.4.44 item 5 (CONTROL): a readable file is still MEASURED — the guard did not swallow "
+      "the ordinary case",
+      ms._measure(_f44) == (1, 2, 1))
+
+# ⚠ RED-BY-ABSENCE, guarded: pre-fix `measure_or_fault` does not exist, and a bare call RAISES
+# out of module scope — killing the suite mid-file so every check AFTER it never runs, which a
+# runner cannot tell from an interrupted run. The first cut of this pin did exactly that and the
+# pre-fix measurement caught it. Same idiom as the v0.4.40 sibling-header pins.
+_mof44 = getattr(ms, "measure_or_fault", None)
+# ⚠ v0.4.44 item 5, the FAULT ARM (PIN — RED at the cut where `_measure` degraded every operand
+# class identically). The degrade is right for the STORE INDEX, whose caller only displays the
+# figure. It is WRONG for a GAUGE operand: `budget.claude_md.over` is `tokens > budget`, so an
+# unreadable CLAUDE.md reading 0 renders as `over=False` and the over-budget warning silently
+# vanishes — a loud fault turned into a clean reading, in the direction this repo's
+# teeth-loss-never-clean rule forbids. Absent and unreadable are different facts.
+# ⚠ The fixture is SELF-CONTAINED: `_f44` was chmod-ed back to readable by the block above, so
+# re-asserting the mode here is what makes this pin independent of the earlier block's order — a
+# pin whose precondition is another block's cleanup is a pin that breaks the day that block moves.
+_e44 = _d44 / "empty.md"
+_e44.write_text("", encoding="utf-8")
+_ok44 = _d44 / "ok2.md"
+_ok44.write_text("a\n", encoding="utf-8")
+_f44.write_text("x\n", encoding="utf-8")
+_os44.chmod(_f44, 0)
+check("v0.4.44 item 5 (PIN): `measure_or_fault` separates the TWO zeros — an operand that exists "
+      "but cannot be measured is a FAULT (a gate input reading 0 there would be a false pass), "
+      "while absent and empty are honest zeros. A mode-000 file and a DIRECTORY both fault",
+      _mof44 is not None
+      and _mof44(_d44 / "nothing-here.md") == ((0, 0, 0), False)
+      and _mof44(_e44) == ((0, 0, 0), False)
+      and _mof44(_f44) == ((0, 0, 0), True)
+      and _mof44(_d44 / "MEMORY.md") == ((0, 0, 0), True)
+      and _mof44(_ok44)[1] is False)
+_os44.chmod(_f44, 0o644)
+# ⚠ Same guard as above, and for the same reason: pre-fix `_measure` RAISES on the directory
+# (that is the defect), so a bare call here killed the suite before this check could redden.
+_ctrl44: "tuple[tuple[int, int, int], ...] | None" = None
+try:
+    _ctrl44 = (ms._measure(_d44 / "MEMORY.md"), ms._measure(_ok44),
+               ms._measure(_d44 / "nothing-here.md"))
+except OSError:
+    _ctrl44 = None
+check("v0.4.44 item 5 (CONTROL): `_measure` still returns the VALUE ALONE for its display-only "
+      "callers — the store index degrades to a plain (0,0,0) and never raises. ⚠ Asserted on the "
+      "DIRECTORY, whose state no other block restores, rather than on the chmod-ed file",
+      _ctrl44 == ((0, 0, 0), (1, 2, 1), (0, 0, 0)))
+
+# --- v0.4.44 item 4 (PIN — RED at `783cbde`: no `secret_pred` existed, so a row's cached
+# `secret` verdict survived a firewall change indefinitely). The manifest's documented
+# invalidation rides the transact choke point, which unlinks on a published/deleted PATH — and a
+# predicate change moves no file, so the rows it wrongly flagged (exactly the ones whose bytes
+# never change) kept their verdict forever. The identity is DERIVED from the predicate's own
+# source, so editing the firewall moves it with nothing to remember.
+_fm44 = __import__("facts_manifest")
+# ⚠ RED-BY-ABSENCE, guarded — the THIRD occurrence of this trap in one block, and the pre-fix
+# measurement caught all three. Pre-fix `secret_pred` does not exist; a bare call raises at MODULE
+# scope and kills every check after it, which a runner cannot tell from an interrupted run.
+_sp44 = getattr(_fm44, "secret_pred", None)
+_p44 = _sp44() if _sp44 is not None else ""
+_d44m = Path(_tf44.mkdtemp())
+_facts44 = _d44m / "domains" / "personal" / "facts"
+_facts44.mkdir(parents=True)
+_pdir44 = _d44m / "data"
+_pdir44.mkdir()
+_mp44 = _fm44.manifest_path(_pdir44, "personal")
+_mp44.parent.mkdir(parents=True, exist_ok=True)
+_row44: dict = {"stem": "x", "mtime_ns": 1, "size": 1, "ctime_ns": 1, "body_hash": "h", "sem": "s",
+          "class": "", "secret": True, "secret_pred": _p44, "fm": {}}
+_mp44.write_text(__import__("json").dumps({"schema_version": _fm44.SCHEMA_VERSION, "domain": "personal",
+                             "files": [_row44]}), encoding="utf-8")
+_served44, _why44 = _fm44.load(_facts44, _pdir44)
+_row44["secret_pred"] = "deadbeefdeadbeef"
+_mp44.write_text(__import__("json").dumps({"schema_version": _fm44.SCHEMA_VERSION, "domain": "personal",
+                             "files": [_row44]}), encoding="utf-8")
+_stale44, _why249 = _fm44.load(_facts44, _pdir44)
+check("v0.4.44 item 4 (PIN): a cached `secret` verdict is bound to the PREDICATE that produced "
+      "it — a row carrying a foreign `secret_pred` FAILS OPEN to a rebuild instead of serving a "
+      "verdict the current firewall would not reach",
+      _sp44 is not None and _served44 is not None and _why44 == ""
+      and _stale44 is None and _why249 == "predicate-changed")
+check("v0.4.44 item 4 (CONTROL): the identity is DERIVED and stable — two calls agree, so it "
+      "moves only when the predicate's own source does, never on a timer or a re-run",
+      _sp44 is not None and _p44 == _sp44() and len(_p44) == 16)
+
+# --- v0.4.44 item 4, the EXPLICIT half (PIN — RED at the cut where no such command existed).
+# The automatic half binds each cached verdict to the predicate that produced it; this is the
+# operator's lever for what that identity cannot see — a restored manifest, a hand-edited store.
+# ⚠ It must REUSE the module's own unlink, never re-implement invalidation.
+_pdir44b = Path(_tf44.mkdtemp())
+for _dname in ("personal", "work"):
+    _fm44.manifest_path(_pdir44b, _dname).write_text("{}", encoding="utf-8")
+_n44 = _fm44.invalidate_all(_pdir44b)
+check("v0.4.44 item 4 (PIN): `cm data facts-refresh` invalidates the manifest so the next load "
+      "rebuilds — the explicit lever beside the automatic predicate binding",
+      _n44 == 2 and not list(_pdir44b.glob("facts-manifest-*.json")))
+check("v0.4.44 item 4 (CONTROL): invalidating an ALREADY-EMPTY set is a no-op, not an error — the "
+      "refresh is idempotent so an operator can run it twice",
+      _fm44.invalidate_all(_pdir44b) == 0)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
@@ -23412,7 +23574,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #          + 6: the D1c review round — 4 masking-arm
                                        #              pins + 1 control + the disclosure
                                        #              reaching the operator surface.
-                            + 11)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
+                            + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
                                         #     re-derivation, the QUOTED-description arm, two

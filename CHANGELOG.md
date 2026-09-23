@@ -5,6 +5,63 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.44] — 2026-09-23
+
+**Patch — the three open items from the 0.4.42/0.4.43 arc: an archived fact's eviction survives a
+body edit, a cached firewall verdict can no longer outlive the predicate that made it, and an
+unreadable store degrades instead of crashing the report.**
+
+1. **A body-only upsert no longer re-adds an archived fact's pointer.** `local_upsert` read only
+   the fact file and `MEMORY.md`, never an archive doc — so after `cm local archive STEM` moved
+   STEM's pointer out of the always-loaded index, a later bodied edit found no `](stem.md)` line,
+   took `apply_pointer`'s append branch, and silently undid the eviction. `_rebuild_plan` has had a
+   rule for exactly this harm (and a pin) since v0.4.32; the upsert path never got it. The check
+   reuses the SAME reader (`index_admission.archive_index`, through the same
+   `_is_archive_index_text` classifier) — a second archive reader is the divergence class this repo
+   keeps closing. The body still updates and the disposition is **named**, in an additive
+   `archived_placement` key: an archive is undone deliberately, never as a side effect of an edit.
+
+2. **A cached `secret` verdict is bound to the PREDICATE that produced it.** The manifest's
+   documented invalidation rides the transact choke point, which unlinks on a published or deleted
+   PATH — and a firewall change moves no file, so every cached verdict survived the repair, on
+   exactly the rows a repair never touches (the ones whose bytes do not change). Each row now
+   carries `secret_pred`, a hash **derived from the predicate's own source**, and `load` fails open
+   to a rebuild when it does not match. Derived, never a hand-kept version constant: forgetting to
+   bump such a constant IS the defect, restated.
+
+3. **A store the tool cannot read degrades instead of raising — and a GATE input that cannot be
+   read is NAMED rather than absorbed.** `_measure` guarded with `exists()`, which a DIRECTORY and
+   a mode-000 file both satisfy, so `read_text` raised `IsADirectoryError` / `PermissionError` out
+   of the report path. The inline block this replaced carried both guards; routing through
+   `_measure` dropped them. ⚠ Degrading alone was NOT sufficient and would have traded a loud
+   crash for a silent false pass: `budget.claude_md.over` is `tokens > budget`, so an unreadable
+   `CLAUDE.md` reading 0 renders as `over=False` and the over-budget warning VANISHES.
+   `measure_or_fault` therefore returns the value **and** whether the operand existed but could
+   not be measured, the three gauge operands use it, and a fault is named on stderr — while
+   `_measure` keeps its value-only form for callers that merely display the figure (the store
+   index, which is what the crash was reported against). Absent and unreadable are different
+   facts and no longer share one number.
+ `_measure` guarded with
+   `exists()`, which a DIRECTORY and a mode-000 file both satisfy, so `read_text` raised
+   `IsADirectoryError` / `PermissionError` out of the report path. The inline block this replaced
+   carried both guards; routing through `_measure` dropped them. Refusing an OPERAND is a
+   different posture (v0.4.41 R2 does that at the positional pool) and is left alone.
+
+`tests/smoke.py` gains **9 checks tagged v0.4.44** — three pins with four controls — each RED on
+`783cbde`.
+
+**The explicit half of item 2** is `cm data facts-refresh` — it unlinks the manifest (or
+`--all` for every domain) so the next load rebuilds, reusing `facts_manifest.invalidate_all` rather
+than growing a second invalidator. The automatic half already covers a predicate change; this is
+the lever for what that identity cannot see — a hand-edited store, a restored manifest.
+
+**MEASURED, both trees.** Shipping: **2247 passed, 0 failed**. `783cbde` plus this patch's pins:
+**2232 passed, 13 failed** — 7 v0.4.44 reds and the 6 preflight-beacon artifacts that redden in
+every bare worktree measured this session. Running that measurement found **three defects in the
+pins themselves**, each crashing the suite pre-fix from module scope by calling a symbol that does
+not exist there; all three are guarded, and it is the third occurrence of that trap on this arc —
+the first one a measurement rather than a review caught.
+
 ## [0.4.43] — 2026-09-23
 
 **Patch — the review round that followed 0.4.42 found six defects in it, three of them regressions
