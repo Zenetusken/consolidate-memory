@@ -209,6 +209,27 @@ cue's repair — while §2.3 is what makes the write *possible at all* while the
 needs the same rule. `sync_global._pointer_line` (`sync_global.py:1362`) is a **different
 constructor** for global mirrors — not in scope; do not conflate.
 
+> **Revision note — the first implementation of this rule CEMENTED the defect it was written
+> against, caught before merge.** As first stated (*"re-derive only when `description:` changed;
+> otherwise preserve the stored line"*) the rule had **one** condition. But a cue goes stale
+> *precisely* by its description changing **while the write path refuses the fact** — §2.3's own
+> scenario — and at the next write `prev_desc` and `new_desc` are both the *current* description,
+> so a keep keyed on that alone preserves the stale line **forever**. REPRODUCED on the roadmap's
+> own case before fixing it: body `v0.4.40`, pointer `v0.4.34`, and the naive rule returns
+> `v0.4.34`. One silent defect's repair becomes another silent defect's cause.
+>
+> **The fix is a SECOND condition, and both are load-bearing.** The keep now fires only when the
+> stored line is **truncation-consistent** with the current description — its hook must be a
+> prefix of the normalised description, compared case-folded, because `_pointer` derives the hook
+> as a word-boundary prefix and the stores carry both cases (`a gate proves…` stored against
+> `A gate proves…` derived). A tightened-but-current line passes, because it *is* such a prefix;
+> a stale one does not, so **stale cues heal on their next write**.
+>
+> Credit, and a rule from this store: the trap was caught by the independent design review, and
+> then **re-derived and reproduced here BEFORE being applied** — a reviewer's proposed
+> replacement is itself an unaudited claim (`a-reviewers-correction-is-an-unaudited-claim`). The
+> discriminating arm is pinned, so the trap cannot be re-entered silently.
+
 ---
 
 ## §3 Verification — the pin list
