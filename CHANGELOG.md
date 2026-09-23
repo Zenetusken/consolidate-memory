@@ -50,11 +50,17 @@ unreadable store degrades instead of crashing the report.**
 `tests/smoke.py` gains **9 checks tagged v0.4.44** — three pins with four controls — each RED on
 `783cbde`.
 
-⚠ **Two things this patch does NOT include, stated rather than implied.** (a) The explicit refresh
-half of item 2 is not implemented: the cache can still be bypassed with `CM_FACTS_MANIFEST=0`, but
-that is an environment hatch nothing documents and no command exposes. (b) The pins above were
-written and measured green on the shipping tree; the pre-fix RED measurement has not yet been run
-for this set.
+**The explicit half of item 2** is `cm data facts-refresh` — it unlinks the manifest (or
+`--all` for every domain) so the next load rebuilds, reusing `facts_manifest.invalidate_all` rather
+than growing a second invalidator. The automatic half already covers a predicate change; this is
+the lever for what that identity cannot see — a hand-edited store, a restored manifest.
+
+**MEASURED, both trees.** Shipping: **2247 passed, 0 failed**. `783cbde` plus this patch's pins:
+**2232 passed, 13 failed** — 7 v0.4.44 reds and the 6 preflight-beacon artifacts that redden in
+every bare worktree measured this session. Running that measurement found **three defects in the
+pins themselves**, each crashing the suite pre-fix from module scope by calling a symbol that does
+not exist there; all three are guarded, and it is the third occurrence of that trap on this arc —
+the first one a measurement rather than a review caught.
 
 ## [0.4.43] — 2026-09-23
 

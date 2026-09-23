@@ -23533,6 +23533,21 @@ check("v0.4.44 item 4 (CONTROL): the identity is DERIVED and stable — two call
       "moves only when the predicate's own source does, never on a timer or a re-run",
       _sp44 is not None and _p44 == _sp44() and len(_p44) == 16)
 
+# --- v0.4.44 item 4, the EXPLICIT half (PIN — RED at the cut where no such command existed).
+# The automatic half binds each cached verdict to the predicate that produced it; this is the
+# operator's lever for what that identity cannot see — a restored manifest, a hand-edited store.
+# ⚠ It must REUSE the module's own unlink, never re-implement invalidation.
+_pdir44b = Path(_tf44.mkdtemp())
+for _dname in ("personal", "work"):
+    _fm44.manifest_path(_pdir44b, _dname).write_text("{}", encoding="utf-8")
+_n44 = _fm44.invalidate_all(_pdir44b)
+check("v0.4.44 item 4 (PIN): `cm data facts-refresh` invalidates the manifest so the next load "
+      "rebuilds — the explicit lever beside the automatic predicate binding",
+      _n44 == 2 and not list(_pdir44b.glob("facts-manifest-*.json")))
+check("v0.4.44 item 4 (CONTROL): invalidating an ALREADY-EMPTY set is a no-op, not an error — the "
+      "refresh is idempotent so an operator can run it twice",
+      _fm44.invalidate_all(_pdir44b) == 0)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
@@ -23558,7 +23573,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #          + 6: the D1c review round — 4 masking-arm
                                        #              pins + 1 control + the disclosure
                                        #              reaching the operator surface.
-                            + 20)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
+                            + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
                                         #     re-derivation, the QUOTED-description arm, two
