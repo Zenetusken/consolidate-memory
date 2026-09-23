@@ -482,6 +482,8 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
     _prev_text = cur if dest_snap.exists else ""
     _prev_idx = (idx_snap.data or b"").decode("utf-8", errors="replace") if idx_snap.exists else ""
     ptr = _pointer_or_stored(_prev_idx, _prev_text, stem, _desc)
+    # v0.4.44 (item 3): an archived placement is not re-added as a side effect of a body edit.
+    _archived_placement = _placement_decline(ctx, stem, _prev_idx)
     _warn_fat_hook(ptr, stem, source_path=str(dest))
     expected = {}
     expected.update(_expected_from_snap(dest_snap))
@@ -489,25 +491,30 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
 
     def mutate(conn, temps):
         del conn
-        if idx_snap.exists:
-            idx = (idx_snap.data or b"").decode("utf-8", errors="replace")
-        else:
-            idx = "# Memory Index\n\n"
-        future = apply_pointer(idx, ptr, stem)
-        adm = project_index(future)
-        if not adm["admitted"]:
-            raise WriteRefused("index admission refused: " + adm["reason"])
-        temps[str(dest)] = text
-        temps[str(idxp)] = future if future.endswith("\n") else future + "\n"
         modes = {}
         extra = {}
+        temps[str(dest)] = text
         if not dest_snap.exists:
             modes[str(dest)] = "create"
             extra[str(dest)] = ABSENT
-        if not idx_snap.exists:
-            modes[str(idxp)] = "create"
-            extra[str(idxp)] = ABSENT
-        return {"stem": stem, "dest_modes": modes, "expected_revisions": extra}
+        # v0.4.44 (item 3): MEMORY.md is left UNTOUCHED for an archived placement — no pointer,
+        # no admission check (the index is not changing). The BODY still updates, so the operator
+        # can edit an archived fact; only the eviction is protected.
+        if not _archived_placement:
+            if idx_snap.exists:
+                idx = (idx_snap.data or b"").decode("utf-8", errors="replace")
+            else:
+                idx = "# Memory Index\n\n"
+            future = apply_pointer(idx, ptr, stem)
+            adm = project_index(future)
+            if not adm["admitted"]:
+                raise WriteRefused("index admission refused: " + adm["reason"])
+            temps[str(idxp)] = future if future.endswith("\n") else future + "\n"
+            if not idx_snap.exists:
+                modes[str(idxp)] = "create"
+                extra[str(idxp)] = ABSENT
+        return {"stem": stem, "dest_modes": modes, "expected_revisions": extra,
+                "archived_placement": _archived_placement}
 
     try:
         out = transact(ctx, "local-upsert", {"stem": stem}, mutate,
@@ -515,6 +522,53 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
         return {"ok": True, **(out.get("result") or {}), "op_id": out.get("op_id")}
     except WriteRefused as e:
         return {"ok": False, "error": str(e)}
+
+
+def _placement_decline(ctx: StoreContext, stem: str, idx_text: str) -> list:
+    """v0.4.44 (item 3): the archive docs placing `stem`, when `MEMORY.md` does not index it.
+
+    Returns the doc NAMES (evidence, not a bare verdict) or `[]` — a NON-EMPTY return means the
+    caller must NOT re-add the pointer.
+
+    ⚠ The harm this exists for: `local_upsert` read only the fact file and `MEMORY.md`, so after
+    `cm local archive STEM` moved STEM's pointer into an archive doc, any later body-only upsert
+    found no `](stem.md)` line, took `apply_pointer`'s APPEND branch, and silently re-added the
+    pointer — undoing the eviction as a side effect of editing a body. `_rebuild_plan` has had a
+    rule for exactly this harm (and a pin) since v0.4.32; the upsert path never got it.
+
+    ⚠ The reader is `index_admission.archive_index` — the SAME one `_rebuild_plan` uses, reached
+    through the same `_is_archive_index_text` classifier. A second archive reader would be the
+    divergence class this repo keeps closing, and the two sites must agree about what "placed"
+    means or the docket and the writer disagree again.
+
+    ⚠ Both negatives are load-bearing: a stem that IS currently indexed is an ordinary update
+    (the caller keeps its pointer), and a stem no archive names was never archived — the check
+    must not fire on either.
+    """
+    from index_admission import archive_index
+    from memory_status import _is_archive_index_text
+    if _stored_pointer(idx_text, stem) is not None:
+        return []                                   # currently indexed → this is an update
+    native = ctx.native_memory_dir
+    try:
+        docs = sorted(native.glob("*.md"))
+    except OSError:
+        return []                                   # an unlistable store degrades, never raises
+    placing: list = []
+    for doc in docs:
+        if doc.name == "MEMORY.md":
+            continue
+        try:
+            if not doc.is_file():
+                continue
+            body = doc.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if not _is_archive_index_text(body):
+            continue
+        if stem in (archive_index(body).get("targets") or set()):
+            placing.append(doc.name)
+    return placing
 
 
 def local_forget(ctx: StoreContext, stem: str) -> dict:

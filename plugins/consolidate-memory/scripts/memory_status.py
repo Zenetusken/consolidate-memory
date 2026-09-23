@@ -2836,10 +2836,24 @@ def _run(cmd: list[str], cwd: Path) -> str:
 
 
 def _measure(p: Path) -> tuple[int, int, int]:
-    """(lines, bytes, est_tokens) for a file — (0,0,0) if absent."""
-    if not p.exists():
+    """(lines, bytes, est_tokens) for a file — (0,0,0) if absent OR UNREADABLE.
+
+    ⚠ `exists()` is NOT sufficient and both escapes are reachable. A DIRECTORY at the path
+    satisfies `exists()` and `read_text` raises `IsADirectoryError`; a mode-000 file satisfies it
+    and raises `PermissionError`. Either one propagates out of `build_context` (the report path)
+    as an unhandled exception, where the inline block this function replaced degraded to an empty
+    index text — it carried BOTH guards, and they were dropped when the read was routed through
+    here. The docstring above promised "(0,0,0) if absent"; it now promises it for unreadable too,
+    because a store the tool cannot read is a DEGRADATION to report, never a crash to raise —
+    refusing the OPERAND is a different posture (v0.4.41 R2 does that, at the positional pool,
+    for a store handed in as a project dir) and is not what this arm is for.
+    """
+    try:
+        if not p.is_file():
+            return (0, 0, 0)
+        text = p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
         return (0, 0, 0)
-    text = p.read_text(encoding="utf-8", errors="replace")
     return (len(text.splitlines()), len(text.encode()), est_tokens(text))
 
 

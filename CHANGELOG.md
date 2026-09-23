@@ -5,6 +5,45 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.44] — 2026-09-23
+
+**Patch — the three open items from the 0.4.42/0.4.43 arc: an archived fact's eviction survives a
+body edit, a cached firewall verdict can no longer outlive the predicate that made it, and an
+unreadable store degrades instead of crashing the report.**
+
+1. **A body-only upsert no longer re-adds an archived fact's pointer.** `local_upsert` read only
+   the fact file and `MEMORY.md`, never an archive doc — so after `cm local archive STEM` moved
+   STEM's pointer out of the always-loaded index, a later bodied edit found no `](stem.md)` line,
+   took `apply_pointer`'s append branch, and silently undid the eviction. `_rebuild_plan` has had a
+   rule for exactly this harm (and a pin) since v0.4.32; the upsert path never got it. The check
+   reuses the SAME reader (`index_admission.archive_index`, through the same
+   `_is_archive_index_text` classifier) — a second archive reader is the divergence class this repo
+   keeps closing. The body still updates and the disposition is **named**, in an additive
+   `archived_placement` key: an archive is undone deliberately, never as a side effect of an edit.
+
+2. **A cached `secret` verdict is bound to the PREDICATE that produced it.** The manifest's
+   documented invalidation rides the transact choke point, which unlinks on a published or deleted
+   PATH — and a firewall change moves no file, so every cached verdict survived the repair, on
+   exactly the rows a repair never touches (the ones whose bytes do not change). Each row now
+   carries `secret_pred`, a hash **derived from the predicate's own source**, and `load` fails open
+   to a rebuild when it does not match. Derived, never a hand-kept version constant: forgetting to
+   bump such a constant IS the defect, restated.
+
+3. **A store the tool cannot read degrades instead of raising.** `_measure` guarded with
+   `exists()`, which a DIRECTORY and a mode-000 file both satisfy, so `read_text` raised
+   `IsADirectoryError` / `PermissionError` out of the report path. The inline block this replaced
+   carried both guards; routing through `_measure` dropped them. Refusing an OPERAND is a
+   different posture (v0.4.41 R2 does that at the positional pool) and is left alone.
+
+`tests/smoke.py` gains **7 checks tagged v0.4.44** — three pins with four controls — each RED on
+`783cbde`.
+
+⚠ **Two things this patch does NOT include, stated rather than implied.** (a) The explicit refresh
+half of item 2 is not implemented: the cache can still be bypassed with `CM_FACTS_MANIFEST=0`, but
+that is an environment hatch nothing documents and no command exposes. (b) The pins above were
+written and measured green on the shipping tree; the pre-fix RED measurement has not yet been run
+for this set.
+
 ## [0.4.43] — 2026-09-23
 
 **Patch — the review round that followed 0.4.42 found six defects in it, three of them regressions
