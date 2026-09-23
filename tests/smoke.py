@@ -23558,12 +23558,26 @@ _g45 = Path(_tf44.mkdtemp())
 (_g45 / "MEMORY.md").mkdir()
 (_g45 / "some-fact.md").write_text("---\nname: x\ndescription: y\n---\nbody\n", encoding="utf-8")
 _e45 = Path(_tf44.mkdtemp())
+# ⚠ RED-BY-ABSENCE, guarded: pre-fix `store_local_index` RAISES `IsADirectoryError` on this
+# fixture — that raise IS the defect — so a bare call would kill the suite mid-file and every check
+# after it would never run. Fourth occurrence of this trap on the arc; guarded here BEFORE the
+# pre-fix measurement rather than found by it.
+try:
+    _g45_fault = ms.store_local_index(_g45).get("index_fault")
+except OSError:
+    _g45_fault = None
+try:
+    _e45_fault = ms.store_local_index(_e45).get("index_fault")
+except OSError:
+    _e45_fault = None
 check("v0.4.45 (PIN): an index that EXISTS but cannot be measured carries a FAULT — the value "
       "stays (0,0,0) but the record must not read it as 'under budget'",
-      ms.store_local_index(_g45).get("index_fault") is True)
-check("v0.4.45 (CONTROL): an ABSENT index is not a fault — absent and unreadable must not share "
-      "an answer in this direction either",
-      ms.store_local_index(_e45).get("index_fault") is False)
+      _g45_fault is True)
+check("v0.4.45 (GUARD): an ABSENT index is not a fault — absent and unreadable must not share "
+      "an answer in this direction either. Note it is a GUARD, not a control: pre-fix it reddens "
+      "for KEY-ABSENCE (the key did not exist), not for behaviour, and a check that is not green "
+      "on both trees is a guard on the repair's shape",
+      _e45_fault is False)
 
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
