@@ -24922,6 +24922,23 @@ try:
         return _out
 
     _retE59 = _own_returns59(_ensE59)
+    # ⚠ ROUTE 6 — ATTACHING the inner. A lens measured that `ensure.inner = _inner` re-opens the
+    # bypass with NO introspection at all, and that this pin stayed GREEN on that tree. It matters
+    # because it is this repo's OWN idiom: the suite already reaches into this module that way
+    # (`setattr(_fm44, "_READ_CAP", …)`), so "expose the inner for the unit test" is an edit this
+    # codebase actually produces. Asserted structurally: `_inner` occurs EXACTLY ONCE as a Name in
+    # `ensure` (the `_served(...)` argument), is never the target of an attribute store, and is
+    # defined once as a nested def. (The other reachable route — rebuilding the function from
+    # `co_consts` — needs deliberate introspection and is named as a residual in the docstring
+    # rather than pinned: a pin cannot cost-free distinguish it from legitimate reflection.)
+    _inner_loads59 = [n for n in _astE59.walk(_ensE59)
+                      if isinstance(n, _astE59.Name) and n.id == "_inner"]
+    _attr_stores59 = [n for n in _astE59.walk(_ensE59)
+                      if isinstance(n, _astE59.Attribute) and isinstance(n.ctx, _astE59.Store)]
+    _inner_defs59 = [n for n in _astE59.walk(_ensE59)
+                     if isinstance(n, _astE59.FunctionDef) and n.name == "_inner"]
+    _inner_clean59 = (len(_inner_loads59) == 1 and len(_inner_defs59) == 1
+                      and not _attr_stores59)
     _one_exit59 = (len(_retE59) == 1
                    and isinstance(_retE59[0].value, _astE59.Call)
                    and isinstance(_retE59[0].value.func, _astE59.Name)
@@ -24946,7 +24963,7 @@ check("v0.4.59 (PIN, structural): `ensure` has EXACTLY ONE return and it routes 
       "`ensure`'s returns cannot see a caller switch). ⚠ The first cut "
       "called `_served` from four individual returns, which a review lens measured as totality by "
       "CONVENTION: a new return, or one edited to drop the call, escaped with the suite green",
-      _one_exit59 and _has_inner59 and _no_bypass59)
+      _one_exit59 and _has_inner59 and _no_bypass59 and _inner_clean59)
 
 # (2) PIN — a faulted `LOCK_UN` can no longer MANUFACTURE A VERDICT. `preflight.py` bypasses
 # `FileLock` with raw `flock`, and both sites wrapped the acquire and the unlock in one `try`, so an

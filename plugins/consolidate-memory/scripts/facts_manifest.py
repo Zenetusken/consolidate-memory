@@ -473,8 +473,14 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
     ⚠ AND THE INNER IS A CLOSURE, not a module-level function. The first cut named it `_ensure_inner`
     at module level, which left an importable, obviously-named bypass — a review lens measured that
     calling it directly returns an unvalidated reason and that NOTHING in the suite notices (the
-    structural pin inspects this function's returns, never call sites). A name that cannot be
-    imported cannot be called, so the bypass is not merely undetected but INEXPRESSIBLE.
+    structural pin inspects this function's returns, never call sites).
+    ⚠ NO NAME TO IMPORT — and that is the exact claim, no stronger. The first cut of this sentence
+    said the bypass was "INEXPRESSIBLE", which a review lens measured FALSE: the CODE is still
+    reachable two ways. `types.FunctionType(code, ..., closure=...)` over `ensure.__code__.co_consts`
+    (deliberate introspection, not a realistic edit), and — the one that matters — ATTACHING the
+    inner as an attribute (`ensure.inner = _inner`), which is a one-line edit in this repo's OWN
+    idiom: the suite already reaches into this module that way (`setattr(_fm44, "_READ_CAP", …)`).
+    So: no name to import, and the v0.4.59 pin additionally asserts the inner is not attached.
     ⚠ Its side benefit, also measured: the mint literals stay inside THIS function's AST subtree, so
     the v0.4.57 scan reads them without being pointed at an inner name. That matcher had already
     broken twice on refactors of this function; the closure removes the target it had to track.
