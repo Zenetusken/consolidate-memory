@@ -5,6 +5,66 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.56] — 2026-09-24
+
+**Patch — `cm status` no longer hangs waiting for a writer. This is the defect 0.4.54 claimed to fix
+and did not.**
+
+### The defect, root-caused by stack dump
+
+```
+control_plane.py:1402  FileLock.acquire          -> fcntl.flock(fd, LOCK_EX)   [BLOCKING]
+control_plane.py:1457  acquire_mutation_locks
+control_plane.py:258   update_project_state
+preflight.py:500       run_and_cache
+preflight.py:578       run_for_project
+memory_status.py:5663  main
+```
+
+Run `cm sync` in one terminal and `cm status` in another and the second **hangs indefinitely** —
+the command a user reaches for to see what is going on is the one a running write blocks.
+
+**Trigger condition, measured both ways:** it blocked **iff the preflight cache was cold** — no
+`preflight` block with a UTC `at` younger than `preflight.FRESH_TTL_S` (3600 s). A fresh cache
+returned early (`preflight.py:566-573`) and took **no lock**, which is why the hang needs *both* a
+cold cache and a concurrent writer, and why it survived so long.
+
+### The fix — the cache write TRIES instead of waiting
+
+The write caches a verdict `run_for_project` has **already computed and is about to return**; the
+verdict reaches the caller and `ctx["preflight"]` reaches the record either way. A cache that cannot
+get the lock is skipped, not waited for.
+
+- `FileLock.acquire(blocking=True)` — `LOCK_NB` when false; on contention raises a new **`LockBusy`**
+  (kept distinct from `WriteRefused`: this means *try later*, that means *never*). The no-`fcntl`
+  path is unchanged in **both** modes — it still refuses via `require_interprocess_lock` rather than
+  silently succeeding because waiting was not needed.
+- `acquire_mutation_locks(..., blocking=True)`, `update_project_state(..., blocking=True)` — threaded.
+  ⚠ **No new cleanup was needed**: the existing `except Exception: release_locks(locks); raise`
+  already frees a partly-acquired set, so declining on the *global* lock leaves the *domain* lock
+  free. A unit pin holds that property rather than trusting it.
+- `preflight.run_and_cache` — tries, returns a **reason token** (`""` = written) instead of a bool,
+  so the caller can tell *lock-busy* from *the write failed*. `run_for_project` carries it as the
+  additive `cache_skipped` key.
+- **`--verbose`** names the skip (`preflight: cache not written (lock-busy) — the verdict is
+  unaffected`). Silent by default: the command succeeded and the cache is an optimization — the
+  no-silence rule this arc enforces is about **refusals and faults**, not about declining one. ⚠
+  `--verbose` is the first verbosity flag here and is **mode-neutral**, so it is deliberately NOT in
+  the read-only-mode exclusion list that decides *which modes write*.
+
+### Deliberately unchanged
+
+The three other `update_project_state` callers in `memory_status` (`:2327`, `:2560`, `:2664` —
+`--stamp-marker`, `--justify-demotion`, `--justify-defrag`) are **write** commands and still **wait**:
+a CONTROL asserts they are killed by the timeout rather than completing. `session_beacon.py` takes no
+locks at all and reads the cache read-only, so it is untouched.
+
+⚠ **Known cost, stated rather than discovered:** on a store whose windows never let the lock
+through, the preflight cache stays cold and the checks re-run each time (the verdict is unaffected;
+only the cache misses). `--verbose` makes that visible; it is not silent-by-accident.
+
+Measured both ways: against the released 0.4.55 — 2307 passed / 5 failed; here 2312 / 0.
+
 ## [0.4.55] — 2026-09-24
 
 **Patch — 0.4.54's headline change is REVERTED. It did not do what it claimed, and it cost ~100×.**

@@ -9880,9 +9880,18 @@ with _tf_xp.TemporaryDirectory() as _td_l:
         _released = {"n": 0}
 
         class _Boom(cp.FileLock):
-            def acquire(self) -> None:
+            # ⚠ The signature must track the base — `blocking` was added in v0.4.56 and mypy's
+            # override check caught this subclass still declaring the old one. Kept as a PIN of the
+            # contract: a subclass that silently narrows the signature is how a lock primitive
+            # stops being substitutable.
+            def acquire(self, blocking: bool = True) -> None:
                 if self.path.name == "global.lock":
                     raise OSError("boom")
+                # ⚠ The base is called WITHOUT the kwarg, deliberately. Forwarding it is a
+                # TypeError on the pre-fix tree (whose `acquire` has no `blocking`), and that crash
+                # is what a first cut of this override produced — it killed the suite at module
+                # scope rather than reddening a check. This double only ever acquires BLOCKING, so
+                # the kwarg is accepted for signature compatibility and not passed on.
                 super().acquire()
 
             def release(self) -> None:
@@ -17102,8 +17111,16 @@ with _tf16.TemporaryDirectory() as _td16h:
             {"at": _dt16.now(_tz16.utc).isoformat(timespec="seconds"),
              "fails": ["sqlite-floor"], "warns": []}))
         _st16h2 = _json16.loads(_st16h.read_text())
-        check("preflight cache merge-write: the verdict lands AND model-owned keys survive (one writer)",
-              _wrote16 and _st16h2.get("timestamp") == 123 and _st16h2.get("project_path") == "keep-me"
+        # ⚠ v0.4.56 inverted this return: it is a REASON TOKEN now (`""` = written, else why), not a
+        # bool — the caller has to tell "declined because the lock was busy" from "the write failed",
+        # and a bool cannot carry that. `""`-means-success is this repo's own reason-token idiom
+        # (`load` returns `(rows, "")`), but it is the OPPOSITE polarity from the bool this test was
+        # written against, so the assertion is rewritten rather than loosened: an empty token is now
+        # the PASSING case, and asserting truthiness here would fail on success.
+        check("preflight cache merge-write: the verdict lands AND model-owned keys survive (one "
+              "writer) — the reason token is EMPTY on success",
+              _wrote16 == "" and _st16h2.get("timestamp") == 123
+              and _st16h2.get("project_path") == "keep-me"
               and _st16h2.get("preflight", {}).get("fails") == ["sqlite-floor"])
     finally:
         if _old16h is None:
@@ -24094,6 +24111,135 @@ check("v0.4.50 (PIN, structural): no consumer reads a fault key through `.get(..
       "silently reading as 'no fault' (pre-fix: nine such defaults, all defaulting to healthy)",
       _defaulted_fk == [])
 
+# --- v0.4.56: THE READ COMMAND MUST NOT WAIT FOR A WRITER ---------------------------------------
+# `cm status` hung INDEFINITELY whenever another process held `global.lock` — a user running
+# `cm sync` in one terminal could not run `cm status` in another. Root-caused by stack dump:
+#   control_plane.py:1402 FileLock.acquire -> fcntl.flock(LOCK_EX)   [BLOCKING]
+#   ... acquire_mutation_locks <- update_project_state <- preflight.run_and_cache
+#   <- run_for_project <- memory_status.main
+# The write is a CACHE of a verdict `run_for_project` has ALREADY computed and is about to return,
+# so it is skipped on contention rather than waited for. Trigger condition, measured both ways: it
+# blocked iff the preflight cache was cold (no `preflight` block with a UTC `at` younger than
+# FRESH_TTL_S=3600). A fresh cache returned early and took no lock, which is why this survived so
+# long — the hang needs a cold cache AND a concurrent writer.
+_cl56 = __import__("control_plane")
+import control_plane as _cp56
+with _tf43.TemporaryDirectory() as _td_lk56:
+    _h56 = Path(_td_lk56) / "home"; _h56.mkdir()
+    _p56 = Path(_td_lk56) / "proj"; _p56.mkdir()
+    _env56 = {**_os53.environ, "HOME": str(_h56)}
+    _lkdir56 = _h56 / ".claude" / "plugins" / "data" / "consolidate-memory" / "locks"
+    _lkdir56.mkdir(parents=True)
+
+    def _status56(*extra: str, _timeout: int = 25) -> "tuple[int, str, str]":
+        try:
+            _r = _sp53.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
+                                                    / "scripts" / "memory_status.py"),
+                            str(_p56), "--json", *extra],
+                           capture_output=True, text=True, timeout=_timeout, env=_env56)
+            return _r.returncode, _r.stdout, _r.stderr
+        except _sp53.TimeoutExpired:
+            return 124, "", "TIMEOUT"
+
+    # (a) the PIN: contended + cold cache COMPLETES. Pre-fix this is rc 124 from the timeout.
+    _gl56 = _cp56.FileLock(_lkdir56 / "global.lock"); _gl56.acquire()
+    try:
+        _rc56, _out56, _err56 = _status56()
+    finally:
+        _gl56.release()
+    _rec56 = {}
+    try:
+        _rec56 = _json43.loads(_out56)
+    except Exception:
+        pass
+    check("v0.4.56 (PIN): a READ command does not WAIT for a writer — with `global.lock` held and "
+          "a cold preflight cache, `cm status --json` completes and still carries its preflight "
+          "block (pre-fix: hangs, killed at the timeout, rc 124)",
+          _rc56 == 0 and isinstance(_rec56.get("preflight"), dict))
+    # (b) the note is --verbose-only: the same contended fixture, silent by default. A flag that
+    # changed the DEFAULT output would be a different change from the one asked for.
+    _gl56b = _cp56.FileLock(_lkdir56 / "global.lock"); _gl56b.acquire()
+    try:
+        _rc56b, _o56b, _e56b = _status56("--verbose")
+    finally:
+        _gl56b.release()
+    check("v0.4.56 (PIN): …the skip is NAMED under `--verbose` — `preflight: cache not written "
+          "(lock-busy)`",
+          "cache not written" in _e56b and "lock-busy" in _e56b)
+    # ⚠ GUARD, not a control — it SHARES the pin's precondition (`_rc56 == 0`, which pre-fix is the
+    # timeout's 124), so it cannot be green on both trees. Its unique content is the ABSENCE of the
+    # note by default; the completion half belongs to the pin above. Labelled for what it is: a
+    # "CONTROL" that reddens pre-fix is a pin wearing the wrong name.
+    check("v0.4.56 (GUARD, shares the pin's precondition): …and it is SILENT by default, on the "
+          "very same contended fixture — the command succeeded and the cache is an optimization, "
+          "so a read command does not nag about declining it",
+          _rc56 == 0 and "cache not written" not in _err56)
+    # (c) CONTROL: uncontended, the cache IS written — the repair is a TRY, not a refusal to cache.
+    _rc56c, _o56c, _e56c = _status56()
+    _wrote56 = list(_h56.rglob(".consolidation-state.json"))
+    _has_pf = False
+    for _f in _wrote56:
+        try:
+            _has_pf = _has_pf or isinstance(_json43.loads(_f.read_text()).get("preflight"), dict)
+        except Exception:
+            pass
+    check("v0.4.56 (CONTROL): uncontended, the cache is WRITTEN as before — the change makes the "
+          "cache write TRY, not stop",
+          _rc56c == 0 and _has_pf)
+    # (d) CONTROL: the WRITE commands still block. The change must not make every writer
+    # non-blocking — `--stamp-marker` keeps its serialization guarantee.
+    _gl56c = _cp56.FileLock(_lkdir56 / "global.lock"); _gl56c.acquire()
+    try:
+        # ⚠ WITH a commit argument. Without one `--stamp-marker` returns rc 2 at its own usage
+        # check and NEVER REACHES THE LOCK — measured, and the first cut of this control passed/failed
+        # on that instead of on the blocking behaviour it names. A control must route the run onto
+        # the arm it asserts about.
+        _rc56d, _o56d, _e56d = _status56("--stamp-marker", "0" * 40, _timeout=8)
+    finally:
+        _gl56c.release()
+    # ⚠ `== 124`, not `!= 124`: the discriminating fact is that the writer WAITS. "Did not time
+    # out" is also satisfied by a command that returns instantly because it never reached the lock
+    # — which is how a control on a blocking path becomes vacuous.
+    check("v0.4.56 (CONTROL): a WRITE command (`--stamp-marker`) still WAITS on the lock — it is "
+          "killed by the timeout rather than completing, so the try is opt-in at the cache call "
+          "site and not a new default for every writer",
+          _rc56d == 124)
+# (e) UNIT PIN: the primitive, and the LEAK property. `acquire_mutation_locks` takes domain, then
+# global, then project; giving up on global must leave the domain lock FREE, or a try-mode caller
+# would hold a lock it never releases — a wedge rather than a wait.
+import os as _os56
+with _tf43.TemporaryDirectory() as _td_u56:
+    _lk56 = Path(_td_u56) / "global.lock"
+    _hold56 = _cp56.FileLock(_lk56); _hold56.acquire()
+    # ⚠ `getattr` for the exception CLASS, not just the call: pre-fix `LockBusy` does not exist, and
+    # naming it in an `except` clause raises AttributeError AT MODULE SCOPE — truncating every check
+    # after it. FOURTEENTH occurrence of this trap on the arc; guarded BEFORE the pre-fix
+    # measurement that would have found it.
+    _LockBusy56 = getattr(_cp56, "LockBusy", None)
+    _busy56: "object" = None
+    try:
+        _cp56.FileLock(_lk56).acquire(blocking=False)
+    except Exception as _e56:
+        _busy56 = _e56
+    _hold56.release()
+    # ⚠ Guarded: pre-fix `acquire` takes no `blocking`, so this raises TypeError — inside the check
+    # EXPRESSION that would kill the suite at module scope rather than reddening. Fifteenth
+    # occurrence of the trap on the arc, and the second introduced by this very pin, one line after
+    # the first.
+    _free56 = _cp56.FileLock(_lk56)
+    try:
+        _free56.acquire(blocking=False)          # must succeed once the holder released
+        _free_ok56 = True
+        _free56.release()
+    except TypeError:
+        _free_ok56 = False
+    except Exception:
+        _free_ok56 = False
+    check("v0.4.56 (PIN): `FileLock.acquire(blocking=False)` raises `LockBusy` instead of waiting — "
+          "and the lock is FREE again the moment the holder releases it, so a declined try leaves "
+          "nothing behind",
+          _LockBusy56 is not None and isinstance(_busy56, _LockBusy56) and _free_ok56)
+
 # --- v0.4.54 (PIN): the CACHED ROW'S TWO-PART WARRANT -------------------------------------------
 # A review lens asked whether `load()` re-derives `secret` and found that it does not — "an identity
 # match is the whole warrant". That is true of `load()` and FALSE OF THE SYSTEM: the warrant is
@@ -24794,6 +24940,18 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 6        # v0.4.56 — THE READ COMMAND MUST NOT WAIT FOR A WRITER: 3
+                                       #     PINs (a contended cold-cache `cm status` COMPLETES and
+                                       #     still carries its preflight block; the skip is named
+                                       #     under `--verbose`; `acquire(blocking=False)` raises
+                                       #     `LockBusy` and leaves the lock free) + 3 CONTROLS
+                                       #     (silent by DEFAULT on the same fixture — labelled GUARD,
+                                       #     since it shares the pin precondition; uncontended the
+                                       #     cache IS written; a WRITE command still WAITS). ⚠ The
+                                       #     writer control asserts the TIMEOUT, not merely "did not
+                                       #     time out" — the latter is satisfied by a command that
+                                       #     never reached the lock, which is how a control on a
+                                       #     blocking path goes vacuous.
                             + 3        # v0.4.54 — 1 GUARD (the two-part warrant's CONSUMER half:
                                        #     `_consider_fast` compares mtime_ns AND size) + 1 PIN
                                        #     (the pull consumes its own refusal) + 1 PIN below.

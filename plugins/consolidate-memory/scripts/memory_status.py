@@ -5458,10 +5458,14 @@ _CUE_PHASE5 = ("Phase-5 beat due — narrate the audit/defrag dreamily (plain it
 # _ui's global set (`--color`/`--no-color` bare; `--color=`/`--width=` are the equals allowance).
 # A bare `--width` is absent on purpose: `_ui.resolve_width` matches `startswith("--width=")` only,
 # so blessing it would be a flag that parses and does nothing.
+# v0.4.56: `--verbose` is the first VERBOSITY flag here — mode-neutral by construction (it selects
+# no mode and gates no write), which is why it is absent from the read-only-mode exclusion list at
+# the preflight call site. The list below is the parse surface, so a flag must be BOTH parsed and
+# listed; adding it to only one of the two is the drift this comment's own rule warns about.
 _KNOWN_FLAGS = ("--ascii", "--audit", "--before", "--color", "--diffs", "--force", "--into",
                 "--json", "--justify-defrag", "--justify-demotion", "--no-color", "--sections",
                 "--seed", "--snapshot", "--snooze-until", "--stamp-marker",
-                "--standing-justify-facts", "--standing-justify-tokens", "--triage")
+                "--standing-justify-facts", "--standing-justify-tokens", "--triage", "--verbose")
 
 
 def main() -> int:
@@ -5662,6 +5666,15 @@ def main() -> int:
             import preflight
             _pf_res = preflight.run_for_project(project_dir)
             ctx["preflight"] = preflight.verdict_for_cache(_pf_res)
+            # ⚠ v0.4.56: the cache write TRIES rather than waits, so it can be SKIPPED when another
+            # process holds the mutation locks — the verdict above is computed and used either way.
+            # The skip is named only under `--verbose`: the command SUCCEEDS, and the no-silence
+            # rule this arc enforces is about REFUSALS and FAULTS, not about declining an optional
+            # cache. ⚠ `--verbose` is deliberately NOT in the mode list above — that list decides
+            # which modes WRITE, and a verbosity flag deciding that would be its own defect.
+            if "--verbose" in argv and _pf_res.get("cache_skipped"):
+                print(f"preflight: cache not written ({_pf_res['cache_skipped']}) — the verdict is "
+                      f"unaffected; it will be cached on a later run", file=sys.stderr)
         except Exception:  # noqa: BLE001 — the pre-flight can never break a dream
             pass
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)

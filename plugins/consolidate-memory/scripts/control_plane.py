@@ -161,6 +161,16 @@ class CrashSimulated(RuntimeError):
     """Test-only: mutation stopped after a named journal step."""
 
 
+class LockBusy(RuntimeError):
+    """A lock could not be taken WITHOUT WAITING — the holder is another process.
+
+    ⚠ Raised only from `FileLock.acquire(blocking=False)`. It is deliberately NOT a `WriteRefused`:
+    that means "this write is refused and will be refused again", while this means "try later, the
+    work is fine". The distinction is what lets a caller SKIP an optional write (the preflight
+    cache) without also swallowing a genuine refusal.
+    """
+
+
 ABSENT = "ABSENT"
 MARKER_FILE = ".consolidation-state.json"
 
@@ -238,7 +248,7 @@ def atomic_write_bytes(path: Path, data: bytes, *, mode: int = 0o600) -> str:
 
 
 def update_project_state(ctx: StoreContext, mutator: Callable,
-                         no_mint: bool = False) -> dict:
+                         no_mint: bool = False, *, blocking: bool = True) -> dict:
     """Merge native `.consolidation-state.json` under the project lock.
 
     `mutator(state: dict, snap: FileSnapshot) -> dict`. Missing marker → empty
@@ -255,7 +265,7 @@ def update_project_state(ctx: StoreContext, mutator: Callable,
     """
     marker = ctx.native_memory_dir / MARKER_FILE
     require_interprocess_lock()
-    locks = acquire_mutation_locks(ctx, [ctx.project_id])
+    locks = acquire_mutation_locks(ctx, [ctx.project_id], blocking=blocking)
     try:
         snap = read_snapshot(marker)
         if snap.exists:
@@ -1394,12 +1404,26 @@ class FileLock:
         self.path = path
         self._fd: Optional[Any] = None
 
-    def acquire(self) -> None:
+    def acquire(self, blocking: bool = True) -> None:
+        """Take the lock. `blocking=False` raises `LockBusy` instead of waiting.
+
+        ⚠ `blocking=False` exists for callers whose write is OPTIONAL — the preflight cache, whose
+        verdict the caller already holds. A read command must never WAIT for another process; it
+        should decline the write and carry on. Every existing caller keeps the default and its
+        blocking semantics.
+        ⚠ The no-`fcntl` path is unchanged in BOTH modes: a non-blocking acquire on a platform
+        without `fcntl` would be a no-op lock, so it refuses via `require_interprocess_lock` exactly
+        as before rather than silently succeeding because waiting was not needed.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd = open(self.path, "a+")
         try:
             import fcntl
-            fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+            flags = fcntl.LOCK_EX if blocking else (fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                fcntl.flock(fd.fileno(), flags)
+            except BlockingIOError:
+                raise LockBusy(f"lock held by another process: {self.path}")
         except ImportError:
             fd.close()
             require_interprocess_lock()
@@ -1438,8 +1462,16 @@ def lock_dir(ctx: StoreContext) -> Path:
 
 
 def acquire_mutation_locks(ctx: StoreContext, project_ids: list,
-                           extra_domains: Optional[list] = None) -> list:
-    """Domain lock(s) in sorted name order, then global, then project locks."""
+                           extra_domains: Optional[list] = None, *,
+                           blocking: bool = True) -> list:
+    """Domain lock(s) in sorted name order, then global, then project locks.
+
+    `blocking=False` raises `LockBusy` rather than waiting. ⚠ The cleanup is ALREADY here and is
+    what makes the try-mode safe: the `except Exception` below releases whatever was taken before
+    the give-up, so declining on the GLOBAL lock leaves the DOMAIN lock(s) free. `LockBusy` is an
+    `Exception`, so it rides that path with no new code — and a unit pin holds us to it, because
+    "the cleanup happens to cover it" is exactly the kind of claim that stops being true quietly.
+    """
     from identifiers import IdentifierRefused, safe_child, validate_domain_id, validate_project_id
     require_interprocess_lock()
     locks: list = []
@@ -1451,10 +1483,10 @@ def acquire_mutation_locks(ctx: StoreContext, project_ids: list,
         for raw in sorted(set(names)):
             dname = validate_domain_id(raw, allow_unknown=True)
             dlock = FileLock(safe_child(lock_dir(ctx), f"domain-{dname}.lock"))
-            dlock.acquire()
+            dlock.acquire(blocking=blocking)
             locks.append(dlock)
         glob = FileLock(lock_dir(ctx) / "global.lock")
-        glob.acquire()
+        glob.acquire(blocking=blocking)
         locks.append(glob)
         for pid in sorted(set(project_ids)):
             try:
@@ -1462,7 +1494,7 @@ def acquire_mutation_locks(ctx: StoreContext, project_ids: list,
             except IdentifierRefused:
                 raise
             pl = FileLock(safe_child(lock_dir(ctx), f"project-{pid}.lock"))
-            pl.acquire()
+            pl.acquire(blocking=blocking)
             locks.append(pl)
         return locks
     except Exception:

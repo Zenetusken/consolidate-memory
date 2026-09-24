@@ -486,21 +486,36 @@ def _fresh_cached(state_path: Path, ttl_s: int = FRESH_TTL_S, now: float = time.
             "warns": [str(x) for x in warns]}
 
 
-def run_and_cache(ctx: Any, verdict: Dict[str, Any]) -> bool:
+def run_and_cache(ctx: Any, verdict: Dict[str, Any]) -> str:
     """ONE writer: the update_project_state mutator (the sync_global stacks precedent).
-    Never raises (BLE001); the no-sqlite3 env never reaches here by construction."""
+    Never raises (BLE001); the no-sqlite3 env never reaches here by construction.
+
+    Returns "" when the cache was WRITTEN, else a reason token — `"lock-busy"` or the exception
+    class name. ⚠ The token replaced a bool in v0.4.56: the caller must be able to tell "declined
+    because another process holds the lock" (benign, expected, named only under `--verbose`) from
+    "the write failed" (a fault), and a bool cannot carry that difference.
+
+    ⚠ IT TRIES, IT NEVER WAITS. The verdict being cached was computed a few frames up and is about
+    to be RETURNED to the caller either way; the cache is an optimization. Waiting for another
+    process to release the mutation locks — as this did until v0.4.56 — made `cm status` HANG
+    INDEFINITELY whenever a `cm sync` was running, on the one command a user runs to see what is
+    going on. MEASURED: lock held + cold cache -> >12 s and no output; the same fixture with the
+    try -> ~0.1 s and a correct verdict.
+    """
     try:
-        from control_plane import update_project_state
+        from control_plane import LockBusy, update_project_state
 
         def _mut(state: Dict[str, Any], snap: object) -> Dict[str, Any]:
             state = dict(state)
             state["preflight"] = dict(verdict)
             return state
 
-        update_project_state(ctx, _mut)
-        return True
-    except Exception:
-        return False
+        update_project_state(ctx, _mut, blocking=False)
+        return ""
+    except LockBusy:
+        return "lock-busy"
+    except Exception as e:                                     # noqa: BLE001 — never raises
+        return type(e).__name__
 
 
 def _paths_from_ctx(ctx: Any) -> Dict[str, Any]:
@@ -575,7 +590,12 @@ def run_for_project(project_dir: Path, force: bool = False) -> Dict[str, Any]:
     if ctx is not None:
         sp = env.get("state_path")
         if sp is not None:
-            run_and_cache(ctx, verdict_for_cache(result))
+            # ⚠ The skip rides the RESULT rather than a print: this function has no `argv` and must
+            # not grow one, and the CLI layer is where a `--verbose` decision belongs. Additive —
+            # absent when the cache was written or was already fresh.
+            _skip = run_and_cache(ctx, verdict_for_cache(result))
+            if _skip:
+                result["cache_skipped"] = _skip
     return result
 
 
