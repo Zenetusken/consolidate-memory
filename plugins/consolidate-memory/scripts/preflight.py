@@ -147,7 +147,15 @@ def probe_sqlite_roundtrip(data_dir: Path, mod: Any, cp: Any, fcntl_mod: Any,
         lock_p = data_dir / ".preflight-probe.lock"
         with open(str(lock_p), "a") as lf:
             fcntl_mod.flock(lf.fileno(), fcntl_mod.LOCK_EX)
-            fcntl_mod.flock(lf.fileno(), fcntl_mod.LOCK_UN)
+            # ⚠ CLEANUP, not evidence. An uncaught failure here reached the `except Exception`
+            # below and was reported as the probe FAILING — "the real schema/flock cannot execute
+            # in plugin-data", with the remedy "Check disk space/permissions". MEASURED by a review
+            # lens: with `LOCK_UN` faulting, the probe reported exactly that false verdict. The
+            # `with` close releases the flock regardless (close(2)), so the swallow is safe.
+            try:
+                fcntl_mod.flock(lf.fileno(), fcntl_mod.LOCK_UN)
+            except OSError:
+                pass
         try:
             os.unlink(str(lock_p))
         except OSError:
@@ -354,9 +362,20 @@ def stale_lock_note(lock_dir: Optional[Path], importer: Callable = importlib.imp
             continue
         try:
             fcntl_mod.flock(fd, fcntl_mod.LOCK_EX | fcntl_mod.LOCK_NB)
-            fcntl_mod.flock(fd, fcntl_mod.LOCK_UN)
         except (OSError, BlockingIOError):
             held += 1
+        else:
+            # ⚠ The UNLOCK is CLEANUP, and its failure must not become a FINDING. Both calls shared
+            # one `try`, so a faulted `LOCK_UN` was scored as a held lock. MEASURED by a review
+            # lens: with `LOCK_UN` faulting and nobody holding the directory, this returned
+            # "1 HELD lock file(s) in … — another process holds the plane; wait or investigate" —
+            # a MANUFACTURED VERDICT, and this function's entire contract is "only a HELD lock is a
+            # finding". ⚠ Swallowing the unlock cannot leave the lock held: `os.close(fd)` below
+            # releases the flock via close(2), which a lens verified on the sibling fix.
+            try:
+                fcntl_mod.flock(fd, fcntl_mod.LOCK_UN)
+            except OSError:
+                pass
         finally:
             os.close(fd)
     if not held:

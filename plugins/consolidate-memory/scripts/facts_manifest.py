@@ -21,7 +21,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 SCHEMA_VERSION = 1
 KILL_SWITCH = "CM_FACTS_MANIFEST"
@@ -255,6 +255,34 @@ def _mint(reason: str) -> "tuple[None, str]":
     return None, reason
 
 
+# ⚠ Every reason `ensure` may return, from BOTH vocabularies, and the union is the point: `ensure`
+# passes `load()`'s reasons straight through as well as minting its own, so a guard keyed on
+# `_ENSURE_REASONS` alone would redden on a perfectly correct tree. `""` is the success sentinel
+# (rows were served from a healthy cache) — not a reason to rebuild, the ABSENCE of a refusal.
+_KNOWN_REASONS = (frozenset(_ENSURE_REASONS) | frozenset(_REBUILDABLE)
+                  | frozenset(_NONREBUILDABLE) | {""})
+
+
+def _served(rows: Any, reason: str) -> "tuple[Any, str]":
+    """`ensure`'s return, with the reason CLASSIFIED — the RUNTIME half of the classification.
+
+    ⚠ This exists because the pin's half is a SCAN, and a scan cannot see value. `tests/smoke.py`
+    enumerates the AST spellings `_mint("<literal>")` and `return x, "<literal>"`, so a reason
+    minted through a NAME — `return None, _NEW_TOKEN` — passed every check while circulating an
+    unclassified reason (MEASURED: all ten v0.4.57 checks green, while the literal-form control
+    reddened). ⚠ No wider scan can close that: a `Name` in the return position is
+    AST-INDISTINGUISHABLE from `load()`'s legitimate passthrough (`return None, reason`), which is
+    why the pin enumerates literals at all. The PRODUCER can see the value, the scanner cannot —
+    so the assertion lives here, where the decision that produced it is made.
+    """
+    if reason not in _KNOWN_REASONS:
+        raise AssertionError(
+            f"unclassified reason {reason!r} returned by ensure — mint it through `_mint` (and "
+            f"declare it in `_ENSURE_REASONS`, saying whether it is transient), or it is not a "
+            f"reason this cache may serve")
+    return rows, reason
+
+
 def build(facts_dir: Path) -> "tuple[list, str]":
     """Enumerate + classify the facts dir once. Returns (rows, domain).
 
@@ -455,9 +483,9 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
     """
     rows, reason = load(facts_dir, plugin_data_dir)
     if rows is not None:
-        return rows, reason
+        return _served(rows, reason)
     if not may_write:
-        return None, reason
+        return _served(None, reason)
     if reason not in _NONREBUILDABLE:
         try:
             rows, domain = _rebuild_locked(facts_dir, plugin_data_dir)
@@ -495,8 +523,8 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
         # failure with a BLANK cause on every freshly-enrolled domain, and no action could clear
         # it because a zero-fact domain can never produce rows. MEASURED by two review lenses,
         # independently, on this PR's own new helper.
-        return rows, "rebuilt"
-    return None, reason
+        return _served(rows, "rebuilt")
+    return _served(None, reason)
 
 
 def _rebuild_locked(facts_dir: Path, plugin_data_dir: Path):

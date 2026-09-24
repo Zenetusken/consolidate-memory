@@ -24536,11 +24536,19 @@ try:
     # mints USED to look like; the moment they moved through `_mint` the scan saw only the one
     # remaining literal (`rebuilt`) and the pin reddened against a correct tree. A matcher bound to
     # the spelling rather than the declaration is the defect, and the pin caught its own author.
+    # ⚠ Reads BOTH call forms, and v0.4.59 is why. `_mint("<reason>")` is the mint; `_served(rows,
+    # "<reason>")` is the v0.4.59 runtime-guarded return. The first cut knew only `_mint` and the
+    # `return x, "<lit>"` tuple form — so the moment `ensure` moved its success sentinel behind
+    # `_served`, this pin REDDENED against a correct tree. That is the spelling-bound matcher a
+    # review lens described in the abstract, breaking on contact with its first refactor, and it is
+    # the argument for the runtime half that v0.4.59 adds: a scan can only see the form it was
+    # taught, and `_served` asserts on the VALUE at every return regardless.
     _minted57 = sorted({
-        str(n.args[0].value) for n in _ast57.walk(_ens57)
+        str(_a57.value) for n in _ast57.walk(_ens57)
         if isinstance(n, _ast57.Call) and isinstance(n.func, _ast57.Name)
-        and n.func.id == "_mint" and n.args
-        and isinstance(n.args[0], _ast57.Constant) and isinstance(n.args[0].value, str)}
+        and n.func.id in ("_mint", "_served")
+        for _a57 in (n.args[:1] if n.func.id == "_mint" else n.args[1:2])
+        if isinstance(_a57, _ast57.Constant) and isinstance(_a57.value, str)}
         | {str(el.value) for n in _ast57.walk(_ens57)
            if isinstance(n, _ast57.Return) and isinstance(n.value, _ast57.Tuple)
            for el in n.value.elts[1:2]
@@ -24839,6 +24847,74 @@ check("v0.4.57 (PIN): the sibling parsers REFUSE a stray positional too — `cm 
       "they silently dropped the argument and acted on the CWD (measured: a WRONG-PROJECT WRITE "
       "to projA's MEMORY.md while the argument named projB)",
       all(_sib_ok57) and len(_sib_ok57) == 3)
+
+# --- v0.4.59: the last three open items ---------------------------------------------------------
+# (1) PIN — the RUNTIME half of the reason classification, closing what no scan can. A review lens
+# measured that the AST pin is bound to a SPELLING: `return None, _NEW_TOKEN` (a NAME) left all ten
+# v0.4.57 checks green while circulating an unclassified reason. No wider scan can close it — a Name
+# in the return position is AST-indistinguishable from `load()`'s legitimate passthrough — so the
+# assertion lives at the PRODUCER, which can see the value.
+_served57 = getattr(_fm44, "_served", None)
+_raised59: "object" = None
+try:
+    _served57("rows", "a-reason-nobody-declared") if _served57 else None
+except Exception as _e59:
+    _raised59 = _e59
+# and it ACCEPTS both vocabularies — `ensure` passes `load()`'s reasons through, so a guard keyed on
+# `_ENSURE_REASONS` alone would redden on correct trees
+_accepted59 = []
+for _r59 in ("", "rebuilt", "lock-busy", "oversize", "absent", "predicate-changed", "kill-switch"):
+    try:
+        _served57("rows", _r59) if _served57 else None
+        _accepted59.append(_r59)
+    except Exception:
+        pass
+check("v0.4.59 (PIN): an UNDECLARED reason returned by `ensure` RAISES at the producer — the "
+      "runtime half of the classification, which no AST scan can supply (measured: a NAME-minted "
+      "reason passed every v0.4.57 check). ⚠ And it accepts BOTH vocabularies: `ensure` passes "
+      "`load()`'s reasons through, so a guard keyed on `_ENSURE_REASONS` alone would redden on "
+      "correct trees",
+      _raised59 is not None and len(_accepted59) == 7)
+
+# (2) PIN — a faulted `LOCK_UN` can no longer MANUFACTURE A VERDICT. `preflight.py` bypasses
+# `FileLock` with raw `flock`, and both sites wrapped the acquire and the unlock in one `try`, so an
+# unlock failure was scored as the probe's outcome. MEASURED before the fix: the held-lock advisory
+# reported `1 HELD lock file(s) … another process holds the plane` for a directory nobody held, and
+# the sqlite probe reported `fail` with the remedy "Check disk space/permissions".
+_pf59 = __import__("preflight")
+import fcntl as _fc59
+import sqlite3 as _sq59
+_cp59 = __import__("control_plane")
+_realFlock59 = _fc59.flock
+
+
+def _unlock_boom59(fd: int, op: int) -> None:
+    if op == _fc59.LOCK_UN:
+        raise OSError("stubbed LOCK_UN failure")
+    _realFlock59(fd, op)
+
+
+with _tf43.TemporaryDirectory() as _td_f59:
+    _lkD59 = Path(_td_f59) / "locks"
+    _lkD59.mkdir()
+    (_lkD59 / "global.lock").write_bytes(b"")
+    _import59 = lambda n: _fc59 if n == "fcntl" else __import__(n)   # noqa: E731
+    _honest59 = _pf59.stale_lock_note(_lkD59, importer=_import59)
+    _probeD59 = Path(_td_f59) / "pdata"
+    _honest_rc59 = _pf59.probe_sqlite_roundtrip(_probeD59, _sq59, _cp59, _fc59)["status"]
+    _fc59.flock = _unlock_boom59                        # type: ignore[assignment]
+    try:
+        _faulted59 = _pf59.stale_lock_note(_lkD59, importer=_import59)
+        _faulted_rc59 = _pf59.probe_sqlite_roundtrip(_probeD59, _sq59, _cp59, _fc59)["status"]
+    finally:
+        _fc59.flock = _realFlock59
+check("v0.4.59 (PIN): a faulted `LOCK_UN` manufactures NO verdict — the held-lock advisory still "
+      "returns None (no 'another process holds the plane' for a directory nobody holds) and the "
+      "sqlite probe still returns `pass` (not the false fail with its disk-space remedy). ⚠ Only "
+      "the UNLOCK moved; the ACQUIRE still decides, or the fix would trade one manufactured "
+      "verdict for another",
+      _honest59 is None and _faulted59 is None
+      and _honest_rc59 == "pass" and _faulted_rc59 == "pass")
 
 # --- v0.4.54 (PIN): the CACHED ROW'S TWO-PART WARRANT -------------------------------------------
 # A review lens asked whether `load()` re-derives `secret` and found that it does not — "an identity
@@ -25596,6 +25672,13 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     "where is the lock TAKEN?"; the question was "what is
                                        #     REACHABLE from a read command?". A review lens swept 22
                                        #     read commands under a held lock and found it.
+                            + 2        # v0.4.59 — the last three open items: 1 PIN that an UNDECLARED
+                                       #     reason returned by `ensure` RAISES at the producer (the
+                                       #     RUNTIME half — no AST scan can close a NAME-minted
+                                       #     reason) and that the guard accepts BOTH vocabularies,
+                                       #     + 1 PIN that a faulted `LOCK_UN` manufactures no verdict
+                                       #     in preflight (neither a false held-lock advisory nor a
+                                       #     false sqlite-probe fail with its disk-space remedy)
                             + 10       # v0.4.57 — the open-items PR: 2 structural PINs on the SECOND
                                        #     reason vocabulary (`ensure`'s minted tokens are
                                        #     declared, and an undeclared one RAISES at the producer)
