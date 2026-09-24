@@ -6,7 +6,8 @@
 
 **Design-of-record for four sites on the write path and its accounting model — plus the
 `--gc` dead-probe, the same root cause reached from a reporting surface.**
-Status: drafted 2026-09-11 (UTC 09-12), adversarial review round 1 complete and folded.
+Status: **SHIPPED (v0.4.26, the mirror-index patch)** — verified against the live tree 2026-09-24.
+Drafting-era line: drafted 2026-09-11 (UTC 09-12), adversarial review round 1 complete and folded.
 
 ## 1. Context (measured 2026-09-11)
 

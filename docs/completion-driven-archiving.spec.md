@@ -1,6 +1,8 @@
 # Spec — completion-driven archiving (decouple archive from the over-budget gate)
 
-Status: DRAFT (gate-1 review pending) · target: cm vNEXT (PATCH) · author cycle: 2026-06-22
+Status: **SHIPPED** — `cm local archive` is present in `cm_ops.py`/`local_ingress.py` and covered;
+verified against the live tree 2026-09-24. ⚠ Same blind spot as its sibling below/above: a spec's
+own header is read by no gate. Drafting-era line: `target: cm vNEXT (PATCH) · author cycle: 2026-06-22`
 
 ## The measured problem (not the one the audit first named)
 
