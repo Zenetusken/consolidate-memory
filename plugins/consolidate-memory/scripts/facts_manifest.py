@@ -201,14 +201,22 @@ def secret_pred() -> str:
 # `if reason not in _NONREBUILDABLE: rebuild` — an unlisted reason rebuilds, which is the safe
 # direction, but nothing FORCES a new reason to be thought about, and no test can enumerate the
 # reasons `load()` might one day return. The claim was also self-undermining in a smaller way:
-# `"rebuild-failed"` is not in `load()`'s return set at all — `ensure` produces it itself once the
+# ⚠ (Historical, kept because the reasoning is the reason the tuple is short:) `"rebuild-failed"`
+# was never in `load()`'s return set — `ensure` produced it itself once the
 # rebuild has failed, and returns it WITHOUT re-entering the membership test — so a reader taking
 # the tuple for an enumeration of `load()`'s outputs would find one of its two members unreachable
 # and could reasonably conclude the other is decorative too. It is not: it is the whole reason the
 # default may point this way.
+# ⚠ `"rebuild-failed"` was a member and is now REMOVED as dead, not as wrong. It existed for
+# `ensure`'s `if rows:` arm, which read a successful EMPTY rebuild as failure — and that arm is
+# itself the bug (see `ensure`). With it gone, `_rebuild_locked` either returns rows (possibly
+# empty) or raises, so `ensure` has no failure return left to classify. Keeping the token would
+# have left a member no producer can mint: a reader auditing the tuple against `ensure`'s code
+# would find nothing that emits it, which is the same "unreachable member" defect a review lens
+# flagged in this tuple two patches ago — except then it was reachable-in-principle and now it
+# would be reachable-not-at-all. A dead member is worse than a documented one.
 _NONREBUILDABLE = (
     "kill-switch",      # the operator asked the cache to stand aside; rebuilding defeats it
-    "rebuild-failed",   # produced by `ensure` itself — never by `load()`; do not loop
 )
 
 # ⚠ The other half of the classification, ENUMERATED so it can be TESTED. `_NONREBUILDABLE` alone
@@ -333,7 +341,8 @@ def load(facts_dir: Path, plugin_data_dir: Path):
     answer was nowhere written down. A row is served only under a TWO-PART warrant, and this
     function enforces exactly ONE half of it:
 
-      * the PREDICATE is unchanged — `secret_pred` matches, enforced HERE (:370); a foreign
+      * the PREDICATE is unchanged — `secret_pred` matches, enforced at the `secret_pred`
+        comparison in this function; a foreign
         identity fails open to a rebuild, so a row can never be judged by a firewall other than
         the running one; and
       * the FILE is unchanged — `st_mtime_ns` AND `st_size` match the row, enforced at the
@@ -404,8 +413,12 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
 
     ⚠ The flag lives HERE, beside the decision it qualifies, and NOT in the callers. The beacon
     had already chosen `load()` — the read-only form — deliberately, with a comment saying so,
-    and was still defeated, because the write came from a helper four frames down
-    (`iter_admissible_facts` → `_admissible_records` → here). A guard one call deep is not a
+    and was still defeated, because the write came from a helper THREE frames down
+    (`main` → `iter_admissible_facts` → `_admissible_records` → here) — and the WRITE one frame
+    below that (`_rebuild_locked`, frame 4). ⚠ Counted, not estimated: this sentence said "four"
+    while its own parenthetical terminated at `ensure`, which is frame 3, and an earlier pass
+    fixed the two sibling sites and declared THIS one correct without re-reading it. A guard one
+    call deep is not a
     guard on the call path; that is this repo's weakest-enforcement-site rule, and the v0.4.45
     inversion WIDENED the set of reasons that reach the rebuild (`predicate-changed` and
     `row-fields` were already read-only), which is what made a latent hole a live one.
@@ -433,9 +446,15 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
                   f"re-enumerate in full until this file is shrunk below {_READ_CAP} bytes",
                   file=sys.stderr)
             return None, "oversize"
-        if rows:
-            return rows, "rebuilt"
-        return None, "rebuild-failed"
+        # ⚠ `rows, "rebuilt"` UNCONDITIONALLY — never `if rows:`. `_rebuild_locked` returns a dict
+        # on SUCCESS, and that dict is legitimately EMPTY for a domain with no facts: `build()`
+        # returns `[]`, the manifest is written as `{"files": []}`, and the rebuild SUCCEEDED.
+        # Reading `{}` as failure made `ensure` return `(None, "rebuild-failed")` for a successful
+        # empty rebuild — so `cm data facts-refresh`, the DOCUMENTED REPAIR, reported permanent
+        # failure with a BLANK cause on every freshly-enrolled domain, and no action could clear
+        # it because a zero-fact domain can never produce rows. MEASURED by two review lenses,
+        # independently, on this PR's own new helper.
+        return rows, "rebuilt"
     return None, reason
 
 

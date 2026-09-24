@@ -24133,10 +24133,12 @@ check("v0.4.54 (PIN, structural): the pull READS its own refusal and exits non-z
 # Its MESSAGE was covered; its EXIT CODE was not, and a coverage lens measured that deleting the
 # `return 1` left both suites green — the documented repair printing "did NOT rebuild" and still
 # exiting 0, which is a command reporting success on a cache that can never rebuild.
-# ⚠ The healthy arm needs a REAL fact: `build()` returns `[]` for an empty dir, `_rebuild_locked`
-# writes `files: []`, and `ensure` reads that `{}` as falsy → `(None, "rebuild-failed")` → rc 1 for
-# a store that is merely EMPTY. Measured, not assumed — the first cut of this fixture had no fact
-# and the "control" exited 1 for the wrong reason.
+# ⚠ The healthy arm needed a real fact because of a BUG in `ensure`, since fixed: `build()` returns
+# `[]` for an empty dir, `_rebuild_locked` writes `files: []`, and `ensure`'s `if rows:` read that
+# `{}` as falsy → `(None, "rebuild-failed")`. Two review lenses measured the consequence — this
+# probe returned **1, permanently and unclearly, for every freshly-enrolled domain**, with a BLANK
+# cause. The EMPTY arm below now pins the repair directly; the one-fact arm is kept because it is
+# the case the exit code was originally added for.
 _co54 = __import__("cm_ops")
 import types as _types54
 with _tf43.TemporaryDirectory() as _td_fr54:
@@ -24170,6 +24172,25 @@ with _tf43.TemporaryDirectory() as _td_fr54:
           "the message printed and rc stayed 0; measured by a coverage lens, both suites green)",
           _rc_fr54_ok == 0 and _rc_fr54_bad == 1
           and "did NOT rebuild" in _err_fr54b.getvalue())
+    # ⚠ AND THE INVERSE: a zero-fact domain is a SUCCESSFUL empty rebuild, not a failure. This is
+    # the arm that catches the false red two review lenses found in the probe above — `ensure`
+    # returns `({}, "rebuilt")` and a truthiness test read it as failure, so `cm data facts-refresh`
+    # reported permanent, unclearable failure on the state EVERY project is in immediately after
+    # `cm project enroll`, with a blank cause.
+    _dd_fr54e = Path(_td_fr54) / "domains" / "dempty" / "facts"; _dd_fr54e.mkdir(parents=True)
+    _ctx_fr54e = _types54.SimpleNamespace(canonical_domain_dir=_dd_fr54e,
+                                          plugin_data_dir=_pd_fr54, domain_id="dempty")
+    _err_fr54e = _io73.StringIO()
+    if _fr54 is not None:
+        with _ctx73.redirect_stderr(_err_fr54e):
+            _rc_fr54_empty = _fr54(_ctx_fr54e)
+    else:
+        _rc_fr54_empty = None
+    check("v0.4.54 (PIN): a ZERO-FACT domain rebuilds SUCCESSFULLY — `ensure` returns `({}, "
+          "\"rebuilt\")` and a truthiness test read that empty success as failure, so the "
+          "documented repair reported a permanent, unclearable refusal on the state every project "
+          "is in right after `cm project enroll` (two lenses, independently)",
+          _rc_fr54_empty == 0 and "did NOT rebuild" not in _err_fr54e.getvalue())
 
 # --- v0.4.52: THE COVERAGE HOLES A MUTATION LENS FOUND ------------------------------------------
 # The beacon's `_pull_index_seed` ROUTING was unpinned: reverting `_idx_seed` to
@@ -24759,7 +24780,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
-                            + 2        # v0.4.54 — 1 GUARD (the two-part warrant's CONSUMER half:
+                            + 3        # v0.4.54 — 1 GUARD (the two-part warrant's CONSUMER half:
                                        #     `_consider_fast` compares mtime_ns AND size) + 1 PIN
                                        #     (the pull consumes its own refusal) + 1 PIN below.
                                        #     ⚠ The first closes the lens's "an identity match is
@@ -24769,6 +24790,9 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     is green on both trees. The second IS a true pin (it
                                        #     reddens pre-fix, measured) and is a defect the review
                                        #     found in the guard I added two patches earlier.
+                                       #     + 1 PIN on the INVERSE case, added when two review
+                                       #     lenses independently found the probe returning a
+                                       #     PERMANENT FALSE RED for a zero-fact domain.
                             + 1        # v0.4.54 — `cm data facts-refresh`'s EXIT CODE: the last of
                                        #     the coverage holes a mutation lens found. Its message
                                        #     was covered; deleting the `return 1` left both suites

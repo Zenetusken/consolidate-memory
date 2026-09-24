@@ -1656,7 +1656,8 @@ this once warned against; the dashboard remains the source of the figures.)
   },
   "maintenance": {
     "_": "v0.1.37/v0.1.42: the no-op SELF-HEAL pivot signal (seeded Phase 0, cheap/local). TWO PROCEED cases (NOT a no-op): a NON-EMPTY store with 0 commits = a MAINTENANCE pass; AND (v0.1.42) an EMPTY store + 0 commits + a non-empty network (cross_project.global_store_facts>0) = a COLD-START BOOTSTRAP — both PROCEED to Phase 1 --list→--pull (cross-node enrichment) + Phase 5 health. over_budget_not_justified = remediation.required (the dual-axis suppression result, not a fresh budget compare). Set pivoted=true in Phase 5 when you run either → drives the MAINTENANCE PASS banner.",
-    "dangling": 0, "over_budget_not_justified": false, "work": false, "pivoted": false
+    "dangling": 0, "over_budget_not_justified": false, "work": false, "pivoted": false,
+    "dangling_unresolved": ""
   },
   "audit": {
     "_": "v0.1.22: DETERMINISTIC script-emitted mutation trail. Phase 0 `memory_status.py --snapshot` writes a per-slug BEFORE snapshot; Phase 5 `--audit <snapshot>` diffs, appends .mutation-log.jsonl, and fills this — what THIS pass ACTUALLY changed (content-hash), cf. the model-narrated entries[]. MEMORY.md modified = expected re-index churn.",

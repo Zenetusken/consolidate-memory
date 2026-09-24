@@ -1886,7 +1886,13 @@ def _facts_refresh_probe(ctx) -> int:
         rows, why = _fm_ens(ctx.canonical_domain_dir, ctx.plugin_data_dir)
     except Exception as e:                                     # noqa: BLE001 — report, never raise
         rows, why = None, f"{type(e).__name__}: {e}"
-    if rows:
+    # ⚠ `rows is not None` — NEVER truthiness. `ensure` returns a dict on SUCCESS and that dict is
+    # legitimately EMPTY for a domain with no facts; `if rows:` read the empty success as failure
+    # and this probe then reported a PERMANENT, UNCLEARABLE refusal for every freshly-enrolled
+    # domain — with a BLANK cause in the parentheses, because `ensure` had already been read as
+    # "rebuilt" and `why` came back `""`. That is the inverse polarity of the bug this probe was
+    # added to fix, in the probe itself. MEASURED by two review lenses, independently.
+    if rows is not None:
         print(f"facts-manifest: {ctx.domain_id} rebuilt — {len(rows)} row(s)")
         return 0
     print(f"facts-manifest: ⚠ {ctx.domain_id} did NOT rebuild ({why}) — every read will "
@@ -1927,8 +1933,16 @@ def cmd_data(args: argparse.Namespace) -> int:
             # ⚠ `--all` cannot probe every domain cheaply, so it does not CLAIM the rebuild
             # happened — it names where a failure will surface instead. The single-domain arm
             # below probes and reports the real outcome; this one must not promise more.
+            # ⚠ SAY WHAT HAPPENS, not what would be reassuring. The first cut promised "a domain
+            # that CANNOT rebuild says so on stderr", and a review lens measured that
+            # `facts_manifest` prints to stderr at exactly ONE site — the oversize refusal. A
+            # domain skipped for a `_NONREBUILDABLE` reason returns `(None, reason)` SILENTLY, so
+            # the promise was false for that class. (It is now only `kill-switch` — the operator's
+            # own `CM_FACTS_MANIFEST=0` — which is deliberately not re-stated; `rebuild-failed`
+            # was removed as dead when `ensure`'s empty-rebuild bug was fixed.)
             print(f"facts-manifest: invalidated {n} domain manifest(s); each rebuilds lazily on "
-                  f"next read — a domain that CANNOT rebuild says so on stderr")
+                  f"next read. An oversize refusal names the offending file on stderr; a "
+                  f"kill-switched domain stands aside silently, by your own instruction.")
         else:
             mp = manifest_path(ctx.plugin_data_dir, ctx.domain_id)
             existed = mp.exists()

@@ -52,8 +52,12 @@ earlier guard.**
 
 6. **"four frames down" was off by one in two of four sites.** Counted: `main`(0) →
    `iter_admissible_facts`(1) → `_admissible_records`(2) → **`ensure`(3)** → `_rebuild_locked`(4).
-   `facts_manifest.py:387` names the *write* and is correct; `session_beacon.py` and `SKILL.md` name
-   *`ensure`* and said four. Both now say three and name the fourth explicitly.
+   ⚠ **Corrected:** the first pass claimed `facts_manifest.py`'s copy "names the *write* and is
+   correct" — it does not. Its own parenthetical terminates at `ensure` (frame 3) while the
+   sentence says four, so **all three** named sites were off by one, and the site declared correct
+   was the one not re-read. Its line number was also stale (`:387` → the sentence had moved). Both
+   fixed, and the citations now use greppable phrases instead of line numbers, because a citation
+   inside the file it cites goes stale on the next edit to that file. Both now say three and name the fourth explicitly.
 
 ## [0.4.53] — 2026-09-24
 
