@@ -5,6 +5,52 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.50] — 2026-09-24
+
+**Patch — the remainder of the adversarial run: five ways an unanswerable question was spent as an
+answer, and the identity's last incidental barrier.**
+
+Every item below is the same defect the previous four patches were about, found at a site none of
+them had censused.
+
+1. **The identity's protection was INCIDENTAL, not structural.** `load()` serves any row whose
+   `secret_pred` matches, with no independent check of `secret` — so a truncated row with a valid
+   identity is served end-to-end. What protected existing installs is that every pre-fix writer's
+   identity happened to differ *for other reasons*: unstated, untested, and gone the moment the
+   identity stabilises. `_READ_CAP` is now part of the payload, because **how much of each file the
+   predicate sees is part of the predicate** — a row built under one cap is not evidence about
+   another.
+
+2. **`_is_archive_index`'s `except OSError: return False` spent "could not classify" as "is a
+   fact."** MEASURED: `MEMORY.md` + one real fact + `adir.md/` gave `fact_files` length 2, which
+   `seed_record` wrote out as `recall_facts.before/after`, and `schema_drift` reported
+   `missing_node_type: 1` — a drift finding manufactured by a directory. A two-valued predicate
+   cannot say *"could not tell"*; `classify_store_doc` now returns `archive` / `fact` /
+   `unclassifiable`, and the third is counted as neither and **named**.
+
+3. **`claude_md_hierarchy` swallowed the same condition**, so an unreadable `CLAUDE.md` vanished
+   from the chain *and* from `total_files` — and the report's row is gated on those numbers, so an
+   unreadable file that was the only one removed the whole row. It now returns `unreadable`.
+
+4. **The nine consumer defaults.** `memory_status` states the rule at the producer — *"never
+   `.get(k, False)` … A KeyError names the site; `False` hides it"* — and then did the opposite at
+   **nine** consumer sites, every one defaulting to **healthy**. Latent, because the producer
+   plain-indexes too; but the invariant lived at the producer, not at the consumers the comment
+   claims enforce it. All nine index directly now, and a structural pin holds them there.
+
+5. **`ensure`'s classification had a silent default.** A reason absent from both tuples still
+   rebuilt — safe by direction, silent by construction. Every mint now goes through `_miss`, which
+   **raises naming an undeclared reason** instead of letting it acquire `global.lock`.
+
+6. **Two operator-facing messages named the wrong fault.** The post-state refresh said *"no
+   MEMORY.md in the store"* when the file was there but unreadable — sending the operator after an
+   absence. And `--evict` said a fact *"has no pointer line in the live index"* when the index
+   could not be read at all; that message **is** the ceiling hold's own printed remedy, so acting
+   on it means picking a different fact for a reason that is not true.
+
+Measured both ways: against the released 0.4.49 — 2288 passed / 6 failed; here 2294 / 0. Totals
+reconcile at 2294.
+
 ## [0.4.49] — 2026-09-24
 
 **Patch — the archive's KPI strip, and the third site of the EACCES family.**

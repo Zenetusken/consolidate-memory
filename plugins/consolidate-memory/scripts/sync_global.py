@@ -2055,7 +2055,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # existing line (the anchor-keyed map built below), so a stale-refresh delta and a
     # line-without-file drift state both net honestly instead of slipping the ceiling.
     _idxp = store / "MEMORY.md"
-    seed_idx, idx_text, _ = _pull_index_seed(_idxp)
+    seed_idx, idx_text, _idx_unreadable = _pull_index_seed(_idxp)
     _is_fixture_run = _global_is_fixture()
     _hermetic_run = _hermetic_home()
     _ddir_s = str(ctx.canonical_domain_dir)
@@ -2390,9 +2390,21 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                   "room for NOTHING. There is no swap to make.", file=sys.stderr); return _done(1)
         freed = _index_line_cost(idx_text, evict)   # MEASURED from the live index — never derived (F2)
         if freed == 0:
-            print(f"evict: '{evict}' has no pointer line in the live index — evicting it frees NOTHING "
-                  "(freed is MEASURED from MEMORY.md, never derived from frontmatter). Pick an indexed fact.",
-                  file=sys.stderr); return _done(1)
+            # ⚠ `freed == 0` HAS TWO CAUSES and this message named only one of them. `_index_line_cost`
+            # runs over `idx_text`, which for an UNREADABLE index is the empty placeholder — zero
+            # for every stem. So the old text told an operator "has no pointer line in the live
+            # index", which is FALSE: the pointer is there, it simply could not be read. MEASURED by
+            # a review lens — that message is the ceiling hold's OWN printed remedy, so acting on it
+            # sends the reader to pick a different fact for a reason that is not true.
+            if _idx_unreadable:
+                print(f"evict: '{evict}' CANNOT BE PRICED — the store index could not be READ, so "
+                      f"whether it carries a pointer line is UNKNOWN, not absent. Repair MEMORY.md "
+                      f"and re-run; do not conclude the fact is unindexed.", file=sys.stderr)
+            else:
+                print(f"evict: '{evict}' has no pointer line in the live index — evicting it frees NOTHING "
+                      "(freed is MEASURED from MEMORY.md, never derived from frontmatter). Pick an indexed fact.",
+                      file=sys.stderr)
+            return _done(1)
         plan_evict = _plan_pull(items, seed_idx - freed, allow_net_grow, budget=INDEX_CEILING_TOKENS)
         gain = [n for n in plan_evict["pull"] if n not in set(plan["pull"])]
         displaced = [n for n in plan["pull"] if n not in set(plan_evict["pull"])]

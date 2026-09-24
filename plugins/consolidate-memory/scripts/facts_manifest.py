@@ -90,7 +90,7 @@ def invalidate_all(plugin_data_dir: Path) -> int:
 
 @functools.lru_cache(maxsize=8)
 def _secret_pred_keyed(secret_pat: str, secret_flags: str, blob_pat: str, blob_flags: str,
-                       seg_floor: str, fn_bodies: "tuple[str, ...]") -> str:
+                       seg_floor: str, read_cap: str, fn_bodies: "tuple[str, ...]") -> str:
     """The identity for one exact predicate INPUT VECTOR — memoised, and keyed on the vector.
 
     ⚠ Keyed, not argument-less. A bare `lru_cache` on `secret_pred()` would be correct in
@@ -100,7 +100,7 @@ def _secret_pred_keyed(secret_pat: str, secret_flags: str, blob_pat: str, blob_f
     the values keeps both: the collision is per distinct predicate, and two calls in one process
     with the same predicate still cost one hash.
     """
-    parts = [secret_pat, secret_flags, blob_pat, blob_flags, seg_floor, *fn_bodies]
+    parts = [secret_pat, secret_flags, blob_pat, blob_flags, seg_floor, read_cap, *fn_bodies]
     return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
@@ -176,8 +176,19 @@ def secret_pred() -> str:
             _bodies.append(f"<source-unavailable:{_fn.__module__}.{_fn.__qualname__}>")
     # the memo is keyed on the VECTOR, so two calls in one process with the same predicate cost
     # one hash and a changed predicate still produces a different identity — see `_secret_pred_keyed`
+    # ⚠ `_READ_CAP` IS PART OF THE PREDICATE, not a detail of the reader. It decides HOW MUCH of
+    # each file `_looks_secret` ever sees, so two builds with different caps answer a different
+    # question about the same bytes — and a row built under one is not evidence about the other.
+    # MEASURED by a review lens: a 4 MiB-truncating build and a failing-open build produce
+    # `secret: False` and a refusal respectively for the SAME file, and with the cap outside the
+    # identity a cached truncated row was served end-to-end (the pull landed the fact, credential
+    # and all). ⚠ What protected existing installs was that every pre-fix writer's identity
+    # happened to differ for OTHER reasons — an incidental barrier, unstated and untested, which
+    # the moment the identity stabilises would silently become no barrier at all. Hashing the cap
+    # makes it structural: a change in how much is read invalidates the verdicts read under it.
     return _secret_pred_keyed(_SECRET.pattern, str(_SECRET.flags), _BLOB.pattern,
-                              str(_BLOB.flags), str(_ENTROPY_SEG_FLOOR), tuple(_bodies))
+                              str(_BLOB.flags), str(_ENTROPY_SEG_FLOOR), str(_READ_CAP),
+                              tuple(_bodies))
 
 
 # ⚠ The reasons `ensure` must not ACT on. An allow-list that silently defaults to "do not rebuild"
@@ -297,27 +308,45 @@ def build(facts_dir: Path) -> "tuple[list, str]":
     return rows, domain
 
 
+def _miss(reason: str) -> "tuple[None, str]":
+    """A cache miss, with its REBUILDABILITY DECLARED AT THE PRODUCER — or refused.
+
+    ⚠ The classification used to be a check (`reason not in _NONREBUILDABLE`) with an implicit
+    default, so a NEW terminal reason was classified by FALLING THROUGH rather than by anyone
+    deciding: safe by direction, silent by construction. Every `return None, <reason>` in `load`
+    now goes through here, and an undeclared reason RAISES on its first call — at the producer,
+    naming itself — instead of quietly acquiring `global.lock` and rebuilding.
+    ⚠ Raised, not warned: a warning on a hot path is a line nobody reads, and this fires exactly
+    once per reason (a developer's first run), never in production.
+    """
+    if reason not in _NONREBUILDABLE and reason not in _REBUILDABLE:
+        raise AssertionError(
+            f"unclassified cache-miss reason {reason!r} — declare it in _REBUILDABLE or "
+            f"_NONREBUILDABLE before `ensure` can act on it")
+    return None, reason
+
+
 def load(facts_dir: Path, plugin_data_dir: Path):
     """(rows_by_stem | None, reason). None = fail open (full enumeration)."""
     if os.environ.get(KILL_SWITCH) == "0":
-        return None, "kill-switch"
+        return _miss("kill-switch")
     domain = Path(facts_dir).parent.name
     p = manifest_path(plugin_data_dir, domain)
     try:
         raw = p.read_text(encoding="utf-8")
     except OSError:
-        return None, "absent"
+        return _miss("absent")
     try:
         doc = json.loads(raw)
     except (ValueError, TypeError):
-        return None, "unparseable"
+        return _miss("unparseable")
     if not isinstance(doc, dict) or doc.get("schema_version") != SCHEMA_VERSION:
-        return None, "schema"
+        return _miss("schema")
     if str(doc.get("domain") or "") != domain:
-        return None, "domain-mismatch"
+        return _miss("domain-mismatch")
     files = doc.get("files")
     if not isinstance(files, list):
-        return None, "files-shape"
+        return _miss("files-shape")
     # ⚠ No rows to check ⇒ no verdicts to bind, so the identity is not computed at all. Same
     # reason as `build`'s lazy `_PRED`: `_rebuild_locked` legitimately writes `files: []` for a
     # missing facts dir, and every later load of that domain would otherwise hash ~16 KB of source
@@ -328,18 +357,18 @@ def load(facts_dir: Path, plugin_data_dir: Path):
     rows: dict = {}
     for r in files:
         if not isinstance(r, dict):
-            return None, "row-shape"
+            return _miss("row-shape")
         stem = str(r.get("stem") or "").strip()
         fm = r.get("fm")
         if not stem or not isinstance(fm, dict):
-            return None, "row-fields"
+            return _miss("row-fields")
         # ⚠ The verdict's PRODUCER must still be the one that produced it. A row from before a
         # firewall change carries a foreign `secret_pred`; serving it would keep a wrongly-flagged
         # canonical flagged (and withheld or GC'd) long after the predicate was repaired. Failing
         # open rebuilds — the module's stated posture ("can slow you down but never serves wrong
         # facts"), applied to the predicate half of "wrong" that the file keys could not see.
         if str(r.get("secret_pred") or "") != _now:
-            return None, "predicate-changed"
+            return _miss("predicate-changed")
         rows[stem] = r
     return rows, ""
 

@@ -1759,8 +1759,16 @@ def _refresh_post_state(record: "ms.CycleRecord", store: Path) -> None:
     try:
         local = ms.store_local_index(store)
         if not local["index_path"].is_file():
-            print("render_dashboard: post-state refresh skipped (no MEMORY.md in the store)",
-                  file=sys.stderr)
+            # ⚠ THE MESSAGE NAMED THE WRONG FAULT. `is_file()` is False for an ABSENT index AND for
+            # one that is a DIRECTORY (or mode-000, or a dangling symlink) — and this said "no
+            # MEMORY.md in the store" for all of them, sending the operator after an ABSENCE when
+            # the file is sitting right there, unreadable. That is a fault spelled as an absence,
+            # which is the one thing the third state exists to stop. The two are told apart here.
+            _ip = local["index_path"]
+            _why = ("no MEMORY.md in the store" if not _ip.exists()
+                    else "MEMORY.md EXISTS but is not a readable file — its size is UNKNOWN, not "
+                         "zero, and the post-state was NOT refreshed")
+            print(f"render_dashboard: post-state refresh skipped ({_why})", file=sys.stderr)
             return
         il = local["index_lb"]
         hooks = local["index_hooks"]

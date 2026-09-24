@@ -23666,12 +23666,16 @@ try:
     _load_fn_rb = next(n for n in _ast_rb.walk(_ast_rb.parse(
         (ROOT / "plugins" / "consolidate-memory" / "scripts" / "facts_manifest.py"
          ).read_text(encoding="utf-8")) )if isinstance(n, _ast_rb.FunctionDef) and n.name == "load")
-    _reasons_rb = sorted({e[1].value for n in _ast_rb.walk(_load_fn_rb)
-                          if isinstance(n, _ast_rb.Return)
-                          and isinstance(n.value, _ast_rb.Tuple) and len(n.value.elts) == 2
-                          for e in [n.value.elts]
-                          if isinstance(e[1], _ast_rb.Constant) and isinstance(e[1].value, str)
-                          and e[1].value})
+    # ⚠ The reasons are read off `_miss("<reason>")` — the PRODUCER's declaration — and NOT off
+    # `return None, "<reason>"`. v0.4.50 moved every mint through `_miss`, which raises on an
+    # undeclared reason, so this pin now checks the SAME source `ensure` acts on rather than a
+    # spelling that happened to sit beside it. (It also stays honest if a return is written some
+    # other way: no `_miss`, no reason, and the count below reddens.)
+    _reasons_rb = sorted({n.args[0].value for n in _ast_rb.walk(_load_fn_rb)
+                          if isinstance(n, _ast_rb.Call) and isinstance(n.func, _ast_rb.Name)
+                          and n.func.id == "_miss" and n.args
+                          and isinstance(n.args[0], _ast_rb.Constant)
+                          and isinstance(n.args[0].value, str) and n.args[0].value})
 except Exception:
     _reasons_rb = []
 check("v0.4.45 review (PIN, structural): EVERY reason `load()` returns is classified — in "
@@ -24055,6 +24059,96 @@ with _tf43.TemporaryDirectory() as _td_ir48:
           "refusal did not swallow the two ordinary cases",
           _ir_ok[0] != "" and _ir_ok[1] == "" and _ir_absent == ("", ""))
 
+# --- v0.4.50 (PIN, structural): NO consumer reads a fault key through `.get(...)` ---------------
+# `memory_status` states the rule at the producer — "PLAIN INDEXING … never `.get(k, False)`. A
+# default here is a SECOND silent default stacked on the producer's, and it defaults to the
+# DANGEROUS value: a rename or a dropped key would read as 'measured and healthy' with nothing
+# failing. A KeyError names the site; `False` hides it." — and then did the opposite at NINE
+# consumer sites, every one defaulting to healthy. ⚠ LATENT today: `build_context` is the only
+# production ctx producer and it plain-indexes too, so a dropped key raises there first. But the
+# invariant lived at the PRODUCER, not at the consumers the comment claims enforce it, so a second
+# ctx producer, a ctx fixture or a round-trip would flip all nine with nothing failing. A coverage
+# lens measured that no check pinned the rule; this one does, off the AST so a reflow cannot hide.
+try:
+    import ast as _ast_fk
+    _FAULT_KEYS = ("index_fault", "global_claude_md_fault", "repo_fault_names")
+    _defaulted_fk = [
+        n.lineno for n in _ast_fk.walk(_ast_fk.parse(
+            (ROOT / "plugins" / "consolidate-memory" / "scripts"
+             / "memory_status.py").read_text(encoding="utf-8")))
+        if isinstance(n, _ast_fk.Call) and isinstance(n.func, _ast_fk.Attribute)
+        and n.func.attr == "get" and n.args
+        and isinstance(n.args[0], _ast_fk.Constant) and n.args[0].value in _FAULT_KEYS]
+except Exception:
+    _defaulted_fk = [-1]
+check("v0.4.50 (PIN, structural): no consumer reads a fault key through `.get(...)` — every one "
+      "indexes directly, so a producer that stops writing the key raises AT THE SITE rather than "
+      "silently reading as 'no fault' (pre-fix: nine such defaults, all defaulting to healthy)",
+      _defaulted_fk == [])
+
+# --- v0.4.50: THE ADVERSARIAL REMAINDER ---------------------------------------------------------
+# (a) `classify_store_doc`'s THIRD answer. `_is_archive_index`'s `except OSError: return False`
+# spent "could not classify" as "is a fact": MEASURED, MEMORY.md + one real fact + `adir.md/` gave
+# `fact_files` length 2, which `seed_record` wrote out as `recall_facts.before/after`, and
+# `schema_drift` reported `missing_node_type: 1` — a drift finding manufactured by a directory.
+with _tf43.TemporaryDirectory() as _td_cs50:
+    _st_cs50 = Path(_td_cs50) / "m"; _st_cs50.mkdir()
+    (_st_cs50 / "MEMORY.md").write_text("# Memory Index\n\n", encoding="utf-8")
+    (_st_cs50 / "real-fact.md").write_text("---\nname: a\ndescription: d\n---\nb\n", encoding="utf-8")
+    (_st_cs50 / "adir.md").mkdir()
+    _loc_cs50 = ms.store_local_index(_st_cs50)
+    check("v0.4.50 (PIN): an unclassifiable store doc is counted as NEITHER a fact nor an archive "
+          "index — it cannot inflate the recall count or manufacture a drift finding (pre-fix: "
+          "`except OSError: return False` spent it as a FACT)",
+          [f.name for f in _loc_cs50["fact_files"]] == ["real-fact.md"]
+          and [p.name for p in _loc_cs50["unclassifiable_docs"]] == ["adir.md"])
+    # (b) `claude_md_hierarchy`'s swallowed OSError — the row VANISHED when the only CLAUDE.md was
+    # the unreadable one (`total_files` stayed 0), which is the absent/unreadable confusion again.
+    with _tf43.TemporaryDirectory() as _td_h50:
+        _pr50 = Path(_td_h50) / "proj"; _pr50.mkdir()
+        (_pr50 / "CLAUDE.md").mkdir()
+        _hier50 = ms.claude_md_hierarchy(_pr50)
+        check("v0.4.50 (PIN): an unreadable CLAUDE.md is REPORTED, not skipped — its cost is "
+              "UNKNOWN, so the hierarchy cannot present a confident total that silently omits it",
+              # ⚠ `.get`, not `[...]` — the key is NEW, and a KeyError inside the check EXPRESSION
+              # raises at module scope and truncates the run. ELEVENTH occurrence of this trap on
+              # the arc; guarded before the pre-fix measurement that found it.
+              _hier50.get("unreadable_count") == 1 and _hier50["total_files"] == 0
+              and (_hier50.get("unreadable") or [{}])[0].get("path", "").endswith("CLAUDE.md"))
+# (c) the identity covers the READ CAP — the barrier that protected existing installs was that
+# pre-fix writers happened to differ for OTHER reasons: incidental, unstated, untested.
+# ⚠ `getattr`/`setattr` rather than attribute access: the constant is new, and a bare reference
+# to it is a RED-BY-ABSENCE crash on the pre-fix tree — the trap this arc has hit ten times.
+_cap50 = getattr(_fm44, "_READ_CAP", None)
+if _cap50 is None:
+    _id50a = _id50b = "<no-cap>"
+else:
+    try:
+        _id50a = _fm44.secret_pred()
+        setattr(_fm44, "_READ_CAP", _cap50 - 1)
+        _id50b = _fm44.secret_pred()
+    finally:
+        setattr(_fm44, "_READ_CAP", _cap50)
+check("v0.4.50 (PIN): the firewall identity covers `_READ_CAP` — how MUCH of each file the "
+      "predicate sees is part of the predicate, so a row built under a different cap is refused "
+      "rather than served (pre-fix: the cap sat outside the payload and the identity was "
+      "byte-identical across a change in what it had actually read)",
+      _id50a != _id50b and _cap50 is not None and _fm44.secret_pred() == _id50a)
+# (d) `_miss` — the producer DECLARES a reason's rebuildability, or raises naming it.
+_miss50 = getattr(_fm44, "_miss", None)
+_raised50: "bool | None"
+try:
+    _miss50("zz-undeclared") if _miss50 else None
+    _raised50 = False
+except AssertionError:
+    _raised50 = True
+except Exception:
+    _raised50 = None
+check("v0.4.50 (PIN): an UNDECLARED cache-miss reason RAISES at the producer rather than falling "
+      "through to a silent rebuild — so a new terminal arm cannot acquire `global.lock` without "
+      "someone deciding it should (pre-fix: `ensure`'s default was the only classifier)",
+      _raised50 is True and _miss50 is not None and _miss50("absent") == (None, "absent"))
+
 # --- v0.4.45 review: the SEED RELAY, which nothing pinned ------------------------------------
 # The existing v0.4.45 PIN asserts the PRODUCER (`store_local_index(...)["index_fault"]`). Nothing
 # asserted that the record LEAF is actually reached — so deleting the relay in `seed_record` left
@@ -24396,6 +24490,18 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 4        # v0.4.50 — the adversarial remainder: 1 PIN (an
+                                       #     unclassifiable doc is neither fact nor archive) + 1
+                                       #     PIN (an unreadable CLAUDE.md is reported, not
+                                       #     skipped) + 1 PIN (the identity covers `_READ_CAP`) +
+                                       #     1 PIN (`_miss` raises on an undeclared reason). ⚠ The
+                                       #     first two are the SAME defect at two readers — "could
+                                       #     not tell" spent as one of the two answers.
+                            + 1        # v0.4.50 — the fault keys are read by PLAIN INDEXING: a
+                                       #     structural PIN that no consumer reaches a fault key
+                                       #     through `.get(...)`, so a missing key raises at the
+                                       #     site instead of reading as "no fault". Nine such
+                                       #     defaults existed, every one defaulting to healthy.
                             + 1        # v0.4.49 — the archive's KPI strip and index meter take the
                                        #     third state, told apart from "not captured". ⚠ Its
                                        #     BEHAVIOURAL arm lives in tests/dashboard_browser.py
