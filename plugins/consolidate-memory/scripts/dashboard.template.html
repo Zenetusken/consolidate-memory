@@ -1018,7 +1018,12 @@
   function fmt(n){n=Math.round(num(n));var s=n<0?"-":"";n=Math.abs(n);return s+(n>=1000?(n/1000).toFixed(n>=10000?0:1)+"k":String(n));}
   function tok(n){n=Math.round(num(n));return n>=10000?fmt(n):String(n);}
   function pct(a,b){return b>0?Math.round(100*a/b):0;}
-  function idxTok(r){var t=g(r,"budget.index.after_tokens",null);if(t==null)t=g(r,"budget.index.before_tokens",null);return t==null?null:num(t,0);}
+  // ⚠ `null` for an UNMEASURABLE record, so `carryFwd` CARRIES FORWARD the last real measurement
+  // instead of treating the fault's 0 as one. Without this the trajectory reads 0 for a store
+  // nobody could measure and forecasts a breach from a file it never opened — the same
+  // unknown-spent-as-a-number the meter, the report and the record leaf were all repaired for.
+  function idxTok(r){if(truthy(g(r,"budget.index.unmeasurable",false)))return null;
+    var t=g(r,"budget.index.after_tokens",null);if(t==null)t=g(r,"budget.index.before_tokens",null);return t==null?null:num(t,0);}
   function recallN(r){var n=g(r,"budget.recall_facts.after",null);if(n==null)n=g(r,"budget.recall_facts.before",null);return n==null?null:num(n,0);}
   function magnitude(r){return num(g(r,"scope.git_commits",0))+num(g(r,"scope.session_candidates",0));}
   function sameCycle(a,b){return !!(a&&b&&g(a,"marker.commit","x")===g(b,"marker.commit","y")&&g(a,"marker.timestamp","x")===g(b,"marker.timestamp","y"));}
@@ -1293,6 +1298,10 @@
     // (the kpi() `d` slot injects raw; model-authored names carry angle-bracket content).
     var unvNamesK=(Array.isArray(CUR.entries)?CUR.entries:[]).filter(function(e){return e&&typeof e.reason==='string'&&e.reason.indexOf('unverifiable:')===0;}).map(function(e){return e.name==null?'?':esc(String(e.name));});
     var unvSub=(v.unverifiable==null?"unverifiable: not captured":num(v.unverifiable)+" unverifiable"+(unvNamesK.length?" — "+unvNamesK.slice(0,3).join(", ")+(unvNamesK.length>3?" +"+(unvNamesK.length-3)+" more":""):""));
+    // ⚠ The fault does NOT need an arm here: `idxTok(CUR)` returns null for an unmeasurable record
+    // (see its own note), and the `idxTok(CUR)==null` block below OVERWRITES both this KPI and
+    // `#m-index`. Handling it in one place — the block that wins — is deliberate: an arm here is
+    // overwritten a few hundred lines later, so it would read as a repair while changing nothing.
     el("kpis").innerHTML=
       kpi(pct(num(ix),idxb)+'<small>%</small>', "index vs target", tok(num(ix))+" / "+tok(idxb),
           ceilK?"var(--crit)":(io&&!sjK)?"var(--crit)":(io?"var(--warn)":null))
@@ -1492,12 +1501,27 @@
     [].slice.call(box.querySelectorAll(".nm-diff")).forEach(function(b){b.addEventListener("click",function(){openDiff(b.getAttribute("data-p"));});});
   })();
 
+  // ⚠ TWO reasons reach this branch and they are NOT the same fact. A LEGACY record simply did not
+  // capture the index; a FAULTED one captured it and could not READ it. `idxTok` returns null for
+  // both (it must — neither has a usable number), so the branch has to ask which, and "Not
+  // captured" for the second is a different wrong answer: it sends the reader to the RECORD when
+  // the repair is in the STORE. This is also the block that WINS — it overwrites the KPI strip and
+  // `#m-index` a few hundred lines after they are painted — which is why the fault is handled HERE
+  // and not in the KPI builder, where an arm would be silently replaced.
+  var idxUnm=truthy(g(CUR,"budget.index.unmeasurable",false));
   if(idxTok(CUR)==null){
-    el("lead-head").textContent="The memory index was not measured in this record.";
-    el("lead-sub").textContent="Historical values may still appear in the chart. No current budget status can be inferred.";
-    el("m-index").innerHTML='<div class="panel-lead">Memory index</div><div class="cap">Not captured this pass</div>';
-    el("kpis").children[0].querySelector(".n").textContent="—";
-    el("kpis").children[0].querySelector(".d").textContent="Not captured";
+    el("lead-head").textContent=idxUnm
+      ?"The memory index could not be READ — its size is UNKNOWN, not zero."
+      :"The memory index was not measured in this record.";
+    el("lead-sub").textContent=idxUnm
+      ?"This is NOT an under-budget reading. Repair the store's MEMORY.md and re-run before treating the tier as healthy."
+      :"Historical values may still appear in the chart. No current budget status can be inferred.";
+    el("m-index").innerHTML=idxUnm
+      ?'<div class="panel-lead">Memory index</div><div class="cap">? — unmeasurable</div>'
+      :'<div class="panel-lead">Memory index</div><div class="cap">Not captured this pass</div>';
+    el("kpis").children[0].querySelector(".n").textContent=idxUnm?"?":"—";
+    el("kpis").children[0].querySelector(".d").textContent=idxUnm
+      ?"UNMEASURABLE — could not be read; this is not a 0":"Not captured";
   }
   if(recallN(CUR)==null)el("kpis").children[1].querySelector(".n").textContent="—";
   var savedAt=g(CUR,"marker.timestamp",null),savedDate=savedAt?new Date(savedAt):null;

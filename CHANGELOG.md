@@ -5,6 +5,33 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.49] — 2026-09-24
+
+**Patch — the archive's KPI strip, and the third site of the EACCES family.**
+
+1. **The end-user archive's KPI strip and index meter.** `unmeasurable` reached the archive's
+   **meter** in 0.4.46 but not its **KPI**, nor `idxTok` — the reader behind both the trajectory
+   and the `idxTok(CUR)==null` block. So an index nobody could read still rendered a confident
+   green `0% · index vs target · 0 / 1500` on the tile a reader scans first, and the trajectory
+   forecast a breach from the failed read's zero. `idxTok` now returns `null` for an unmeasurable
+   record, so `carryFwd` **carries the last real measurement forward**, and the `null` block — the
+   one that **wins**, repainting both the KPI and `#m-index` hundreds of lines later — now tells
+   *"could not be READ"* apart from *"not captured"*. Those are two different facts pointing at two
+   different places: the **store** versus the **record**. ⚠ Handled in the block that wins rather
+   than in the KPI builder, where an arm would have been silently overwritten.
+
+2. **`gc` refused to write without a revision precondition.** The third site of the family
+   `measure_or_fault` documents — *"`Path.exists` itself re-raises anything outside
+   ENOENT/ENOTDIR/EBADF/ELOOP — EACCES among them"*: `is_file()` does not follow from `exists()`,
+   and the hash reads bytes. It now uses the same `_index_revision` helper as the pull path and
+   refuses by exit code rather than proceeding precondition-less.
+
+⚠ **Both were found only because a lens tested the FIXTURE, not the code**: it mutated the
+archive's `"fault"` meter sentinel to `false` and **both suites stayed green**, because no fixture
+carried an `unmeasurable` key anywhere. The browser suite now builds a faulted page from the
+sample record — a flag, not an extra cycle, since `#sel=N` is hardcoded at 22 sites with `7` as the
+last cycle — giving the third state a behavioural arm (1340 checks, up from 1336).
+
 ## [0.4.48] — 2026-09-24
 
 **Patch — a live firewall leak, a permanently-cold cache, and a crash on the escape path.**

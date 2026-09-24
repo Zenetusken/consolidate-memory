@@ -248,6 +248,31 @@ def main(out,capture=False):
         check('Deep Field is the default under a light system preference',page.locator('body').evaluate('e=>getComputedStyle(e).backgroundColor')=='rgb(4, 7, 14)')
         check('summary follows header KPIs and precedes network',page.evaluate("document.querySelector('#dream-blk').previousElementSibling.id==='kpis' && document.querySelector('#dream-blk').nextElementSibling.id==='network-blk'"))
         check('stable section hooks are retained',all(page.locator('#'+s).count()==1 for s in ['traj','trend','rigor','dream-blk','pass-blk','network-blk','history-blk','entries-blk','audit','verify','dream-arc','net-chips','net-detail']))
+        # ⚠ THE THIRD STATE — and the reason this check exists at all. MEASURED by a coverage lens:
+        # mutating the `"fault"` meter sentinel to `var fault=false` left BOTH suites green,
+        # because no fixture carried an `unmeasurable` key anywhere, so the arm was unreachable and
+        # the end-user archive drew a confident green `0% · 0/1500` for an index nobody could read.
+        # The page is built HERE rather than added to `sample()`: a faulted cycle there would change
+        # the cycle COUNT, and `#sel=N` is hardcoded at 22 sites with `7` as the last cycle.
+        check('a MEASURED index still shows its percentage (the control for the fault below)',
+              page.evaluate("()=>{var k=document.querySelector('#kpis').textContent;"
+                            "return k.indexOf('%')>=0 && k.indexOf('UNMEASURABLE')<0;}"))
+        _ft = json.loads(json.dumps(record))
+        for _b in ("index", "claude_md", "global_claude_md"):
+            _ft["budget"][_b]["unmeasurable"] = True
+        fixture('faulted-gauges', _ft, cycles=[_ft])
+        check('an UNMEASURABLE index is never drawn as a confident number — not on the KPI strip '
+              '(the first thing a reader scans) and not on the meter',
+              page.evaluate("()=>{var k=document.querySelector('#kpis');var m=document.querySelector('#m-index');"
+                            "var kt=k?k.textContent:'';var mt=m?m.textContent:'';"
+                            "return kt.indexOf('UNMEASURABLE')>=0 && mt.indexOf('%')<0 "
+                            "&& mt.toLowerCase().indexOf('unmeasurable')>=0;}"))
+        # ⚠ `fixture()` NAVIGATES the shared page, and every check after this one assumes the
+        # default `#sel=7` view — measured: without this restore, the very next check ("opening the
+        # current dream reveals and focuses its summary", which asserts `#sel=7`) failed, because
+        # it was looking at the faulted page. A check that leaves the page somewhere else is a
+        # check that breaks its neighbours.
+        ready(preview.as_uri()+'#sel=7')
         # v0.4.35 (RC-3): the expectation moved with the matcher. Selection 7 is the fixture's
         # LAST cycle, whose entries are `added, reconciled, corrected, skipped`; the ladder used
         # to count three of those five names, read 2 writes, and stamp LIGHT PASS. `reconciled`

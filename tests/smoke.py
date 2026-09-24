@@ -23933,6 +23933,18 @@ check("v0.4.45 adversarial (PIN): the HTML archive's CLAUDE.md meters consult th
       "truthy(cmB.unmeasurable)" in _TEMPLATE_SRC_45
       and "truthy(gcm.unmeasurable)" in _TEMPLATE_SRC_45
       and "truthy(gcm.present)||truthy(gcm.unmeasurable)" in _TEMPLATE_SRC_45)
+# ⚠ v0.4.49 — the KPI strip and the index meter. `idxTok` yields `null` for an unmeasurable record
+# so the trajectory CARRIES FORWARD the last real measurement instead of forecasting from a failed
+# read's zero, and the `idxTok(CUR)==null` block — the one that WINS, repainting both the KPI and
+# `#m-index` a few hundred lines later — tells "could not be READ" apart from "not captured". Those
+# are two different facts pointing at two different places: the STORE versus the RECORD.
+_T45_KPI = _TEMPLATE_SRC_45.replace(" ", "")
+check("v0.4.49 (PIN): the archive's KPI strip and index meter take the third state — `idxTok` "
+      "returns null for an unmeasurable record, and the winning `null` block names the READ "
+      "failure rather than reporting it as an uncaptured field",
+      'truthy(g(r,"budget.index.unmeasurable",false))' in _T45_KPI
+      and 'idxUnm?"?":"—"' in _T45_KPI
+      and "UNMEASURABLE — could not be read; this is not a 0" in _TEMPLATE_SRC_45)
 
 # --- v0.4.45 review: the PULL's index seed, where the same unknown costs a WRITE ----------------
 # `_safe_read_text` collapses ABSENT and UNREADABLE into None (right for the scan it was factored
@@ -24384,6 +24396,12 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 1        # v0.4.49 — the archive's KPI strip and index meter take the
+                                       #     third state, told apart from "not captured". ⚠ Its
+                                       #     BEHAVIOURAL arm lives in tests/dashboard_browser.py
+                                       #     (1340 checks, its own CI job) — this text pin exists
+                                       #     because the primary gate must not depend on a second
+                                       #     job running.
                             + 4        # v0.4.48 — 2 PINs + 2 CONTROLS: the firewall's cap now
                                        #     bounds the EMIT as well as the scan (a credential
                                        #     behind 5,000 filler chars was emitted VERBATIM and is

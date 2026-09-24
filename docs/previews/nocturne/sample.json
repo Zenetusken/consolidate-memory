@@ -90,19 +90,22 @@
         "cliff_pct": 15,
         "fat_hooks": 0,
         "before_bytes": 4224,
-        "after_bytes": 3936
+        "after_bytes": 3936,
+        "unmeasurable": false
       },
       "claude_md": {
         "before_tokens": 1860,
         "after_tokens": 1820,
         "budget_tokens": 4000,
-        "over": false
+        "over": false,
+        "unmeasurable": false
       },
       "global_claude_md": {
         "present": true,
         "tokens": 720,
         "budget_tokens": 4000,
-        "over": false
+        "over": false,
+        "unmeasurable": false
       },
       "claude_md_hierarchy": {
         "total_files": 2,
@@ -747,19 +750,22 @@
           "cliff_pct": 10,
           "fat_hooks": 0,
           "before_bytes": 2160,
-          "after_bytes": 2480
+          "after_bytes": 2480,
+          "unmeasurable": false
         },
         "claude_md": {
           "before_tokens": 2140,
           "after_tokens": 2100,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "global_claude_md": {
           "present": true,
           "tokens": 720,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "claude_md_hierarchy": {
           "total_files": 2,
@@ -1396,19 +1402,22 @@
           "cliff_pct": 12,
           "fat_hooks": 0,
           "before_bytes": 2480,
-          "after_bytes": 2960
+          "after_bytes": 2960,
+          "unmeasurable": false
         },
         "claude_md": {
           "before_tokens": 2100,
           "after_tokens": 2060,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "global_claude_md": {
           "present": true,
           "tokens": 720,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "claude_md_hierarchy": {
           "total_files": 2,
@@ -2047,19 +2056,22 @@
           "cliff_pct": 14,
           "fat_hooks": 0,
           "before_bytes": 2960,
-          "after_bytes": 3640
+          "after_bytes": 3640,
+          "unmeasurable": false
         },
         "claude_md": {
           "before_tokens": 2060,
           "after_tokens": 2020,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "global_claude_md": {
           "present": true,
           "tokens": 720,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "claude_md_hierarchy": {
           "total_files": 2,
@@ -2698,19 +2710,22 @@
           "cliff_pct": 18,
           "fat_hooks": 0,
           "before_bytes": 3640,
-          "after_bytes": 4480
+          "after_bytes": 4480,
+          "unmeasurable": false
         },
         "claude_md": {
           "before_tokens": 2020,
           "after_tokens": 1980,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "global_claude_md": {
           "present": true,
           "tokens": 720,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "claude_md_hierarchy": {
           "total_files": 2,
@@ -3349,19 +3364,22 @@
           "cliff_pct": 17,
           "fat_hooks": 0,
           "before_bytes": 4480,
-          "after_bytes": 4320
+          "after_bytes": 4320,
+          "unmeasurable": false
         },
         "claude_md": {
           "before_tokens": 1980,
           "after_tokens": 1940,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "global_claude_md": {
           "present": true,
           "tokens": 720,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "claude_md_hierarchy": {
           "total_files": 2,
@@ -4000,19 +4018,22 @@
           "cliff_pct": 19,
           "fat_hooks": 0,
           "before_bytes": 4320,
-          "after_bytes": 4800
+          "after_bytes": 4800,
+          "unmeasurable": false
         },
         "claude_md": {
           "before_tokens": 1940,
           "after_tokens": 1900,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "global_claude_md": {
           "present": true,
           "tokens": 720,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "claude_md_hierarchy": {
           "total_files": 2,
@@ -4651,19 +4672,22 @@
           "cliff_pct": 16,
           "fat_hooks": 0,
           "before_bytes": 4800,
-          "after_bytes": 4224
+          "after_bytes": 4224,
+          "unmeasurable": false
         },
         "claude_md": {
           "before_tokens": 1900,
           "after_tokens": 1860,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "global_claude_md": {
           "present": true,
           "tokens": 720,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "claude_md_hierarchy": {
           "total_files": 2,
@@ -5302,19 +5326,22 @@
           "cliff_pct": 15,
           "fat_hooks": 0,
           "before_bytes": 4224,
-          "after_bytes": 3936
+          "after_bytes": 3936,
+          "unmeasurable": false
         },
         "claude_md": {
           "before_tokens": 1860,
           "after_tokens": 1820,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "global_claude_md": {
           "present": true,
           "tokens": 720,
           "budget_tokens": 4000,
-          "over": false
+          "over": false,
+          "unmeasurable": false
         },
         "claude_md_hierarchy": {
           "total_files": 2,
