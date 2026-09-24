@@ -40,14 +40,22 @@ against: hardening a display guard for an unreachable input is building ahead of
    comment: `_take` is the single flock path and the ONE policy hook, so a subclass narrowing
    acquisition there is consulted on **both** public forms. A reviewer reproduced the hole in both
    outcomes (free → `True`, busy → `False`, override consulted **zero** times); the subclass census
-   confirms exactly two `class .*FileLock` definitions repo-wide (the base and the suite's `_Boom`),
-   none in production, and no dynamic subclassing.
+   confirms exactly two `class .*FileLock` definitions on the PRE-fix tree (the base and the suite's
+   `_Boom`), none in production, and no dynamic subclassing. ⚠ A lens caught this sentence counting
+   the wrong tree: **this PR adds a third** (`_Policy57`, the `_take` pin below), so the count was
+   false the moment the entry shipped — a self-refuting census inside the item that ships it.
 2. **`release_locks` could strand locks** — `control_plane.py`. `except ImportError` beside `flock`
    caught only that class, so an `OSError` out of `LOCK_UN` propagated out of a **cleanup path** and
-   aborted the LIFO walk (measured: a domain lock stayed **HELD**). Fixed at both enforcement sites —
-   `release()` never raises, and the walk steps past a failing release — because the invariant is "a
-   rollback frees everything it took", and fixing only the primitive leaves it hostage to any future
-   lock type that can raise.
+   aborted the LIFO walk. ⚠ A review lens measured this and found the note here **understated** it:
+   not one lock stranded but **two** — the domain lock *and* the **global** lock, the fleet-wide one
+   every writer blocks on — and the escaping cleanup exception **replaced** the acquire error, so the
+   caller was told the wrong cause. Post-fix all locks free and the caller sees the original error.
+   Fixed at both enforcement sites — the primitive raises for no `flock`/`close` failure, and the
+   walk steps past a failing release — because the invariant is "a rollback frees everything it
+   took", and fixing only the primitive leaves it hostage to any future lock type that can raise.
+   ⚠ The primitive's catch is `ImportError`/`OSError`, which is *every* failure `flock`/`close`
+   produce on a valid fd — **not** a bare "never raises": a `ValueError` out of `fileno()` would
+   still escape, no route in this tree reaches it, and the docstring says so rather than over-claiming.
 3. **`cm doctor` could not name its own skipped cache write** — `cm_ops.py`. Its `run_and_cache` call
    sat in **statement position**, so the reason token returned since v0.4.56 was discarded: the one
    decline site that could not explain a cold cache, on the command the preflight note sends users to.
@@ -102,6 +110,35 @@ against: hardening a display guard for an unreachable input is building ahead of
     measured population behind it (382–534 wrapped spans across `docs/`, matcher- and scope-dependent),
     so it is deliberately not widened here.
 
+### ⚠ Found by the review, and fixed here: the positional class has SIBLINGS
+
+The `cm data` fix above was one parser. A lens swept every `add_subparsers` block and found **4
+parsers / 8 silently-accepted choices** — each uses a flat `choices=[...]` sharing ONE set of
+positionals, so a positional is accepted for every choice and read by only some. `cm project show`
+is correct (its positional is meaningful for all its choices), so the defect is **per-parser** and a
+CLI-wide fix is not available.
+
+The worst is strictly worse than what this entry led with — a **wrong-project WRITE**, measured:
+
+```
+cwd=projA(alpha)   cm local rebuild-index <projB> --apply --confirm rebuild-local-index
+  rc=0   projA/MEMORY.md  bba5e93c -> 2d46da45   <-- REWRITTEN (the WRONG project)
+         projB/MEMORY.md  4c3e28a0 -> 4c3e28a0   <-- untouched (the NAMED project)
+```
+
+`cm local rebuild-index|migrate-schema` and `cm canonical catalog` now refuse a stray exactly as
+`cm data` does (exit 2, naming `--project`). The remaining four (`cm journal` ×3, `cm group` ×2)
+cost only an ignored argument — plugin-data is global and `cmd_group` hardcodes its ctx — so they are
+**recorded, not guarded**: a guard there would be noise without a wrong subject to prevent.
+
+⚠ **And a THIRD enforcement site of the `LOCK_UN` class, untouched.** `preflight.py` bypasses
+`FileLock` with raw `flock`, so `_take` never reaches it — and there the failure mode is worse than a
+silent cleanup: it is a **manufactured verdict**. A faulted `LOCK_UN` becomes a false
+*"N HELD lock file(s) — another process holds the plane; wait or investigate"* advisory, and the
+sqlite probe reports a false `fail` with a disk-space remedy. Measured on both trees. This patch
+justified itself by that exact rarity and fixed the two sites where it is silent; these two are
+recorded as open, because a verdict-shaped fault is a different repair from a cleanup-shaped one.
+
 ### Measured
 
 ⚠ **Every `lock-busy`/`Transient` consumer was censused** by a review lens rather than assumed:
@@ -109,7 +146,7 @@ against: hardening a display guard for an unreachable input is building ahead of
 explicitly), and `try_acquire` has exactly **two** call sites. No other site maps a transient cause
 onto a durable verdict.
 
-Suite: **2326 passed, 0 failed** (was 2319). `mypy`, `docs_links`, `manifests` and the accumulation sim
+Suite: **2328 passed, 0 failed** (was 2319). `mypy`, `docs_links`, `manifests` and the accumulation sim
 all green.
 
 ## [0.4.56] — 2026-09-24

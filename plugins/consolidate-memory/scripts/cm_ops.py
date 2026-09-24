@@ -1021,6 +1021,15 @@ def cmd_repair_mirror(args: argparse.Namespace) -> int:
 def cmd_canonical(args: argparse.Namespace) -> int:
     from canonical_ingress import forget, generate_catalog, set_canonical_status, upsert
     ctx = _ctx(args.project)
+    # ⚠ v0.4.57: `catalog` is the one canonical_cmd that takes no `stem` — the shared positional
+    # silently swallowed a stray, so `cm canonical catalog <projB>` from projA printed ALPHA's
+    # catalog at rc 0 while the argument named beta (measured by the same sweep). Same guard shape
+    # as `cm data` and `cm local`, because the class is per-parser.
+    if args.canonical_cmd == "catalog" and getattr(args, "stem", None):
+        print(f"canonical catalog: unexpected argument {args.stem!r} — `catalog` takes no stem. "
+              f"To point it at a project, spell it `canonical catalog --project {args.stem}`; "
+              f"without that it acts on the current directory.", file=sys.stderr)
+        return 2
     if args.canonical_cmd == "upsert":
         text = Path(args.file).read_text(encoding="utf-8") if args.file else sys.stdin.read()
         origin = ctx.native_memory_dir / f"{args.stem}.md" if args.origin else None
@@ -1098,6 +1107,20 @@ def cmd_local(args: argparse.Namespace) -> int:
                                local_rebuild_index, local_upsert)
     ctx = _ctx(args.project)
     cmd = args.local_cmd
+    # ⚠ v0.4.57: `stem` is a positional shared by EVERY `local_cmd`, and these two take none — so
+    # `cm local rebuild-index <path> --apply` bound the PATH to `stem`, dropped it, and acted on
+    # `--project`'s "." default. MEASURED by a review lens: from projA, naming projB, it REWROTE
+    # projA's `MEMORY.md` and left projB untouched, at rc 0 — a silent WRONG-PROJECT WRITE, strictly
+    # worse than the cache invalidation the `cm data` guard in this same release fixes.
+    # ⚠ The defect is PER-PARSER (a sibling sweep found 4 parsers / 8 silently-accepted choices, and
+    # `cm project show` is correct because its positional IS meaningful for all its choices), so a
+    # CLI-wide fix is not available — each parser states which of its choices reads the positional.
+    if cmd in ("rebuild-index", "migrate-schema") and getattr(args, "stem", None):
+        print(f"local {cmd}: unexpected argument {args.stem!r} — `{cmd}` is a PROJECT-level "
+              f"operation and takes no stem. To point it at a project, spell it "
+              f"`local {cmd} --project {args.stem}`; without that it acts on the current "
+              f"directory.", file=sys.stderr)
+        return 2
     if cmd == "rebuild-index":
         out = local_rebuild_index(
             ctx, apply=bool(args.apply), skip_invalid=bool(args.skip_invalid),

@@ -24567,33 +24567,87 @@ check("v0.4.57 (PIN): an UNDECLARED `ensure` reason RAISES at the producer rathe
 # OSError out of `LOCK_UN` propagated out of a CLEANUP path and aborted `release_locks`' LIFO walk,
 # leaving a domain lock HELD — a wedge, not a wait.
 with _tf43.TemporaryDirectory() as _td_r57:
-    _lkR57 = Path(_td_r57) / "r.lock"
+    _lkR57 = Path(_td_r57) / "r.lock"                    # the RAISER
+    _lkS57 = Path(_td_r57) / "s.lock"                    # the SIBLING that must not strand
     _a57 = _cp56.FileLock(_lkR57); _a57.acquire()
-    _b57 = _cp56.FileLock(Path(_td_r57) / "s.lock"); _b57.acquire()
+    _b57 = _cp56.FileLock(_lkS57); _b57.acquire()
     _orig_un57 = _a57.release
 
     def _boom_release57() -> None:                      # a release that raises, as LOCK_UN can
         _orig_un57()
         raise OSError("stubbed LOCK_UN failure")
     _a57.release = _boom_release57                       # type: ignore[method-assign]
+    # ⚠ ORDER IS THE ENTIRE FIXTURE. `release_locks` walks `reversed(locks)`, so the RAISER must not
+    # be last in list order — if it is, nothing follows it to strand. A review lens measured the
+    # first cut putting it last: both locks read FREE after the escape, so the pin's stated
+    # mechanism ("strands the rest") was unreachable and its red came from the escaping exception
+    # skipping the pin's OWN probe instead. `[_b57, _a57]` reverses to `[_a57, _b57]`: the raiser
+    # runs FIRST and the sibling FOLLOWS it — which is the only order that can exhibit a strand.
     _stranded57 = False
     try:
-        _cp56.release_locks([_a57, _b57])                # the walk must free BOTH despite the raise
-        import fcntl as _fc57
-        _fd57 = open(_lkR57, "a+")
+        _cp56.release_locks([_b57, _a57])
+    except Exception:
+        pass                                             # pre-fix the ESCAPE is the defect, not a stop
+    import fcntl as _fc57
+    try:
+        _fd57 = open(_lkS57, "a+")
         try:
             _fc57.flock(_fd57.fileno(), _fc57.LOCK_EX | _fc57.LOCK_NB)
-            _stranded57 = True
+            _stranded57 = True                           # the SIBLING is free — the walk continued
         except OSError:
-            _stranded57 = False
+            _stranded57 = False                          # the sibling was STRANDED
         finally:
             _fd57.close()
-    finally:
-        _b57.release()
-check("v0.4.57 (PIN): `release_locks` frees every lock even when ONE release raises — the walk "
-      "is the rollback path for a partly-acquired set, so an aborting release strands the rest "
-      "(pre-fix: `except ImportError` caught only that class and the OSError aborted the walk)",
+    except OSError:
+        pass
+    _a57.release = _orig_un57                            # type: ignore[method-assign]
+    _b57.release()
+check("v0.4.57 (PIN): `release_locks` frees the lock that FOLLOWS a failing release — the walk is "
+      "the rollback path for a partly-acquired set, so an aborting release strands everything after "
+      "it (pre-fix: `except ImportError` caught only that class, the OSError escaped the walk, and "
+      "the following lock stayed HELD)",
       _stranded57)
+
+# (2b) PIN — the PRIMITIVE, which (2) above does NOT exercise: it stubs `release` wholesale, so it
+# pins the WALK and would stay GREEN if the `except OSError` inside `FileLock.release` were
+# reverted. A lens measured the gap and named it exactly — a pin that tests its subject's CALLER is
+# not a pin on the subject. This one patches `fcntl.flock` so `LOCK_UN` really fails, then calls
+# `release()` and requires it not to raise.
+with _tf43.TemporaryDirectory() as _td_r57b:
+    _lkP57 = Path(_td_r57b) / "p.lock"
+    _pl57 = _cp56.FileLock(_lkP57)
+    _pl57.acquire()
+    import fcntl as _fc57b
+    _realFlock57 = _fc57b.flock
+    _raised57: "object" = None
+    try:
+        def _flock_un_boom57(fd: int, op: int) -> None:
+            if op == _fc57b.LOCK_UN:
+                raise OSError("stubbed LOCK_UN failure")
+            _realFlock57(fd, op)
+        _fc57b.flock = _flock_un_boom57                    # type: ignore[assignment]
+        _pl57.release()
+    except Exception as _e57b:
+        _raised57 = _e57b
+    finally:
+        _fc57b.flock = _realFlock57
+    _freeP57 = False
+    try:
+        _fdp57 = open(_lkP57, "a+")
+        try:
+            _realFlock57(_fdp57.fileno(), _fc57b.LOCK_EX | _fc57b.LOCK_NB)
+            _freeP57 = True
+        except OSError:
+            _freeP57 = False
+        finally:
+            _fdp57.close()
+    except OSError:
+        pass
+check("v0.4.57 (PIN): `FileLock.release()` ITSELF does not raise when `LOCK_UN` fails, and the "
+      "lock is genuinely FREE afterwards — `close(2)` releases the flock on the same description, "
+      "which a lens measured. ⚠ Its sibling above stubs `release` wholesale and therefore pins the "
+      "WALK; reverting the primitive's own catch leaves that one green",
+      _raised57 is None and _freeP57)
 
 # (3) PIN — the beacon's stdin read is BOUNDED. `json.load(fp)` is `loads(fp.read())`, which reads
 # to EOF, so an OPEN pipe with no writer blocked forever. The shape that isolates it is a pipe
@@ -24682,11 +24736,43 @@ with _tf43.TemporaryDirectory() as _td_p57:
     _pp57.try_acquire()
     _pp57.release()
     _saw_t57 = "take" in _pp57.seen
-check("v0.4.57 (PIN): `_take` is the ONE policy hook — a subclass narrowing acquisition THERE is "
-      "consulted on both `acquire` and `try_acquire`. ⚠ Its sibling finding is NOT fixed and is "
-      "recorded as such: an override of `acquire` alone is still bypassed by the try path, and "
-      "closing that needs the keyword that broke substitutability",
+# ⚠ GUARD, NOT A PIN — and a review lens measured the difference. This is GREEN on the pre-fix
+# tree (both public forms already routed through `_take`; the try path is what v0.4.56 added), so
+# nothing flips and by the rule adopted one round earlier it is a regression guard. ELEVENTH
+# mislabelling on the arc, and the THIRD in a row of the identical shape — a check that reddens
+# nothing on the tree before it, labelled PIN. Its content is nonetheless real and DISCRIMINATING:
+# the lens applied a behaviour-identical rewrite of `try_acquire` that inlines its own flock, and
+# the pin reddened (`_saw_t57` False). ⚠ And its scope is narrower than "the ONE flock path" —
+# that is a census claim, and the census finds raw `flock(` sites OUTSIDE `FileLock` altogether
+# (`preflight.py`), so `_take` is the one flock path WITHIN FileLock, not in the tree.
+check("v0.4.57 (GUARD — green on both trees, and that is the measurement): `_take` is the single "
+      "policy hook WITHIN `FileLock` — a subclass narrowing acquisition there is consulted on both "
+      "`acquire` and `try_acquire`. ⚠ Its sibling finding is NOT fixed and is recorded as such: an "
+      "override of `acquire` alone is still bypassed by the try path, and closing that needs the "
+      "keyword that broke substitutability",
       _saw_a57 and _saw_t57)
+
+# (7) PIN — the SIBLING parsers, found by a review lens sweeping every `add_subparsers` block.
+# `cm data` was one parser; the class is per-parser, because each shares ONE set of positionals
+# across a flat `choices=[...]`. The worst is a WRONG-PROJECT WRITE, measured: from projA, naming
+# projB, `cm local rebuild-index <projB> --apply` REWROTE projA's MEMORY.md and left projB alone.
+_lsib57 = [
+    ("local rebuild-index", ["local", "rebuild-index", str(_pd57)]),
+    ("local migrate-schema", ["local", "migrate-schema", str(_pd57)]),
+    ("canonical catalog", ["canonical", "catalog", str(_pd57)]),
+]
+_sib_ok57 = []
+for _label57, _argv57 in _lsib57:
+    # ⚠ `_pr57`, not `_r57`: that name is the BEACON pin's pipe fd (an int), and reusing it made
+    # mypy read this assignment as int-typed — the CI typecheck caught it, the suite did not.
+    _pr57 = _sp53.run(_cmdD57 + _argv57, capture_output=True, text=True, timeout=60, env=_envd57)
+    _sib_ok57.append(_pr57.returncode == 2 and "unexpected argument" in _pr57.stderr
+                     and "--project" in _pr57.stderr)
+check("v0.4.57 (PIN): the sibling parsers REFUSE a stray positional too — `cm local rebuild-index` "
+      "/ `migrate-schema` / `cm canonical catalog` each exit 2 naming `--project`, where before "
+      "they silently dropped the argument and acted on the CWD (measured: a WRONG-PROJECT WRITE "
+      "to projA's MEMORY.md while the argument named projB)",
+      all(_sib_ok57) and len(_sib_ok57) == 3)
 
 # --- v0.4.54 (PIN): the CACHED ROW'S TWO-PART WARRANT -------------------------------------------
 # A review lens asked whether `load()` re-derives `secret` and found that it does not — "an identity
@@ -25444,7 +25530,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     "where is the lock TAKEN?"; the question was "what is
                                        #     REACHABLE from a read command?". A review lens swept 22
                                        #     read commands under a held lock and found it.
-                            + 7        # v0.4.57 — the open-items PR: 2 structural PINs on the SECOND
+                            + 9        # v0.4.57 — the open-items PR: 2 structural PINs on the SECOND
                                        #     reason vocabulary (`ensure`'s minted tokens are
                                        #     declared, and an undeclared one RAISES at the producer)
                                        #     + 1 PIN that `release_locks` frees every lock even when
@@ -25452,7 +25538,14 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     an open stdin pipe + 1 PIN that `cm doctor --verbose`
                                        #     names its skipped cache write + 1 PIN that a stray
                                        #     positional on `cm data` refuses with its remedy
-                                       #     + 1 PIN that `_take` is the single policy hook
+                                       #     + 1 PIN that the SIBLING parsers refuse a stray too
+                                       #     (`cm local rebuild-index`/`migrate-schema`, `cm
+                                       #     canonical catalog`), where the pre-fix incident was a
+                                       #     measured WRONG-PROJECT WRITE — a review lens swept
+                                       #     every add_subparsers block and found 4 parsers / 8
+                                       #     silently-accepted choices; `cm data` was only one
+                                       #     + 1 PIN on the PRIMITIVE (`release()` itself, not just the
+                                       #     walk its sibling stubs) + 1 PIN that `_take` is the single policy hook
                                        #     (consulted on both forms), which is the convention
                                        #     that makes the `acquire`-override hole survivable.
                                        #     ⚠ The first two exist because the v0.4.45 classifier

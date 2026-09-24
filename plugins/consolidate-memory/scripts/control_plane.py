@@ -1471,17 +1471,27 @@ class FileLock:
             return False
 
     def release(self) -> None:
-        """Release the lock. NEVER raises — see `release_locks`, and the note below.
+        """Release the lock, raising for NO `flock` or `close` failure — see `release_locks`.
 
         ⚠ The `except ImportError` beside `flock` caught ONLY that class, so an `OSError` out of
-        `LOCK_UN` (a corrupt or already-closed fd) propagated out of what is a CLEANUP path. That
-        is load-bearing, not pedantic: `release_locks` walks LIFO and `release` is the only thing
-        it calls, so one raising release ABORTS the walk and strands every lock after it —
-        MEASURED by a review lens with a stubbed `LOCK_UN`: a domain lock stayed HELD.
+        `LOCK_UN` propagated out of what is a CLEANUP path. That is load-bearing, not pedantic:
+        `release_locks` walks LIFO and `release` is the only thing it calls, so one raising release
+        ABORTS the walk and strands every lock after it. MEASURED by a review lens with a stubbed
+        `LOCK_UN`: the DOMAIN lock AND the GLOBAL lock both stayed HELD — and the escaping cleanup
+        exception REPLACED the acquire error, so the caller was told the wrong cause as well.
         ⚠ A cleanup whose failure prevents other cleanups is worse than one that fails quietly.
-        The fd is still closed and `_fd` still cleared on every path, so the object can never be
-        left half-released either — a returning-but-still-held lock is the one outcome this must
-        not produce.
+        ⚠ SCOPE, stated because the first cut of this docstring said "NEVER raises" and a lens
+        measured that as an OVER-CLAIM: this catches `ImportError` and `OSError`, which is every
+        failure `flock`/`close` produce on a VALID fd. It does NOT catch a `ValueError` out of
+        `fileno()` — reachable only when `_fd` is a file object already closed elsewhere, which no
+        route in this tree does (all 19 production `.release()` call sites are bare `finally:`
+        cleanups). A future `finally: lock.release()` written TRUSTING the stronger sentence would
+        inherit the hole, which is why the weaker, true one is here.
+        ⚠ And a swallowed `LOCK_UN` cannot leave the lock held anyway: `_take` opens its OWN
+        description (no `os.dup` in this module), so `close(2)` releases the flock regardless —
+        MEASURED. A returning-but-still-held lock therefore requires `close` to fail TOO; that is
+        the same rarity class this fix was justified by, and unlike the pre-fix case it is silent,
+        so it is named rather than claimed away.
         """
         if self._fd is None:
             return
