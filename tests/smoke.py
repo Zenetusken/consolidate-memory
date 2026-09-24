@@ -9880,18 +9880,26 @@ with _tf_xp.TemporaryDirectory() as _td_l:
         _released = {"n": 0}
 
         class _Boom(cp.FileLock):
-            # ⚠ The signature must track the base — `blocking` was added in v0.4.56 and mypy's
-            # override check caught this subclass still declaring the old one. Kept as a PIN of the
-            # contract: a subclass that silently narrows the signature is how a lock primitive
-            # stops being substitutable.
-            def acquire(self, blocking: bool = True) -> None:
+            # ⚠ This subclass is the EVIDENCE for `try_acquire` being a separate method rather
+            # than `acquire(blocking=...)`. v0.4.56 shipped the keyword, and mypy's override check
+            # immediately caught THIS class declaring the old signature — the exact breakage any
+            # out-of-tree subclass would have hit at a call site, arbitrarily far from its own
+            # definition. A subclass that never heard of `try_acquire` now inherits correct
+            # behaviour.
+            # ⚠ `*args, **kwargs` is TOLERANT OF BOTH TREES, deliberately, and it is the 17th
+            # RED-BY-ABSENCE on this arc. Reverting this signature to the clean `(self)` — correct
+            # on the post-fix tree, since the base no longer takes a keyword — made the PRE-FIX
+            # measurement die at module scope: the pre-fix `acquire_mutation_locks` still calls
+            # `dlock.acquire(blocking=blocking)`, so the double raised TypeError, the suite aborted
+            # at this site, and ZERO checks ran. A pre-fix crash is indistinguishable from a clean
+            # pre-fix tree unless you read the exit code — which is why this is pinned in the
+            # signature rather than reasoned about: accepting MORE than the base is a valid
+            # override on either tree, and mypy agrees.
+            def acquire(self, *args: object, **kwargs: object) -> None:
                 if self.path.name == "global.lock":
                     raise OSError("boom")
-                # ⚠ The base is called WITHOUT the kwarg, deliberately. Forwarding it is a
-                # TypeError on the pre-fix tree (whose `acquire` has no `blocking`), and that crash
-                # is what a first cut of this override produced — it killed the suite at module
-                # scope rather than reddening a check. This double only ever acquires BLOCKING, so
-                # the kwarg is accepted for signature compatibility and not passed on.
+                # NOT forwarded: this double only ever acquires BLOCKING, and forwarding the
+                # keyword would be a TypeError on the post-fix base, which has no such parameter.
                 super().acquire()
 
             def release(self) -> None:
@@ -24211,34 +24219,133 @@ import os as _os56
 with _tf43.TemporaryDirectory() as _td_u56:
     _lk56 = Path(_td_u56) / "global.lock"
     _hold56 = _cp56.FileLock(_lk56); _hold56.acquire()
-    # ⚠ `getattr` for the exception CLASS, not just the call: pre-fix `LockBusy` does not exist, and
-    # naming it in an `except` clause raises AttributeError AT MODULE SCOPE — truncating every check
-    # after it. FOURTEENTH occurrence of this trap on the arc; guarded BEFORE the pre-fix
-    # measurement that would have found it.
-    _LockBusy56 = getattr(_cp56, "LockBusy", None)
+    # ⚠ `getattr` for the METHOD: pre-fix `try_acquire` does not exist, and reaching for it
+    # unguarded raises AttributeError AT MODULE SCOPE — truncating every check after it.
+    # FOURTEENTH occurrence of this trap on the arc; guarded BEFORE the pre-fix measurement that
+    # would have found it. (The lesson survived the rewrite; the trap moved from the exception
+    # CLASS to the METHOD, which is why the guard is stated again rather than inherited.)
     _busy56: "object" = None
     try:
-        _cp56.FileLock(_lk56).acquire(blocking=False)
+        _busy56 = _cp56.FileLock(_lk56).try_acquire()
     except Exception as _e56:
         _busy56 = _e56
     _hold56.release()
-    # ⚠ Guarded: pre-fix `acquire` takes no `blocking`, so this raises TypeError — inside the check
-    # EXPRESSION that would kill the suite at module scope rather than reddening. Fifteenth
-    # occurrence of the trap on the arc, and the second introduced by this very pin, one line after
-    # the first.
-    _free56 = _cp56.FileLock(_lk56)
+    _free_ok56 = False
     try:
-        _free56.acquire(blocking=False)          # must succeed once the holder released
-        _free_ok56 = True
+        _free56 = _cp56.FileLock(_lk56)
+        _free_ok56 = bool(_free56.try_acquire())  # must succeed once the holder released
         _free56.release()
-    except TypeError:
-        _free_ok56 = False
     except Exception:
         _free_ok56 = False
-    check("v0.4.56 (PIN): `FileLock.acquire(blocking=False)` raises `LockBusy` instead of waiting — "
-          "and the lock is FREE again the moment the holder releases it, so a declined try leaves "
-          "nothing behind",
-          _LockBusy56 is not None and isinstance(_busy56, _LockBusy56) and _free_ok56)
+    # ⚠ `is False`, not `not _busy56`: pre-fix this holds the AttributeError, and `not exc` is
+    # False too — so the looser spelling would be green on a tree where the method does not exist.
+    check("v0.4.56 (PIN): `FileLock.try_acquire()` returns False instead of waiting — and True the "
+          "moment the holder releases it, so a declined try leaves nothing behind",
+          _busy56 is False and _free_ok56)
+    # ⚠ THE LEAK PROPERTY — the half the comment above this block PROMISED while the code tested
+    # only the single-lock primitive. `acquire_mutation_locks` takes the DOMAIN lock first, then
+    # global; a give-up on global must RELEASE the domain lock, or a try-mode caller holds a lock
+    # it never releases — a WEDGE, strictly worse than the hang this patch removes. Asserted by
+    # taking the domain lock afterwards, which can only succeed if the rollback ran.
+    _LockBusy56 = getattr(_cp56, "LockBusy", None)
+
+    class _Ctx56:
+        def __init__(self, pdata: Path) -> None:
+            self.plugin_data_dir = pdata
+            self.domain_id = "personal"
+
+    _pdat56 = Path(_td_u56) / "pdata"
+    _held56 = _cp56.FileLock(_pdat56 / "locks" / "global.lock")
+    _held56.acquire()
+    _gave_up56: "object" = None
+    try:
+        # ⚠ `cast(Any, …)` at the trust boundary: `acquire_mutation_locks` reads exactly three
+        # things off its ctx — `plugin_data_dir` (for the lock dir), `domain_id`, and the explicit
+        # project ids — so a stand-in is honest here, and typing it as a real `StoreContext` would
+        # claim a store this fixture deliberately does not build.
+        _cp56.acquire_mutation_locks(cast(Any, _Ctx56(_pdat56)), ["proj"], blocking=False)
+    except Exception as _e56b:
+        _gave_up56 = _e56b
+    _domfree56 = False
+    try:
+        _dl56 = _cp56.FileLock(_pdat56 / "locks" / "domain-personal.lock")
+        _domfree56 = bool(_dl56.try_acquire())
+        _dl56.release()
+    except Exception:
+        _domfree56 = False
+    _held56.release()
+    check("v0.4.56 (PIN, the LEAK property): declining on the GLOBAL lock RELEASES the DOMAIN lock "
+          "taken before it — the rollback is what makes a try-mode caller safe rather than wedged. "
+          "Pre-fix `acquire_mutation_locks` has no `blocking` at all (TypeError, and `LockBusy` "
+          "does not exist), so this reddens; break the `release_locks` in its `except` and it "
+          "reddens again, which is the arm that matters",
+          _LockBusy56 is not None and isinstance(_gave_up56, _LockBusy56) and _domfree56)
+
+# --- v0.4.56b: THE FRAME THE FIRST FIX MISSED ---------------------------------------------------
+# ⚠ v0.4.56's first cut fixed the PREFLIGHT cache — ONE of `global.lock`'s takers — and its
+# CHANGELOG asserted it was "the only lock on a read command". A review lens refuted that, and a
+# stack dump named the survivor:
+#   facts_manifest.py:436 _rebuild_locked <- ensure <- sync_global.py:861 _admissible_records
+#   <- sync_global.py:1165 iter_canonicals <- memory_status.py:3702 build_context <- main
+# ⚠ WHY EVERY PIN ABOVE IS BLIND TO IT: they all use an UNENROLLED project, so
+# `ctx.canonical_domain_dir.is_dir()` is False and `_admissible_records` skips the manifest
+# entirely. The suite was fully green while `cm status` still hung. A fixture that cannot reach
+# the branch is not a weak pin, it is a pin about a different code path.
+with _tf43.TemporaryDirectory() as _td_m56:
+    _hm56 = Path(_td_m56) / "home"; _hm56.mkdir()
+    _pm56 = Path(_td_m56) / "proj"; _pm56.mkdir()
+    _run_home_a1(str(_hm56), str(_scripts54 / "cm_ops.py"),
+                 "project", "enroll", str(_pm56), "--domain", "personal", "--apply",
+                 "--confirm", "enroll-personal")
+    _dfm56 = _hm56 / ".claude" / "consolidate-memory" / "domains" / "personal" / "facts"
+    _dfm56.mkdir(parents=True, exist_ok=True)
+    (_dfm56 / "seed-fact.md").write_text(
+        "---\nname: seed-fact\ndescription: a canonical that makes the domain enumerable\n"
+        "domain: personal\nmetadata:\n  node_type: memory\n  type: reference\n---\n\nBody.\n",
+        encoding="utf-8")
+    _pdatm56 = _hm56 / ".claude" / "plugins" / "data" / "consolidate-memory"
+    _envm56 = {**_os53.environ, "HOME": str(_hm56)}
+
+    def _manm56() -> list:
+        return list(_pdatm56.glob("facts-manifest-*.json"))
+
+    def _statusm56(_timeout: int = 25) -> "tuple[int, str]":
+        try:
+            _r = _sp53.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
+                                                    / "scripts" / "memory_status.py"),
+                            str(_pm56), "--json"],
+                           capture_output=True, text=True, timeout=_timeout, env=_envm56)
+            return _r.returncode, _r.stdout
+        except _sp53.TimeoutExpired:
+            return 124, ""
+
+    # (a) PIN — contended + cold manifest COMPLETES. Pre-fix: rc 124 from the timeout.
+    for _m in _manm56():
+        _m.unlink()
+    _glm56 = _cp56.FileLock(_pdatm56 / "locks" / "global.lock"); _glm56.acquire()
+    try:
+        _rcm56, _outm56 = _statusm56()
+    finally:
+        _glm56.release()
+    _recm56 = {}
+    try:
+        _recm56 = _json43.loads(_outm56)
+    except Exception:
+        pass
+    check("v0.4.56b (PIN): …and neither does the FACTS-MANIFEST rebuild — ENROLLED project, COLD "
+          "manifest, `global.lock` held: the command completes, still carries its preflight block, "
+          "and leaves the manifest UNWRITTEN (it DECLINED the lock, it did not acquire it) "
+          "(pre-fix: hangs at `_rebuild_locked`, killed at the timeout, rc 124)",
+          _rcm56 == 0 and isinstance(_recm56.get("preflight"), dict) and not _manm56())
+    # (b) CONTROL — uncontended, the same cold manifest IS rebuilt. ⚠ This is the arm that
+    # separates THIS repair from v0.4.54's, which disabled the rebuild outright
+    # (`may_rebuild=False`) and left the cache permanently cold at ~100x on every read. The pair
+    # (a)+(b) differs ONLY in the lock, so (b) is what fails if the repair drifts to "never
+    # rebuild" rather than "never wait".
+    _rcw56, _outw56 = _statusm56()
+    check("v0.4.56b (CONTROL): …but UNCONTENDED the manifest IS written — the rebuild TRIES, it is "
+          "not disabled; a repair that declined here would be v0.4.54's shape, not this one",
+          _rcw56 == 0 and bool(_manm56()))
 
 # --- v0.4.54 (PIN): the CACHED ROW'S TWO-PART WARRANT -------------------------------------------
 # A review lens asked whether `load()` re-derives `secret` and found that it does not — "an identity
@@ -24943,8 +25050,8 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                             + 6        # v0.4.56 — THE READ COMMAND MUST NOT WAIT FOR A WRITER: 3
                                        #     PINs (a contended cold-cache `cm status` COMPLETES and
                                        #     still carries its preflight block; the skip is named
-                                       #     under `--verbose`; `acquire(blocking=False)` raises
-                                       #     `LockBusy` and leaves the lock free) + 3 CONTROLS
+                                       #     under `--verbose`; `FileLock.try_acquire()` returns
+                                       #     False and leaves the lock free) + 3 CONTROLS
                                        #     (silent by DEFAULT on the same fixture — labelled GUARD,
                                        #     since it shares the pin precondition; uncontended the
                                        #     cache IS written; a WRITE command still WAITS). ⚠ The
@@ -24952,6 +25059,20 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     time out" — the latter is satisfied by a command that
                                        #     never reached the lock, which is how a control on a
                                        #     blocking path goes vacuous.
+                            + 3        # v0.4.56b — THE FRAME THE FIRST FIX MISSED: 2 PINs (with an
+                                       #     ENROLLED project, a COLD manifest and `global.lock`
+                                       #     held, `cm status --json` completes / carries its
+                                       #     preflight block / leaves the manifest UNWRITTEN; and
+                                       #     the LEAK property — declining on global RELEASES the
+                                       #     domain lock already taken) + 1 CONTROL (uncontended,
+                                       #     that same manifest IS rebuilt).
+                                       #     ⚠ Each of the three exists because a cheaper spelling
+                                       #     of it was vacuous. "Completed" alone is satisfied by
+                                       #     0.4.54's never-rebuild — hence the control. "Manifest
+                                       #     unwritten" alone is satisfied by a command that never
+                                       #     reached the lock — hence the enrolment. And the leak
+                                       #     test is the half the block above PROMISED in prose
+                                       #     while asserting only the single-lock primitive.
                             + 3        # v0.4.54 — 1 GUARD (the two-part warrant's CONSUMER half:
                                        #     `_consider_fast` compares mtime_ns AND size) + 1 PIN
                                        #     (the pull consumes its own refusal) + 1 PIN below.

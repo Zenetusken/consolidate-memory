@@ -8,7 +8,8 @@ version changes on `main`.
 ## [0.4.56] — 2026-09-24
 
 **Patch — `cm status` no longer hangs waiting for a writer. This is the defect 0.4.54 claimed to fix
-and did not.**
+and did not — and 0.4.56's own first cut repeated the mistake in a smaller way, which is recorded
+below rather than quietly amended.**
 
 ### The defect, root-caused by stack dump
 
@@ -35,10 +36,19 @@ The write caches a verdict `run_for_project` has **already computed and is about
 verdict reaches the caller and `ctx["preflight"]` reaches the record either way. A cache that cannot
 get the lock is skipped, not waited for.
 
-- `FileLock.acquire(blocking=True)` — `LOCK_NB` when false; on contention raises a new **`LockBusy`**
-  (kept distinct from `WriteRefused`: this means *try later*, that means *never*). The no-`fcntl`
-  path is unchanged in **both** modes — it still refuses via `require_interprocess_lock` rather than
-  silently succeeding because waiting was not needed.
+- **`FileLock.try_acquire()`** — a new, additive method returning `True`/`False`; `acquire()` keeps
+  its **exact original signature** and still waits. ⚠ This is a correction *within* the release: the
+  first cut added a `blocking=` keyword to `acquire` instead, and that broke the class's
+  substitutability — a subclass overriding `acquire(self)` raises `TypeError` the moment a caller
+  passes the keyword, i.e. at the *call site*, arbitrarily far from the override that caused it.
+  This repo's own smoke fixture hit it immediately (mypy's override check caught the subclass, which
+  then had to be widened **and** had to accept the keyword without forwarding it, because forwarding
+  is a `TypeError` on the other tree). A new method breaks nobody: a subclass that never heard of it
+  inherits correct behaviour. **`LockBusy`** (kept distinct from `WriteRefused`: this means *try
+  later*, that means *never*) is raised by `acquire_mutation_locks(..., blocking=False)` and by
+  `_take(wait=False)` beneath it; the no-`fcntl` path is unchanged in **both** forms — it still
+  refuses via `require_interprocess_lock` rather than silently succeeding because waiting was not
+  needed.
 - `acquire_mutation_locks(..., blocking=True)`, `update_project_state(..., blocking=True)` — threaded.
   ⚠ **No new cleanup was needed**: the existing `except Exception: release_locks(locks); raise`
   already frees a partly-acquired set, so declining on the *global* lock leaves the *domain* lock
@@ -52,6 +62,49 @@ get the lock is skipped, not waited for.
   `--verbose` is the first verbosity flag here and is **mode-neutral**, so it is deliberately NOT in
   the read-only-mode exclusion list that decides *which modes write*.
 
+### ⚠ The frame the first cut MISSED — the facts-manifest rebuild
+
+**The preflight cache was not the only `global.lock` taker on a read command, and this release's
+first cut asserted that it was.** `cm status` still hung. Second stack dump, same method:
+
+```
+facts_manifest.py:436  _rebuild_locked      -> fcntl.flock(fd, LOCK_EX)   [BLOCKING]
+facts_manifest.py:436  ensure
+sync_global.py:861     _admissible_records
+sync_global.py:1165    iter_canonicals
+memory_status.py:3702  build_context
+memory_status.py:5646  main
+```
+
+The trigger is a **second** cold-cache condition, independent of the first: an **enrolled** project
+whose **facts manifest** is cold, with `global.lock` held. The fix is the same discipline at the
+same kind of site — the rebuild protects a *cache*, so it **tries and never waits**:
+`_rebuild_locked` calls `try_acquire()` and returns `(None, "lock-busy")` on contention, and the
+caller falls back to the full enumeration the cache exists to skip. Every `ensure` caller already
+had that fallback.
+
+⚠ `"lock-busy"` is deliberately in **neither** `_REBUILDABLE` nor `_NONREBUILDABLE`: those two
+tuples classify the reasons `load()` returns, and this token has a producer in `ensure`. Filing it
+among them would repeat the defect that removed `"rebuild-failed"` — a member whose producer lives
+somewhere else.
+
+⚠ **Why nothing caught it, stated precisely:** every v0.4.56 pin used an **unenrolled** fixture, so
+`ctx.canonical_domain_dir.is_dir()` was false and `_admissible_records` skipped the manifest
+entirely. The suite was fully green while the defect survived. A fixture that cannot reach the
+branch is not a weak pin — it is a pin about a different code path.
+
+Measured on that fixture, this release vs. the first cut:
+
+| | first cut | here |
+|---|---|---|
+| `global.lock` held, cold manifest, drained for 25 s | **rc 124 (hung)** | **rc 0 / 0.15 s** |
+| manifest written, contended | — | **no** (declined) |
+| manifest written, uncontended | — | **yes** (warmed) |
+
+The last row is the one that separates this repair from 0.4.54's: `may_rebuild=False` also stopped
+the hang, by **never rebuilding at all** — which is what cost ~100× on every read. This declines the
+*wait*, not the *write*.
+
 ### Deliberately unchanged
 
 The three other `update_project_state` callers in `memory_status` (`:2327`, `:2560`, `:2664` —
@@ -63,7 +116,10 @@ locks at all and reads the cache read-only, so it is untouched.
 through, the preflight cache stays cold and the checks re-run each time (the verdict is unaffected;
 only the cache misses). `--verbose` makes that visible; it is not silent-by-accident.
 
-Measured both ways: against the released 0.4.55 — 2307 passed / 5 failed; here 2312 / 0.
+Measured both ways: against this release's **first cut** (the tree that fixed only the preflight
+cache) — **2312 passed / 3 failed**, the three failures being *exactly* the new PINs below and
+nothing else; here **2315 / 0**. The suite's pre-fix corpus needs a real `.git`: an archived tree
+without one reddens the v0.4.37 history pins for the fixture's sake, not the code's.
 
 ## [0.4.55] — 2026-09-24
 
