@@ -345,9 +345,12 @@ def load(facts_dir: Path, plugin_data_dir: Path):
         comparison in this function; a foreign
         identity fails open to a rebuild, so a row can never be judged by a firewall other than
         the running one; and
-      * the FILE is unchanged — `st_mtime_ns` AND `st_size` match the row, enforced at the
-        CONSUMER (`sync_global._consider_fast`), because only the consumer has the `DirEntry`
-        stat that makes the warm path warm.
+      * the FILE is unchanged — `st_mtime_ns`, `st_size` **and `st_ctime_ns`** all match the row,
+        enforced at the CONSUMER (`sync_global._consider_fast`), because only the consumer has the
+        `DirEntry` stat that makes the warm path warm. ⚠ An earlier cut of this sentence named
+        only the first two; a review lens measured that the code compares THREE, and the omission
+        was not cosmetic — `st_ctime_ns` is the conjunct that catches a restored-mtime edit, so
+        the authoritative statement of the warrant was dropping the one it most needs.
 
     ⚠ This is deliberately NOT an independent re-derivation of `secret` (or of `class`, `sem`,
     `fm`). Every field in the row comes from the SAME read, so re-checking one of them would mean

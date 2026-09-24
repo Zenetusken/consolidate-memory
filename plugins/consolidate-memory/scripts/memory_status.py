@@ -3680,18 +3680,26 @@ def build_context(project_dir: Path) -> dict:
     # standing-justified store reads False (no perpetual pivot). `remediation` is {} on the healthy path,
     # hence `.get`, not subscript (would KeyError). No `stale_since_marker` (it re-fires every run).
     # ⚠ READ-ONLY, and this is the MEASURED half of a call I had previously left as a judgment.
-    # Phase 0 is read-only BY CONTRACT (SKILL: "Phases 0, 2, and 3 are read-only investigation"),
-    # and the concrete hazard the review named is not the write but the WAIT: `ensure` rebuilds
-    # under `global.lock`, so a plain `memory_status`/`cm status` could BLOCK on a concurrent
-    # `cm sync`. `may_rebuild=False` removes the lock from the path entirely.
-    # ⚠ What I measured rather than assumed: Phase 0 already writes — a bare `--json` run creates
-    # `locks/{global,domain-*,project-*}.lock` and `.consolidation-state.json`. So this is not a
-    # claim that the phase is otherwise write-free; it is that the MANIFEST is the one write that
-    # can be avoided, and that avoiding it costs only a full enumeration while the cache is cold.
+    # ⚠ REVERTED IN v0.4.55, and the reason is measured. v0.4.54 threaded `may_rebuild=False`
+    # through both of these to take `global.lock` off Phase 0's path, and claimed the lock was
+    # "off the path entirely". A review lens refuted BOTH halves:
+    #   * the WAIT NEVER WENT AWAY — it moved. With `global.lock` held by another process,
+    #     `cm status` still times out (`rc=124`), blocking at
+    #     `preflight.run_for_project` → `control_plane.acquire_mutation_locks` → `glob.acquire()`,
+    #     which is UNCONDITIONAL on every report/`--json` run. Re-derived here: rc=124 at 20 s.
+    #   * the COST DID NOT END. "while the cache is cold" had no exit, because nothing routine on
+    #     the read-only path rebuilds the manifest any more. MEASURED on a 3000-fact store:
+    #     pre-fix 3.98 s then 0.055/0.054/0.081 s (manifest written); post-fix 6.52/6.25/6.48/6.46 s
+    #     with the manifest NEVER written — ~100x the pre-fix steady state — because Phase 0 pays
+    #     TWO enumerations per run (the two callers never share a result).
+    #   * and it SILENCED the oversize refusal, the one case the notice exists for: a 5 MiB fact
+    #     printed "refusing to cache …" twice pre-fix and NOTHING post-fix.
+    # A change that does not deliver its benefit, costs 100x, and hides a fault is a bad trade.
+    # The lock-wait is a PRE-FLIGHT property and must be fixed there, not by starving the cache.
     from sync_global import facts_for_context as _ffacts, iter_canonicals as _ic_dangle
     _gdirs = []
     try:
-        for _ref in _ic_dangle(_ctx, may_rebuild=False):
+        for _ref in _ic_dangle(_ctx):
             _gdirs.append(_ref.canonical_path.parent)
     except Exception as _e_dangle:
         # ⚠ AN EMPTY LIST IS A NUMBER, and this arm published one the instrument could not compute.
@@ -3712,7 +3720,7 @@ def build_context(project_dir: Path) -> dict:
     # `_gdirs` empty every up-link resolves to nothing, so the count is the FABRICATION (measured:
     # 0 → 1). Reported as an unresolved state instead, and the fault rides `maintenance.work`.
     _dangling = dangling_links(auto_mem, global_dirs=_gdirs)
-    _global_fact_count = len(_ffacts(_ctx, may_rebuild=False))
+    _global_fact_count = len(_ffacts(_ctx))
     _obnj = bool((remediation or {}).get("required"))
     # ⚠ A FAULT IS WORK, and this leaf said otherwise. `over_budget_not_justified` is
     # `remediation.required`, which is ABSENT on a fault — so a store whose index nobody could read

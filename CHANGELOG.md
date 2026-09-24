@@ -5,6 +5,45 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.55] — 2026-09-24
+
+**Patch — 0.4.54's headline change is REVERTED. It did not do what it claimed, and it cost ~100×.**
+
+The two review lenses that had not reported when 0.4.54 shipped came back afterwards. One of them
+refuted the change this release was named after, by measurement.
+
+1. **`may_rebuild=False` on Phase 0 is undone.** 0.4.54's entry says *"The lock is off the path
+   entirely now"* and SKILL said *"a plain `cm status` cannot BLOCK on the global lock"*. Both are
+   **false**:
+   - **The wait only MOVED.** With `global.lock` held by another process, `cm status` still times
+     out — re-derived here at **rc=124 after 20 s** — blocking at
+     `preflight.run_for_project` → `control_plane.acquire_mutation_locks` → `glob.acquire()`,
+     which is **unconditional** on every report/`--json` run. Pre-fix, `ensure`'s lock was a
+     *second, conditional* acquisition; the unconditional one was always there and still is.
+   - **The cost did not end.** *"while the cache is cold"* had no exit, because nothing routine on
+     the read-only path rebuilds the manifest any more. MEASURED on a 3000-fact / 6.17 MB store:
+     pre-fix `3.98 s` then `0.055 / 0.054 / 0.081 s` (manifest written); post-fix
+     `6.52 / 6.25 / 6.48 / 6.46 s` with the manifest **never written** — **~100× the pre-fix
+     steady state** — because Phase 0 pays **two** enumerations per run (the two callers never
+     share a result; 6000 `_safe_read_text` calls for 3000 files).
+   - **And it silenced a fault**: the oversize refusal — the one case the notice exists for —
+     printed twice pre-fix and **nothing** post-fix, because `may_write=False` returns before the
+     refusal can speak.
+   A change that does not deliver its benefit, costs 100×, and hides a fault is a bad trade. ⚠ The
+   lock-wait is a **pre-flight** property; it belongs fixed in `preflight`, not by starving the
+   cache. That is the follow-up, recorded rather than papered over.
+
+2. **Four fixes from the same round's other lens**, all in 0.4.54's own work:
+   - the pull-refusal pin's span began at `if _werr:`, so neutering the **read** left it green —
+     the arm's name claims *"READS its own refusal AND exits non-zero"* and only the second half
+     was covered. Mutation-verified now (neutering the assignment reddens it).
+   - a pre-fix parenthetical claimed *"the message printed and rc stayed 0"* — measured false;
+     `main`'s `cm_ops` already returned 1, and what the coverage lens found green was the absence
+     of a check, not a wrong exit code. Relabelled as key-absence.
+   - the warrant's authoritative statement named **two** conjuncts where the code compares
+     **three**; `st_ctime_ns` — the one that catches a restored-mtime edit — was the omitted one.
+   - `CHANGELOG`/`SKILL` said *"a pin"* where the arm's own label and the D6 tier say **GUARD**.
+
 ## [0.4.54] — 2026-09-24
 
 **Patch — six open items closed: three measured, two derived, one defect the review found in my own
@@ -14,7 +53,11 @@ earlier guard.**
    `may_rebuild=False`, threaded through `facts_for_context` and `iter_canonicals`. SKILL declares
    *"Phases 0, 2, and 3 are read-only investigation"*, and the hazard the review named is not the
    write but the **wait**: `ensure` rebuilds under `global.lock`, so a plain `memory_status` /
-   `cm status` could block on a concurrent `cm sync`. The lock is off the path entirely now.
+   `cm status` could block on a concurrent `cm sync`.
+   ⚠ **REVERTED IN 0.4.55 — see that entry.** "The lock is off the path entirely now" was FALSE:
+   the wait only MOVED, to `preflight`'s unconditional acquisition, and `cm status` still times out
+   with `global.lock` held. The change bought nothing measurable and cost ~100× on a large store,
+   so it was undone rather than kept for its stated reason.
    ⚠ **Measured, not judged** — which is what this item lacked. Phase 0 already writes: a bare
    `--json` run creates `locks/{global,domain-*,project-*}.lock` and `.consolidation-state.json`.
    So the claim is not that the phase is otherwise write-free; it is that the manifest is the one
@@ -38,7 +81,10 @@ earlier guard.**
    `sync_global._consider_fast`, because only the consumer holds the `DirEntry` stat that makes the
    warm path warm. ⚠ Re-deriving `secret` is **not** the repair: every row field comes from the
    same read, so checking one means re-reading, which is the cache. What was missing is the
-   statement (now `load`'s docstring) and a pin on the half that is easy to lose.
+   statement (now `load`'s docstring) and a **GUARD** on the half that is easy to lose — the word
+   is deliberate: the stats check shipped WITH the manifest, so the arm cannot redden pre-fix, and
+   the arm's own label and the D6 tier say GUARD. ⚠ An earlier cut of THIS sentence said "a pin",
+   which the review flagged as the label drifting from the thing it describes.
 
 4. **A defect the review found in my own earlier guard.** `_execute_pull_writes` returns an `error`
    key when it declines to write without a revision precondition — and the caller read only
