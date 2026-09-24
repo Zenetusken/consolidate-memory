@@ -2226,7 +2226,13 @@ var NocturneSections = (function(){
     if(nfiles>1||worst>CMB)
       cmStatus=(nfiles||0)+" files · a session in "+(hier.worst_path||".")+" pays "+fmt(worst)+" tok/turn"+(worst>CMB?" — heavy":"");
     var cmB=g(CUR,"budget.claude_md",{})||{},cmAfter=g(cmB,"after_tokens",null),cmLimit=num(cmB.budget_tokens,CMB);
-    if(cmAfter!=null)meter(el("m-cmd"),"CLAUDE.md",num(cmAfter),cmLimit,truthy(cmB.over)||num(cmAfter)>cmLimit,cmStatus);
+    // ⚠ The third state, on the METER and on the visibility test below. For an unreadable file
+    // `after_tokens`/`over` are the fault's zeros, so without this the archive drew a green
+    // "0% · 0/4.0k Within budget" — the same fabrication the ASCII dashboard and the Phase-0
+    // report were repaired for, on the end-user-facing surface.
+    var cmFault=truthy(cmB.unmeasurable);
+    if(cmFault)meter(el("m-cmd"),"CLAUDE.md",0,cmLimit,false,"fault");
+    else if(cmAfter!=null)meter(el("m-cmd"),"CLAUDE.md",num(cmAfter),cmLimit,truthy(cmB.over)||num(cmAfter)>cmLimit,cmStatus);
     else{
       var captured=[];
       if(cmB.before_tokens!=null)captured.push("Before pass: "+fmt(cmB.before_tokens)+" estimated tokens");
@@ -2237,9 +2243,14 @@ var NocturneSections = (function(){
     }
     var gcm=g(CUR,"budget.global_claude_md",null);
     var mg=el("m-global");
-    if(mg&&gcm&&typeof gcm==="object"&&!Array.isArray(gcm)&&truthy(gcm.present)){
+    // ⚠ `|| truthy(gcm.unmeasurable)` — `present` is `bytes > 0`, which a FAILED read reports as
+    // false, so testing it alone left `#m-global` at `display:none` and the row VANISHED from the
+    // archive entirely. That is the vanishing-row harm this cycle headlines, on the surface an
+    // end user actually opens: a missing row is indistinguishable from one never warranted.
+    if(mg&&gcm&&typeof gcm==="object"&&!Array.isArray(gcm)&&(truthy(gcm.present)||truthy(gcm.unmeasurable))){
       mg.style.display="";
-      meter(mg,"Global CLAUDE.md",num(gcm.tokens),num(gcm.budget_tokens,CMB),truthy(gcm.over),
+      if(truthy(gcm.unmeasurable))meter(mg,"Global CLAUDE.md",0,num(gcm.budget_tokens,CMB),false,"fault");
+      else meter(mg,"Global CLAUDE.md",num(gcm.tokens),num(gcm.budget_tokens,CMB),truthy(gcm.over),
             "Read-only · loads in every project"+(truthy(gcm.over)?" — heavy":""));
     }
   })();

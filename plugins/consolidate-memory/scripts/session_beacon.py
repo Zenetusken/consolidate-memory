@@ -214,7 +214,17 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
     # cost_new was derived un-anchored (a mechanically fatter cost_old, ~2 tok for a `work--`
     # anchor), which made that phantom NEGATIVE delta the steady state — on the mirrors the
     # derivation below scopes, and only those: an index line still the current derivation's.
-    idx_text = _safe_read_text(store / "MEMORY.md") or ""
+    # ⚠ The SAME three-state read the pull uses, through the SAME helper — this was the second
+    # site of the identical defect, one file over, and it fails TWICE from one failed read.
+    # `_safe_read_text` returns None for ABSENT and for UNREADABLE alike, and seeding 0 for the
+    # latter does not read as unknown: it reads as "nowhere near the ceiling", so `held` came back
+    # 0 and this line ADVERTISED A PULL THE CEILING WOULD REFUSE — the exact harm its own note a
+    # few lines above records. And the same zero empties `line_cost`, which drops every
+    # STALE-mirror item at the `elif cost_old and ...` below, so the second half of the payload
+    # was built from the failed read too. Extracting the helper and not routing this caller is the
+    # divergence class this repo keeps closing; `sync_global.run()` was routed, this was not.
+    from sync_global import _pull_index_seed
+    _idx_seed, idx_text, _idx_unreadable = _pull_index_seed(store / "MEMORY.md")
     # PR-#94 review F4: build the anchor→cost map ONCE — per-fact _index_line_cost re-split the
     # whole index every call (O(relevant × index_bytes); measured 4.5s only at a pathological
     # 500-fact × 4MB fixture, sub-ms at any ceiling-governed size — hoisted regardless, so the
@@ -267,7 +277,9 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
             items.append((n, "MISSING", cost_new, cost_old))
         elif cost_old and cost_new != cost_old:
             items.append((n, "STALE-mirror", cost_new, cost_old))
-    held = len(_plan_pull(items, est_tokens(idx_text), False, budget=INDEX_CEILING_TOKENS)["held"])
+    # `_idx_seed` is the helper's reading, not a re-derivation: ceiling+1 on the fault, so the
+    # hold engages rather than going quiet. `est_tokens(idx_text)` here would have undone it.
+    held = len(_plan_pull(items, _idx_seed, False, budget=INDEX_CEILING_TOKENS)["held"])
     mdt = _parse_ts(str(st.get("timestamp", "") or ""))
     age = ""
     if mdt is not None:
@@ -280,7 +292,15 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
                      + (f" ({held} would be ceiling-held)" if held else ""))
     if stale:
         parts.append(f"{stale} mirror(s) carry outdated content")
-    return ("Cross-project memory: " + " and ".join(parts) + basis + age
+    # ⚠ One line, and it must still be ONE — but a count built from a failed read is not a count.
+    # The `missing` figure survives (it is derived from the canonicals, not from the index); the
+    # ceiling headroom and the STALE tally do not, and saying so is the whole point of the third
+    # state. Without this the line read as a confident, complete advisory for a store whose index
+    # nobody could open.
+    _fault = ("" if not _idx_unreadable else
+              " ⚠ This store's index could not be READ, so the ceiling headroom and any stale "
+              "mirrors are UNKNOWN — repair it before acting on this line.")
+    return ("Cross-project memory: " + " and ".join(parts) + basis + age + _fault
             + ". A consolidation pass (dream) on this project absorbs them; asking to snooze "
             "this reminder quiets it for this store.")
 
