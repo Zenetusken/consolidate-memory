@@ -24102,35 +24102,51 @@ check("v0.4.50 (PIN, structural): no consumer reads a fault key through `.get(..
 # the seed goes ceiling+1 → 4 (so `held` empties and the line stops saying "would be ceiling-held",
 # advertising a pull the ceiling would refuse), and the fault sentence disappears (so a count built
 # from a failed read reads as a complete advisory).
-# ⚠ STRUCTURAL, and the attempt at a behavioural fixture is abandoned rather than faked. I built
-# one — a store whose only `*.md` is a directory, plus a stacks cache — and MEASURED that
-# `_store_gaps` returns `(0, 0)` for it, so `beacon_line` short-circuits at
-# `if not missing and not stale: return ""` and the pin would assert against an empty line. Staging
-# a fact that survives `is_relevant` + `admit_cross_project` needs the same fixture the v0.4.10 pin
-# at `beacon_line`'s sibling uses, and reproducing that here would be a second copy of it.
-# So this asserts the CALL and the SENTENCE'S SOURCE, exactly as the `run()` wiring pin does, and
-# says so: it cannot prove the sentence fires, only that the branch is written and the read is
-# routed. A behavioural arm here remains a genuine hole.
-try:
-    import ast as _ast_bc52
-    _bc52 = next(n for n in _ast_bc52.walk(_ast_bc52.parse(
-        (ROOT / "plugins" / "consolidate-memory" / "scripts" / "session_beacon.py"
-         ).read_text(encoding="utf-8")))
-        if isinstance(n, _ast_bc52.FunctionDef) and n.name == "beacon_line")
-    _bc52_calls = {n.func.id for n in _ast_bc52.walk(_bc52)
-                   if isinstance(n, _ast_bc52.Call) and isinstance(n.func, _ast_bc52.Name)}
-    _bc52_src = (ROOT / "plugins" / "consolidate-memory" / "scripts"
-                 / "session_beacon.py").read_text(encoding="utf-8")
-except Exception:
-    _bc52_calls, _bc52_src = set(), ""
-check("v0.4.52 (GUARD, structural regression — green on both trees BY CONSTRUCTION: the beacon "
-      "was routed in v0.4.46, so this cannot redden pre-fix; its value is that REVERTING the "
-      "routing now reddens): the beacon reads its index through `_pull_index_seed` AND the "
-      "fault sentence is present — reverting the seed to `est_tokens(idx_text)` drops `held` to 0 "
-      "and the line advertises a pull the ceiling would refuse; dropping `_fault` leaves a count "
-      "built from a failed read reading as a complete advisory",
-      "_pull_index_seed" in _bc52_calls and "_idx_unreadable" in _bc52_src
-      and "could not be READ" in _bc52_src)
+# ⚠ BEHAVIOURAL, and it replaces the structural arm this started as. The first attempt staged a
+# store whose only `*.md` was a directory and MEASURED `_store_gaps` returning `(0, 0)` — nothing
+# was admitted, so `beacon_line` short-circuited at
+# `if not missing and not stale: return ""` and any assertion would have read an empty string.
+# ⚠ The fixture needs NO padding, and that is the point: with an UNREADABLE index the seed is
+# `INDEX_CEILING_TOKENS + 1`, so EVERY admitted item is ceiling-held. The v0.4.10 sibling pin has
+# to pad its index to one token under the ceiling to observe `held` at all; here the fault supplies
+# that condition for free. What it does need is a fact that survives `is_relevant` +
+# `admit_cross_project` — a list-universal canonical, admitted through a granted group.
+with _tf43.TemporaryDirectory() as _td_b52:
+    import session_beacon as _sb52
+    _st_b52 = Path(_td_b52) / "store"; _st_b52.mkdir()
+    _canon_b52 = _v3_canon("zmiss-b52", domain="work", description="m").replace(
+        "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+    _fm_b52 = sg._frontmatter(_canon_b52)
+    (_st_b52 / "MEMORY.md").mkdir()          # the index EXISTS; it cannot be READ
+    _err_b52 = _io73.StringIO()
+    with _ctx73.redirect_stderr(_err_b52):
+        _line_b52 = _sb52.beacon_line(
+            _st_b52, domain_id="personal", migration_mode="dual-read",
+            gfacts=[("zmiss-b52", _fm_b52, _canon_b52)], memberships={"pair"})
+    # ⚠ A GUARD verified by MUTATION, not a PIN — and the distinction is the whole point. The
+    # routing shipped in v0.4.46, so NO shipped revision lacks it and no revision-based pre-fix
+    # measurement can redden this. What makes it worth having is that it reddens under the exact
+    # mutations the coverage lens used, and BOTH conjuncts are load-bearing — MEASURED, one fresh
+    # copy each: reverting the seed alone → 1 red; dropping `_fault` alone → 1 red. A two-conjunct
+    # assertion whose halves are not individually checked is how a vacuous half hides.
+    check("v0.4.52 (GUARD, mutation-verified — green on every shipped tree BY CONSTRUCTION; it "
+          "reddens under reverting either half, measured one copy apiece): the beacon reads its "
+          "index through `_pull_index_seed` AND says the headroom is UNKNOWN — reverting the seed "
+          "to `est_tokens(idx_text)` reads the empty placeholder, drops `held` to 0 and the line "
+          "advertises a pull the ceiling would refuse, while dropping `_fault` leaves a count "
+          "built from a failed read reading as a complete advisory",
+          "could not be READ" in _line_b52 and "would be ceiling-held" in _line_b52)
+    # the CONTROL: the SAME fact with a READABLE, empty index is NOT ceiling-held — so the
+    # conjunct above is measuring the FAULT and not merely a fact that is always held.
+    (_st_b52 / "MEMORY.md").rmdir()
+    (_st_b52 / "MEMORY.md").write_text("# Memory Index\n\n", encoding="utf-8")
+    _line_b52ok = _sb52.beacon_line(
+        _st_b52, domain_id="personal", migration_mode="dual-read",
+        gfacts=[("zmiss-b52", _fm_b52, _canon_b52)], memberships={"pair"})
+    check("v0.4.52 (CONTROL): …and the SAME fact under a READABLE index is not held — the fault "
+          "is what supplies the ceiling press, so the arm above measures the fault rather than a "
+          "fixture that is always over the ceiling",
+          "could not be READ" not in _line_b52ok and "would be ceiling-held" not in _line_b52ok)
 
 # ⚠ The two REFUSE arms that consume `_index_revision` — the helper is pinned, neither CALL SITE
 # was, and a coverage lens measured that disabling either leaves the suite green: `if _idx_err:` →
@@ -24664,14 +24680,19 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
-                            + 3        # v0.4.52 — the coverage holes from the adversarial round: 3
-                                       #     GUARDs, NOT pins. ⚠ Every one of them is green on
-                                       #     BOTH trees by construction — the behaviours shipped in
-                                       #     v0.4.46–0.4.49 and were never pinned, which is
-                                       #     exactly the hole; an earlier cut labelled them PINs
-                                       #     and the pre-fix run would have falsified that. Their
-                                       #     value is that REVERTING each behaviour now reddens,
-                                       #     which no check did before. The old term text was:
+                            + 4        # v0.4.52 — the coverage holes from the adversarial round: 4
+                                       #     GUARDs, NOT pins. ⚠ Every one is green on EVERY SHIPPED
+                                       #     tree by construction — the behaviours shipped in
+                                       #     v0.4.46–0.4.49 and were simply never checked, which is
+                                       #     exactly the hole. An earlier cut labelled them PINs and
+                                       #     the pre-fix run falsified that.
+                                       #     ⚠ Their verification is therefore MUTATION, not a
+                                       #     pre-fix revision: the beacon arm was measured red under
+                                       #     each half's mutation SEPARATELY (1 red apiece, so
+                                       #     neither conjunct is vacuous). A coverage hole cannot be
+                                       #     pinned against a revision — no revision has the defect;
+                                       #     it is pinned against the EDIT that would reintroduce
+                                       #     it. The old term text was:
                                        #     round: 3 structural PINs on behaviours a mutation lens
                                        #     found were unexercised — the beacon's
                                        #     `_pull_index_seed` routing + its fault sentence, the
