@@ -19,11 +19,26 @@ and it is the more useful half of this entry.
    reason (MEASURED: all ten v0.4.57 checks green, while the literal-form control reddened).
    ⚠ **No wider scan can close that**: a `Name` in the return position is
    AST-indistinguishable from `load()`'s legitimate passthrough, which is why the pin enumerates
-   literals at all. The producer can see the value and the scanner cannot, so `_served` now asserts
+   literals at all. The producer can see the value and the scanner cannot, so the validation now
+   sits at a **single exit** — `ensure` wraps an inner function and validates what comes back —
    membership at every `ensure` return. ⚠ It accepts **both** vocabularies — `ensure` passes
    `load()`'s reasons through, so a guard keyed on `_ENSURE_REASONS` alone would redden on correct
    trees.
 
+
+   ⚠ **Two review findings landed on this fix before it held, and both were about TOTALITY**
+   rather than behaviour. **(1)** The first cut called the validator from **four individual
+   returns** — totality by *convention*; a lens measured that a NEW return, or an existing one
+   edited to drop the call, escaped with the suite green at 2331/0. **(2)** The wrapper that fixed
+   that left an **importable bypass**: the inner sat at module level, so calling it directly
+   returned an unvalidated reason and nothing noticed (the structural pin inspected `ensure`'s
+   returns, never call sites). The inner is now a **CLOSURE** — a name that cannot be imported
+   cannot be called, so the bypass is inexpressible rather than merely undetected.
+   ⚠ And the pin written to guard that property **reddened on its own author**: `ast.walk(ensure)`
+   descends into the nested function, so it counted the inner's six returns as `ensure`'s. It now
+   counts OWN returns. That is the FIFTH instrument in this one patch to break on a refactor of the
+   same function — every one asserting a property of a SHAPE rather than of a VALUE, which is
+   precisely why the half that held is the half that reads values.
 2. **Two `preflight.py` sites stopped MANUFACTURING VERDICTS.** Unlike the `control_plane` sites
    fixed in v0.4.57 (where the failure mode was a *silent cleanup*), these turned a faulted
    `LOCK_UN` into a *finding*, because each wrapped the acquire and the unlock in ONE `try`.
@@ -54,7 +69,7 @@ and it is the more useful half of this entry.
    not content**, and would **not** have caught the citation v0.4.57 repaired by hand. The
    v0.4.57 entry's own note that this *"remains unshipped, so one unbound citation was fixed by
    hand"* is corrected here rather than left standing.
-Suite: **2331 passed, 0 failed**; `mypy`, `docs_links`, `manifests`, accumulation sim green.
+Suite: **2332 passed, 0 failed**; `mypy`, `docs_links`, `manifests`, accumulation sim green.
 
 ## [0.4.58] — 2026-09-24
 

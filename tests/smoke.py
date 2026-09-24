@@ -24527,10 +24527,23 @@ import os as _os57
 # as being CLASSIFIED, and nothing forced a new mint to be thought about.
 try:
     _ast57 = __import__("ast")
-    _ens57 = next(n for n in _ast57.walk(_ast57.parse(
+    _mod57 = _ast57.parse(
         (ROOT / "plugins" / "consolidate-memory" / "scripts" / "facts_manifest.py"
-         ).read_text(encoding="utf-8")))
-        if isinstance(n, _ast57.FunctionDef) and n.name == "ensure")
+         ).read_text(encoding="utf-8"))
+    # ⚠ Scans `_ensure_inner` where it exists, because that is where the RETURNS live — v0.4.59
+    # made `ensure` a wrapper with a single exit, so scanning `ensure` found no mints at all and
+    # this pin REDDENED against a correct tree. ⚠ That is the spelling-bound matcher failing for the
+    # SECOND time in one patch: it broke when the literals moved behind `_served`, and again when
+    # the returns moved behind a wrapper. Binding it to a NAME is what keeps breaking; the fallback
+    # keeps it working on either shape, and the single-exit property itself is pinned separately.
+    # ⚠ Scans `ensure` and that is now SUFFICIENT, because v0.4.59 made the inner a CLOSURE — the
+    # mint literals live inside this function's own AST subtree, so there is no inner name to track.
+    # ⚠ This matcher broke TWICE on refactors of this function (once when the literals moved behind
+    # `_served`, once when the returns moved behind a module-level inner), each time reddening
+    # against a CORRECT tree. Binding it to a name was the cause both times; the closure removes the
+    # name, and the single-exit + no-bypass properties are pinned separately by the v0.4.59 pin.
+    _ens57 = next(n for n in _ast57.walk(_mod57)
+                  if isinstance(n, _ast57.FunctionDef) and n.name == "ensure")
     # ⚠ Read off `_mint("<reason>")` — the PRODUCER's declaration — exactly as the `load()` sibling
     # reads `_miss(...)`. The first cut scanned `return` TUPLE constants instead, which is what the
     # mints USED to look like; the moment they moved through `_mint` the scan saw only the one
@@ -24542,7 +24555,12 @@ try:
     # `_served`, this pin REDDENED against a correct tree. That is the spelling-bound matcher a
     # review lens described in the abstract, breaking on contact with its first refactor, and it is
     # the argument for the runtime half that v0.4.59 adds: a scan can only see the form it was
-    # taught, and `_served` asserts on the VALUE at every return regardless.
+    # taught. What covers that is the RUNTIME half: `ensure` is a wrapper over `_ensure_inner` and
+    # validates at the SINGLE EXIT, so it is total by construction rather than by convention.
+    # ⚠ The first cut of this very sentence claimed `_served` "asserts at every return" — and a
+    # review lens measured that it had FOUR call sites, so a NEW return, or an existing one edited
+    # to drop the call, escaped with the suite green. A totality claim is a claim about a CLASS;
+    # the wrapper is what makes it true, and this comment is corrected rather than left standing.
     _minted57 = sorted({
         str(_a57.value) for n in _ast57.walk(_ens57)
         if isinstance(n, _ast57.Call) and isinstance(n.func, _ast57.Name)
@@ -24875,6 +24893,60 @@ check("v0.4.59 (PIN): an UNDECLARED reason returned by `ensure` RAISES at the pr
       "`load()`'s reasons through, so a guard keyed on `_ENSURE_REASONS` alone would redden on "
       "correct trees",
       _raised59 is not None and len(_accepted59) == 7)
+
+# (1b) PIN — the validation is TOTAL BY CONSTRUCTION, which is a structural property and therefore
+# checkable: `ensure` is a wrapper whose ONE return routes through `_served`, over an inner function
+# that holds the logic. A review lens measured why the first cut was not: `_served` had FOUR call
+# sites, so a NEW return added to `ensure` — or an existing one edited to drop the call — escaped
+# with the suite green at 2331/0. ⚠ A totality claim is about a CLASS; only a single exit makes it
+# true, and a second `return` added here reddens this rather than silently reopening the hole.
+try:
+    _astE59 = __import__("ast")
+    _ensE59 = next(n for n in _astE59.walk(_astE59.parse(
+        (ROOT / "plugins" / "consolidate-memory" / "scripts" / "facts_manifest.py"
+         ).read_text(encoding="utf-8")))
+        if isinstance(n, _astE59.FunctionDef) and n.name == "ensure")
+    # ⚠ ONLY the function's OWN returns — `ast.walk` descends into a NESTED def, so the obvious
+    # form counts `_inner`'s six returns as `ensure`'s and `len(...) == 1` can never hold. Measured
+    # by this pin reddening on its own author the moment the closure landed; pruned below.
+    def _own_returns59(_fn: "object") -> list:
+        _out: list = []
+        _stack = list(getattr(_fn, "body", []))
+        while _stack:
+            _n = _stack.pop()
+            if isinstance(_n, _astE59.FunctionDef):
+                continue                              # a nested def's returns are its own
+            if isinstance(_n, _astE59.Return):
+                _out.append(_n)
+            _stack.extend(_astE59.iter_child_nodes(_n))
+        return _out
+
+    _retE59 = _own_returns59(_ensE59)
+    _one_exit59 = (len(_retE59) == 1
+                   and isinstance(_retE59[0].value, _astE59.Call)
+                   and isinstance(_retE59[0].value.func, _astE59.Name)
+                   and _retE59[0].value.func.id == "_served")
+    # ⚠ The inner must be a CLOSURE, and there must be NO module-level `_ensure_inner`. A review
+    # lens measured that a module-level inner is an importable, obviously-named bypass: calling it
+    # returns an unvalidated reason, and checking `ensure`'s returns cannot see a caller switch. A
+    # nested name cannot be imported, so this assert is what keeps the bypass INEXPRESSIBLE rather
+    # than merely undetected.
+    _modE59 = _astE59.parse(
+        (ROOT / "plugins" / "consolidate-memory" / "scripts" / "facts_manifest.py"
+         ).read_text(encoding="utf-8"))
+    _has_inner59 = any(isinstance(n, _astE59.FunctionDef) and n.name == "_inner"
+                       for n in _astE59.walk(_ensE59))
+    _no_bypass59 = not any(isinstance(n, _astE59.FunctionDef) and n.name == "_ensure_inner"
+                           for n in _astE59.walk(_modE59))
+except Exception:
+    _one_exit59 = _has_inner59 = False
+check("v0.4.59 (PIN, structural): `ensure` has EXACTLY ONE return and it routes through `_served`, "
+      "over a NESTED `_inner` that holds the logic — totality by CONSTRUCTION, with no importable "
+      "bypass name (a lens measured that a module-level inner IS callable, and that checking "
+      "`ensure`'s returns cannot see a caller switch). ⚠ The first cut "
+      "called `_served` from four individual returns, which a review lens measured as totality by "
+      "CONVENTION: a new return, or one edited to drop the call, escaped with the suite green",
+      _one_exit59 and _has_inner59 and _no_bypass59)
 
 # (2) PIN — a faulted `LOCK_UN` can no longer MANUFACTURE A VERDICT. `preflight.py` bypasses
 # `FileLock` with raw `flock`, and both sites wrapped the acquire and the unlock in one `try`, so an
@@ -25672,11 +25744,14 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     "where is the lock TAKEN?"; the question was "what is
                                        #     REACHABLE from a read command?". A review lens swept 22
                                        #     read commands under a held lock and found it.
-                            + 2        # v0.4.59 — the last three open items: 1 PIN that an UNDECLARED
+                            + 3        # v0.4.59 — the remaining open items: 1 PIN that an UNDECLARED
                                        #     reason returned by `ensure` RAISES at the producer (the
                                        #     RUNTIME half — no AST scan can close a NAME-minted
                                        #     reason) and that the guard accepts BOTH vocabularies,
-                                       #     + 1 PIN that a faulted `LOCK_UN` manufactures no verdict
+                                       #     + 1 structural PIN that `ensure` has EXACTLY ONE
+                                       #     return, through `_served` (totality by CONSTRUCTION —
+                                       #     the first cut had four call sites and a lens measured
+                                       #     the escape) + 1 PIN that a faulted `LOCK_UN` manufactures no verdict
                                        #     in preflight (neither a false held-lock advisory nor a
                                        #     false sqlite-probe fail with its disk-space remedy)
                             + 10       # v0.4.57 — the open-items PR: 2 structural PINs on the SECOND
