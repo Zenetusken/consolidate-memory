@@ -296,6 +296,10 @@ class SchemaDrift(TypedDict, total=False):
     advisory_no_scope: int
     advisory_no_origin: int
     advisory_stranded_globals: int
+    # v0.4.51: facts whose body could not be READ. ⚠ NOT drift and deliberately NOT summed by
+    # `drift_findings` — drift is a claim about CONTENT, and this is the absence of one. Without
+    # it an unreadable fact was scored as a fact MISSING its metadata (see the loop's note).
+    unreadable_facts: int
 
 
 class Health(TypedDict, total=False):
@@ -1563,13 +1567,24 @@ def schema_drift(fact_files: list, index_names: set,
     missing_node_type = malformed_scope = malformed_origin = 0
     advisory_no_scope = advisory_no_origin = 0
     advisory_stranded_globals = 0
+    unreadable_facts = 0
     stems = set()
     for f in fact_files:
         stems.add(f.stem)
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            text = ""
+            # ⚠ NOT `text = ""`. An empty body is a CONTENT CLAIM — it has no `node_type`, no
+            # `scope`, no `originSessionId` — so a file nobody could read was scored as a fact
+            # MISSING its metadata. MEASURED by a review lens: one mode-000 fact carrying all three
+            # fields took `missing_node_type` 0→1, `advisory_no_scope` 0→1 and `advisory_no_origin`
+            # 0→1, which the dashboard HEALTH row and the archive's "Schema drift recorded"
+            # store-check then reported as drift — and which steers the BACKFILL ADVISORY into a
+            # WRITE on a file that was never read. Same class as the `index_mismatch` exemption the
+            # archive already carries, on an operand with no fault field of its own: skipped, and
+            # COUNTED, so the absence of a claim is not spent as a claim.
+            unreadable_facts += 1
+            continue
         if _is_mirror(text):
             continue    # managed mirror — the authored side is the drift surface
         fm = _frontmatter(text)
@@ -1599,7 +1614,8 @@ def schema_drift(fact_files: list, index_names: set,
     return {"missing_node_type": missing_node_type, "malformed_scope": malformed_scope,
             "malformed_origin": malformed_origin, "index_mismatch": len(stems ^ index_names),
             "advisory_no_scope": advisory_no_scope, "advisory_no_origin": advisory_no_origin,
-            "advisory_stranded_globals": advisory_stranded_globals}
+            "advisory_stranded_globals": advisory_stranded_globals,
+            "unreadable_facts": unreadable_facts}
 
 
 def drift_findings(d: Mapping[str, Any]) -> int:
@@ -3669,8 +3685,14 @@ def build_context(project_dir: Path) -> dict:
     _dangling = dangling_links(auto_mem, global_dirs=_gdirs)
     _global_fact_count = len(_ffacts(_ctx))
     _obnj = bool((remediation or {}).get("required"))
+    # ⚠ A FAULT IS WORK, and this leaf said otherwise. `over_budget_not_justified` is
+    # `remediation.required`, which is ABSENT on a fault — so a store whose index nobody could read
+    # reported `work: False`: the machine-readable twin of the NO-OP banner, and the half a SCRIPT
+    # reads (`calibration_report.py` keys on this). The named exception that covers
+    # `prune_pressure` — "falsy can only SUPPRESS an alarm, never raise one" — does not reach it,
+    # because `work: False` is not a suppressed alarm, it is an affirmative "nothing to do".
     maintenance: dict = {"dangling": len(_dangling), "over_budget_not_justified": _obnj,
-                         "work": bool(_dangling) or _obnj}
+                         "work": bool(_dangling) or _obnj or bool(_local["index_fault"])}
 
     # v0.1.67 (Phase C): the demotion-triage seed — longitudinal usage aggregation + the per-fact
     # evidence-gated rank. Cheap on the always-run Phase-0 path: one tail-capped log read + one store
@@ -5064,10 +5086,23 @@ def print_report(ctx: dict) -> None:
 
     # ── banner (visually coherent with the final dashboard) ──
     title = "✦ PHASE 0 · consolidate-memory"
-    tag = tier if (gc or rg["prune_pressure"]) else "NO-OP"
+    # ⚠ A FAULT MANUFACTURES A POSITIVE VERDICT HERE — which the "falsy can only SUPPRESS an alarm"
+    # rationale for `prune_pressure` does NOT cover. `NO-OP` is not the absence of an alarm; it is
+    # the assertion "reviewed, nothing changed", and the fault's zero CREATES it: with the index
+    # unreadable, `prune_pressure` is False and a quiet store has `gc == 0`, so the banner declared
+    # nothing to do about a store whose index nobody could open. MEASURED by a review lens:
+    # 3 facts + a 1504-tok index → tag LIGHT, `remediation.required True`; the SAME store with
+    # `MEMORY.md` a directory → tag **NO-OP**, `required` ABSENT, `maintenance.work` False — while
+    # the report's own STORES row said UNMEASURABLE three lines below. An unmeasured store has
+    # exactly one thing to do, so it gets its own tag rather than an all-clear.
+    if index_reading(ctx["index_lb"][2], bool(ctx["index_fault"]))[0] == "unmeasurable":
+        tag = "FIX INDEX"
+    else:
+        tag = tier if (gc or rg["prune_pressure"]) else "NO-OP"
     gap = max(2, _ui.W - 2 - len(title) - len(tag))
     add(_ui.rule())
-    add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, tcol if tag == tier else "dim"))
+    add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap
+        + _ui.c(tag, tcol if tag == tier else ("red" if tag == "FIX INDEX" else "dim")))
     sub = f"{proj} · {ctx['slug']}" + ("" if ctx["proj_root"].exists() else "   ⚠ proj_root MISSING")
     add("  " + _ui.c(sub, "dim"))
     add(_ui.rule())
@@ -5163,11 +5198,23 @@ def print_report(ctx: dict) -> None:
     # heaviest subtree pays every ancestor CLAUDE.md. Surface worst_path when nested files exist (the root row
     # above already covers a single-file repo). Detect-and-REPORT only — NOT wired into the remediation gate.
     _hier = ctx.get("claude_md_hierarchy") or {}
-    if _hier.get("total_files", 0) > 1 or _hier.get("worst_path_tokens", 0) > CLAUDE_MD_TOKEN_BUDGET:
+    # ⚠ `or _hier_unread` — the gate reads the very numbers an unreadable file ZEROES
+    # (`total_files` and `worst_path_tokens`), so a nested CLAUDE.md nobody could read removed the
+    # whole row: measured, a 103-token `pkg/CLAUDE.md` made a directory took `worst_path_tokens`
+    # 103→0 and `total_files` 1→0, and the row vanished for a tier CC still loads. v0.4.50 made
+    # `claude_md_hierarchy` RETURN the condition; this is the consumer that has to read it.
+    _hier_unread = _hier.get("unreadable_count", 0)
+    if (_hier.get("total_files", 0) > 1 or _hier.get("worst_path_tokens", 0) > CLAUDE_MD_TOKEN_BUDGET
+            or _hier_unread):
         _wt = _hier.get("worst_path_tokens", 0)
         _heavy = _ui.c("  ⚠ heavy", "yellow") if _wt > CLAUDE_MD_TOKEN_BUDGET else ""
-        add(f"    {_ui.lbl('CLAUDE.md tree', 14)}"
-            + _ui.c(f"≈{_wt} tok · {_hier.get('total_files', 0)} files · a session in {_hier.get('worst_path', '?')} pays this/turn", "dim") + _heavy)
+        if _hier_unread:
+            add(f"    {_ui.lbl('CLAUDE.md tree', 14)}"
+                + _ui.c(f"⚠ {_hier_unread} CLAUDE.md file(s) could not be READ — a session's cost "
+                        f"for that subtree is UNKNOWN, not {_wt} tok", "red"))
+        else:
+            add(f"    {_ui.lbl('CLAUDE.md tree', 14)}"
+                + _ui.c(f"≈{_wt} tok · {_hier.get('total_files', 0)} files · a session in {_hier.get('worst_path', '?')} pays this/turn", "dim") + _heavy)
     gl, gb, gt = ctx["global_claude_md"]
     # ⚠ `or _gcm_faulted`, and the fault arm prints a ROW rather than skipping one. A row that
     # VANISHES on a read failure is worse than a wrong number here: this is the one operand that

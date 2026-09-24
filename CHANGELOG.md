@@ -5,6 +5,51 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.51] — 2026-09-24
+
+**Patch — the fault's POSITIVE verdicts, and four claims in the tests that measurement falsified.**
+
+v0.4.45 stated a named exception for `prune_pressure`: *"falsy can only SUPPRESS an alarm, never
+raise one."* A review lens executed it and showed the rationale was **stretched too far**. It holds
+for `prune_pressure` **as an alarm**. It does not hold for what its falsy value *manufactures*
+downstream — and a manufactured verdict is not a suppressed alarm.
+
+1. **`NO-OP` is a positive assertion, and the fault created it.** The Phase-0 banner reads
+   `tag = tier if (gc or prune_pressure) else "NO-OP"`, and `NO-OP` means *"reviewed, nothing
+   changed"* — not the absence of an alarm. MEASURED: 3 facts + a 1504-tok index → banner `LIGHT`
+   with `remediation.required True`; the **same** store with `MEMORY.md` a directory → banner
+   **`NO-OP`**, `maintenance.work False`, `required` ABSENT — while the report's own STORES row
+   three lines below said UNMEASURABLE. An unmeasured store has exactly one thing to do, so it now
+   gets its own red tag (`FIX INDEX`) and `maintenance.work` counts the fault as work — that leaf
+   is what a **script** reads.
+
+2. **An unreadable fact body was scored as a fact MISSING its metadata.** `except OSError: text =
+   ""` made an empty body, and an empty body is a **content claim**. MEASURED: one mode-000 fact
+   carrying `node_type`, `scope` and `originSessionId` reported `missing_node_type` 0→1,
+   `advisory_no_scope` 0→1, `advisory_no_origin` 0→1 — a drift finding the dashboard and the
+   archive both render, and which steers the **backfill advisory into a WRITE** on a file nobody
+   read. Skipped now, and counted as `unreadable_facts`.
+
+3. **The dashboard printed a manufactured `index↔file` count** beside its own UNMEASURABLE row: an
+   index nobody could open names nothing, so every fact reads as un-indexed. The archive already
+   exempted this on exactly that argument; the dashboard did not, so **one of the two renderers was
+   wrong**.
+
+4. **`cm log` used `bool()` where every sibling renderer coerces.** `bool("false")` is `True`, so a
+   MEASURED index whose leaf arrived as the string `"false"` printed `UNMEAS.` — in the file whose
+   header promises *"all fields defensively read"*, on a model-authored record.
+
+Also fixed: the nested-`CLAUDE.md` row still **vanished** on a fault (v0.4.50 made the hierarchy
+*return* `unreadable`; the report and dashboard rows are gated on the very numbers an unreadable
+file zeroes — the consumers had to read it); a comment claiming a `getattr(rd, "_unmeasurable", …)`
+guard **that does not exist in the file**; a CONTROL whose second half passes pre-fix *vacuously*
+(the call raised `TypeError` before it could write); a sibling PIN whose "healthy" half measured a
+file the fixture had not created yet, so it tested *absent* ≠ *faulted* rather than *readable* ≠
+*faulted*; and a D6 ledger term describing an arm differently from the check it counts.
+
+Measured both ways: against the released 0.4.50 — 2295 passed / 3 failed; here 2298 / 0. Totals
+reconcile at 2298.
+
 ## [0.4.50] — 2026-09-24
 
 **Patch — the remainder of the adversarial run: five ways an unanswerable question was spent as an

@@ -44,7 +44,13 @@ def _row(rec: dict) -> list:
     # measured-looking zero is worse than in prose — the column is scanned, not read, so a 0 sits
     # in the same visual register as a real one and the row's Δ reads as "nothing changed". The
     # cell says so instead. (The column stays a single token wide: a table cannot carry a sentence.)
-    _idx_unmeas = bool(_d(rec, "budget", "index", "unmeasurable"))
+    # ⚠ COERCED, like every sibling renderer's `_flag`/`truthy`. `bool()` on a model-authored leaf
+    # makes the STRING `"false"` — and `"no"`, `"0"`, `"unknown"` — read as TRUE. MEASURED by a
+    # review lens: `cm log` printed `UNMEAS.` for a MEASURED index whose leaf arrived as `"false"`,
+    # in the file whose own header promises "all fields defensively read". The record is
+    # model-authored, so a string is exactly the shape to expect.
+    _iu = _d(rec, "budget", "index", "unmeasurable")
+    _idx_unmeas = _iu is True or (isinstance(_iu, str) and _iu.strip().lower() in ("true", "1", "yes"))
     rb, ra = _n(_d(rec, "budget", "recall_facts", "before")), _n(_d(rec, "budget", "recall_facts", "after"))
     u = _d(rec, "usage", "reads")                    # v0.1.63 (Phase A): organic recalls (None on legacy)
     reads = "—" if u is None else str(_n(u))
