@@ -157,6 +157,22 @@ defects:
   The TypeError half of substitutability is genuinely fixed (no caller hands a subclass a keyword it
   does not declare); the policy half is not, and cannot be without re-introducing the keyword. It is
   now **stated** in `_take`'s docstring as a hole rather than claimed away.
+- ⚠⚠ **One of our own pins HUNG THE SUITE, which is worse than failing.** The `facts-refresh` check
+  drove the probe **in-process** while the parent held `global.lock` — and `flock` has no
+  same-process deadlock detection, so a second fd of the same file blocks **forever**. On this
+  branch it passed (the rebuild now tries rather than waits); on both `18c79f4` and `main` the suite
+  **froze at check 2286 with no totals line**. Every sibling in those blocks already shelled out
+  under an explicit timeout; this one broke the pattern, and the cost was not a red check but the
+  entire pre-fix measurement — a hanging pin takes the self-counting D6 counter down with it. Now a
+  subprocess under a 30 s timeout, so pre-fix it is a clean 124 the counter survives.
+- **A tenth mislabelling, of the ninth's exact shape.** The `v0.4.56b` `--verbose` check was labelled
+  GUARD "sharing the pin's precondition" — a lens measured it **RED** on the revision preceding this
+  one, which by the rule accepted one round earlier makes it a **third arm of that PIN** (the census
+  is 3 PINs + 1 CONTROL, not 2 + 1 + 1 GUARD). Its stated mechanism was wrong too, in the same way
+  the LEAK pin's had been one revision before: "pre-fix it reddens as the hang's rc 124" is true of
+  `18c79f4` only — on this branch's own predecessor the red is *purely the note's absence* (rc 0),
+  and on `main` it is rc 2 (`unknown flag: --verbose`). A parenthetical naming one of three reds is
+  a claim about the tree you happened to measure.
 - **A control's named mutation cannot be observed through the suite.** The `v0.4.56b` control is
   hand-discriminated (manifest 0→1 normally, 0→0 under a never-rebuild mutation), but that mutation
   aborts the run ~10,500 lines upstream at an unguarded `_mp.stat()`, so the suite never reaches the

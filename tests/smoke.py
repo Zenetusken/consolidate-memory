@@ -24291,9 +24291,12 @@ with _tf43.TemporaryDirectory() as _td_u56:
     # ⚠ GUARD, not a PIN — and the correction is the finding. Green on BOTH `18c79f4` and this
     # branch, because the property ALREADY HELD on the tree that precedes this one; by this repo's
     # own definition ("a check green on both trees is a guard") the PIN label was wrong. It reddens
-    # only on `main`, and there only for `LockBusy`'s KEY-ABSENCE. The arm it names is real and is
-    # re-run BY HAND, not through the suite: break the `release_locks` in `acquire_mutation_locks`'
-    # `except` and it reddens.
+    # only on `main`, and there only for `LockBusy`'s KEY-ABSENCE. ⚠ The arm it names is real AND
+    # IT REDDENS THROUGH THE SUITE, which the first cut of this comment DENIED — it said the arm was
+    # "re-run BY HAND, not through the suite", and a lens measured the mutation (break the
+    # `release_locks` in `acquire_mutation_locks`' `except`) yielding TWO failures, `review-s2` and
+    # this check. A check that understates its own coverage is the mirror of one that overstates it,
+    # and it invites exactly the wrong conclusion: that a GUARD cannot be exercised here.
     check("v0.4.56 (GUARD — green on both trees, and THAT is the finding): declining on the GLOBAL "
           "lock releases the DOMAIN lock already taken, so a try-mode caller is safe rather than "
           "wedged. ⚠ Its first cut was a PIN whose probe used `try_acquire` — absent pre-fix — so "
@@ -24373,12 +24376,22 @@ with _tf43.TemporaryDirectory() as _td_m56:
           "declined — the rebuild TRIES, it is not disabled (a repair that declined here would be "
           "v0.4.54's shape) and the note is not unconditional",
           _rcw56 == 0 and bool(_manm56()) and "not rebuilt" not in _errw56)
-    # (c) GUARD (shares the manifest pin's precondition — pre-fix it reddens as the hang's rc 124,
-    # not for the note) — the decline is NAMED under `--verbose`, exactly as its preflight sibling
-    # is. ⚠ Its unique content: `_MAN_ROWS_STASH["reason"]` was written by `_admissible_records` and
-    # read by NOBODY, so the more expensive of the two declines (its fallback enumerates the WHOLE
-    # domain) was the silent one. Two sites, one class of decision, one of them wired — the v0.4.45
-    # defect shape, caught here by comparing the siblings rather than by looking at either alone.
+    # (c) PIN — a THIRD arm of the manifest pin above, not a GUARD, and the label was corrected by a
+    # review lens that measured it RED on `0410c23` (one of that tree's four failures). By the rule
+    # accepted one round earlier, an arm red on the revision that precedes this one IS the pin, so
+    # the census is 3 PINs + 1 CONTROL for this block — TENTH mislabelling on the arc, and the
+    # second in a row of the identical shape (a "shares the precondition" label used to keep a red
+    # check out of the PIN count).
+    # ⚠ Its stated MECHANISM was wrong too, and it is the exact defect corrected in the LEAK pin one
+    # revision earlier: "pre-fix it reddens as the hang's rc 124" names the red on `18c79f4` only.
+    # Measured per tree — `18c79f4` → rc 124 (the hang); `0410c23`, this branch's own predecessor →
+    # rc **0** with the note simply ABSENT, so the red there is PURELY the note's absence; `main` →
+    # rc 2 (`unknown flag: --verbose`). A parenthetical that names one of three reds is a claim
+    # about the tree you happened to measure, and this arc has now paid for that twice.
+    # The decline is NAMED under `--verbose`, exactly as its preflight sibling is. ⚠ Unique content:
+    # `_MAN_ROWS_STASH["reason"]` was written by `_admissible_records` and read by NOBODY, so the
+    # more expensive of the two declines (its fallback enumerates the WHOLE domain) was the silent
+    # one — the v0.4.45 defect shape, caught by comparing the siblings rather than reading either.
     for _m in _manm56():
         _m.unlink()
     _glm56b = _cp56.FileLock(_pdatm56 / "locks" / "global.lock"); _glm56b.acquire()
@@ -24386,7 +24399,8 @@ with _tf43.TemporaryDirectory() as _td_m56:
         _rcv56, _outv56, _errv56 = _statusm56("--verbose")
     finally:
         _glm56b.release()
-    check("v0.4.56b (GUARD, shares the pin's precondition): …and that decline is NAMED under "
+    check("v0.4.56b (PIN, a third arm of the manifest pin — RED on `0410c23`): …and that decline "
+          "is NAMED under "
           "`--verbose` — `facts-manifest: not rebuilt (lock-busy)` — so it is stated rather than "
           "discovered, like the preflight skip beside it",
           _rcv56 == 0 and "facts-manifest" in _errv56 and "lock-busy" in _errv56)
@@ -24455,24 +24469,37 @@ with _tf43.TemporaryDirectory() as _td_t56:
     # to distinguish exactly those. The exit code stays 1 (the command really did fail to do its one
     # job); the CAUSE is what must be named as transient.
 
-    class _CxF56:
-        def __init__(self, dd: Path, pd: Path, dom: str) -> None:
-            self.canonical_domain_dir = dd
-            self.plugin_data_dir = pd
-            self.domain_id = dom
-
-    _cm56 = __import__("cm_ops")
+    # ⚠⚠ THE PROBE RUNS IN A SUBPROCESS UNDER A TIMEOUT, and that is not style — the first cut ran
+    # it IN-PROCESS with no timeout, and a review lens measured the consequence: the parent holds
+    # `global.lock` while the probe calls `_rebuild_locked`, which on any pre-fix tree acquires the
+    # SAME lock on a SECOND fd. `flock` has no same-process deadlock detection, so that blocks
+    # FOREVER — the suite froze at check 2286 with NO TOTALS LINE on both `18c79f4` and `main`.
+    # ⚠ A pin that HANGS is worse than one that fails: it takes the D6 counter down with it, so the
+    # pre-fix run reports nothing at all rather than reporting a red. Every sibling in these blocks
+    # already shelled out under an explicit timeout; this one broke the pattern and it cost the
+    # whole measurement. ⚠ It also means the check cannot be "red on pre-fix" — it must be a clean
+    # 124 the counter can survive.
     _ddc56 = Path(_td_t56) / "domains" / "personal" / "facts"
     _ddc56.mkdir(parents=True, exist_ok=True)
     _pdc56 = Path(_td_t56) / "pdata56c"
+    _drv56 = (
+        "import sys, types, pathlib;"
+        "sys.path.insert(0, sys.argv[1]);"
+        "import cm_ops;"
+        "c = types.SimpleNamespace(canonical_domain_dir=pathlib.Path(sys.argv[2]),"
+        " plugin_data_dir=pathlib.Path(sys.argv[3]), domain_id='personal');"
+        "sys.exit(cm_ops._facts_refresh_probe(c))"
+    )
     _glc56 = _cp56.FileLock(_pdc56 / "locks" / "global.lock"); _glc56.acquire()
-    _errc56 = _ioB.StringIO()
     try:
-        with _ctxB.redirect_stderr(_errc56):
-            _rcc56 = _cm56._facts_refresh_probe(_CxF56(_ddc56, _pdc56, "personal"))
+        try:
+            _pr56 = _sp53.run([sys.executable, "-c", _drv56, str(_SD56), str(_ddc56), str(_pdc56)],
+                              capture_output=True, text=True, timeout=30)
+            _rcc56, _msgc56 = _pr56.returncode, _pr56.stderr
+        except _sp53.TimeoutExpired:
+            _rcc56, _msgc56 = 124, ""
     finally:
         _glc56.release()
-    _msgc56 = _errc56.getvalue()
     check("v0.4.56c (PIN): `cm data facts-refresh` names a CONTENDED decline as transient — it says "
           "the lock is held and how to clear it, and does NOT tell the operator the cache is broken "
           "`until this clears` (pre-fix: the durable-fault sentence, which the next uncontended run "
@@ -25191,7 +25218,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     time out" — the latter is satisfied by a command that
                                        #     never reached the lock, which is how a control on a
                                        #     blocking path goes vacuous.
-                            + 4        # v0.4.56b — THE FRAME THE FIRST FIX MISSED: 2 PINs (with an
+                            + 4        # v0.4.56b — THE FRAME THE FIRST FIX MISSED: 3 PINs (with an
                                        #     ENROLLED project, a COLD manifest and `global.lock`
                                        #     held, `cm status --json` completes / carries its
                                        #     preflight block / leaves the manifest UNWRITTEN; and
@@ -25201,9 +25228,11 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     wrong and its probe had been the artifact) + 1 CONTROL (uncontended,
                                        #     that same manifest IS rebuilt AND nothing is reported
                                        #     as declined — the second conjunct is what stops an
-                                       #     unconditional note) + 1 GUARD (the decline
-                                       #     is NAMED under `--verbose`, sharing the pin's
-                                       #     precondition).
+                                       #     unconditional note). ⚠ The third PIN — the decline
+                                       #     NAMED under `--verbose` — was labelled GUARD until a
+                                       #     lens measured it RED on `0410c23`: the TENTH
+                                       #     mislabelling on the arc, and the second in a row of
+                                       #     the identical "shares the precondition" shape.
                                        #     ⚠ Each of the four exists because a cheaper spelling
                                        #     of it was vacuous. "Completed" alone is satisfied by
                                        #     0.4.54's never-rebuild — hence the control. "Manifest
