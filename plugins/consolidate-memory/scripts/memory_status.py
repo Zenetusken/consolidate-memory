@@ -3305,6 +3305,19 @@ def _scrub_commit_log(log: str) -> list:
         # input extract_signals' call sites scan — this was the one raw-input exception).
         if sep and _looks_secret(_strip_cf(subject)[:_COMMIT_SUBJECT_CAP]):
             out.append(f"{sha} (omitted: commit subject contained a credential-shaped value)")
+        elif len(ln) > _COMMIT_SUBJECT_CAP:
+            # ⚠ THE CAP MUST APPLY TO THE EMIT, NOT ONLY TO THE SCAN — and it did not, which made
+            # this firewall WEAKER the longer the subject got. MEASURED: a subject of
+            # `"deadbeef " + "x"*100 + " " + CRED` was redacted, while the SAME credential behind
+            # 5,000 filler chars was emitted verbatim, because `_looks_secret` saw only
+            # `subject[:4000]` (False) and the `else` then appended the WHOLE line. The one
+            # Phase-0 source that carries a secrets-firewall pass was therefore bypassable by
+            # padding — against CLAUDE.md's "Secrets firewall at retrieval … don't weaken that".
+            # ⚠ Truncate rather than omit: the un-scanned tail is exactly what must not be
+            # emitted, but the SHA and the scanned head are still useful, and a silent drop would
+            # read as an empty commit. The marker names the cap so the truncation is auditable.
+            out.append(ln[:_COMMIT_SUBJECT_CAP]
+                       + " …(truncated: subject exceeds the firewall scan cap)")
         else:
             out.append(ln)
     return out

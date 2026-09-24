@@ -23979,6 +23979,70 @@ with _tf43.TemporaryDirectory() as _td_seed:
           "ABSENCE while its name claimed to test the readable case",
           _read_seed[2] is False and _read_seed[0] == ms.est_tokens(_ok_seed.read_text(encoding="utf-8")))
 
+# --- v0.4.48 (PIN — RED on the released 0.4.47, MEASURED): THE FIREWALL'S CAP APPLIED TO THE
+# SCAN AND NOT TO THE EMIT ---------------------------------------------------------------------
+# `_scrub_commit_log` scanned `_strip_cf(subject)[:_COMMIT_SUBJECT_CAP]` and then appended the
+# WHOLE line in the `else`. So the firewall got WEAKER the longer the subject grew: the same
+# credential was redacted behind 100 filler chars and emitted VERBATIM behind 5,000 — MEASURED on
+# the released 0.4.47, `_looks_secret(subject[:4000])` False while `_looks_secret(subject)` True,
+# and the credential present in the output. Emitting text you refused to SCAN is the defect; the
+# cap belongs on both sides. ⚠ The credential is a generic high-entropy blob, never a vendor-shaped
+# literal: the first version of a fixture on this arc used `sk_live_…` and GitHub's push protection
+# refused the push — the firewall under test, catching the test.
+_CAP48 = ms._COMMIT_SUBJECT_CAP
+_CRED48 = "'Xq7v2Kd9Lm4Np8Rt3Ws6Yz1Bc5Ef0Gh2Jk4Mn6Pq7Rv9Tw1'"
+_out48_long = ms._scrub_commit_log("deadbeef " + "x" * (_CAP48 + 1000) + f" KEY={_CRED48} CI")
+check("v0.4.48 (PIN): a commit subject LONGER than the firewall's scan cap cannot smuggle a "
+      "credential past it — the cap bounds the EMIT as well as the scan, because the un-scanned "
+      "tail is precisely what must not reach the model (pre-fix: the whole 5,087-char line was "
+      "appended and the credential was in it)",
+      "Xq7v2Kd9" not in "".join(_out48_long)
+      and len(_out48_long[0]) <= _CAP48 + 64)
+check("v0.4.48 (CONTROL): …and a subject WITHIN the cap is still scanned and redacted exactly as "
+      "before — the repair is a bound on the emit, not a change to the verdict",
+      "omitted: commit subject contained a credential"
+      in ms._scrub_commit_log(f"deadbeef KEY={_CRED48} unblock CI")[0])
+
+# --- v0.4.48 (PIN — RED on the released 0.4.47): the write path's read precondition ------------
+# `Path.exists()` re-raises EACCES and `read_bytes` raises on a mode-000 file: with the index
+# symlinked into a non-traversable directory, `cm sync --pull --allow-net-grow` — one of the two
+# remedies the ceiling hold itself prints — died with an uncaught `PermissionError`. A revision we
+# cannot READ is a precondition we cannot HONOUR, so the caller refuses rather than writing
+# without one.
+with _tf43.TemporaryDirectory() as _td_ir48:
+    _tgt_ir48 = Path(_td_ir48) / "locked"; _tgt_ir48.mkdir()
+    (_tgt_ir48 / "x.md").write_text("# Memory Index\n\n", encoding="utf-8")
+    _lnk_ir48 = Path(_td_ir48) / "MEMORY.md"
+    _lnk_ir48.symlink_to(_tgt_ir48 / "x.md")
+    _ok_ir48 = Path(_td_ir48) / "ok.md"
+    _ok_ir48.write_text("# Memory Index\n\n", encoding="utf-8")
+    # ⚠ `getattr`, not a bare call — the helper does not exist pre-fix, and a direct call raises
+    # AttributeError AT MODULE SCOPE, truncating 25 checks including the D6 pin. TENTH occurrence
+    # of this trap on the arc, and the third introduced by a pin written in the same batch as the
+    # fix it covers. Guarded BEFORE the pre-fix measurement, which is what found it.
+    _ir_fn48 = getattr(sg, "_index_revision", None)
+    _ir_bad = _ir_ok = _ir_absent = ("<no-helper>", "")
+    if _ir_fn48 is not None:
+        _os53.chmod(_tgt_ir48, 0o000)
+        try:
+            _ir_bad = _ir_fn48(_lnk_ir48)
+        finally:
+            _os53.chmod(_tgt_ir48, 0o755)      # restore so TemporaryDirectory can clean up
+        _ir_ok = _ir_fn48(_ok_ir48)
+        _ir_absent = _ir_fn48(Path(_td_ir48) / "nope.md")
+    check("v0.4.48 (PIN): an index that cannot be READ yields a NAMED refusal, never a traceback "
+          "— so the ceiling hold's own printed remedy (`--allow-net-grow`) can actually run and "
+          "report instead of dying in the write path",
+          _ir_bad[0] == "" and _ir_bad[1] != "")
+    # ⚠ GUARD, not CONTROL — measured: pre-fix the sentinel's `absent` conjunct reddens for
+    # KEY-ABSENCE, not for behaviour, which is a PIN's failure mode on an arm labelled CONTROL.
+    # Relabelled rather than left carrying a claim the pre-fix run falsifies. Its value is real:
+    # it is the arm that catches a refusal which swallows the two ORDINARY cases.
+    check("v0.4.48 (GUARD, necessarily — reddens for KEY-ABSENCE, the helper is new): …a READABLE "
+          "index still yields its revision, and an ABSENT one still yields `(\"\", \"\")` — the "
+          "refusal did not swallow the two ordinary cases",
+          _ir_ok[0] != "" and _ir_ok[1] == "" and _ir_absent == ("", ""))
+
 # --- v0.4.45 review: the SEED RELAY, which nothing pinned ------------------------------------
 # The existing v0.4.45 PIN asserts the PRODUCER (`store_local_index(...)["index_fault"]`). Nothing
 # asserted that the record LEAF is actually reached — so deleting the relay in `seed_record` left
@@ -24320,6 +24384,14 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 4        # v0.4.48 — 2 PINs + 2 CONTROLS: the firewall's cap now
+                                       #     bounds the EMIT as well as the scan (a credential
+                                       #     behind 5,000 filler chars was emitted VERBATIM and is
+                                       #     not any more), and the write path's index read yields
+                                       #     a NAMED refusal instead of an uncaught
+                                       #     `PermissionError`. ⚠ Each PIN is paired with a
+                                       #     CONTROL because both repairs bound a failure mode
+                                       #     that a blunt "always refuse" would also satisfy.
                             + 1        # v0.4.47 — the ONLY true PIN in this batch: an index whose
                                        #     `exists()` itself raises is spent as the fault, not as
                                        #     a traceback out of `cm sync`. ⚠ RED on the released

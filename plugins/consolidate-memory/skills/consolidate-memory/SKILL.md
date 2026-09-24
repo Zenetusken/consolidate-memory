@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.47** — a crash 0.4.46 introduced (`Path.exists()` re-raises EACCES where `_safe_read_text` swallows it, so an unreadable index raised out of `cm sync` LIST), plus the two surfaces 0.4.45's own carried-forward list named: the SessionStart beacon's
+**v0.4.48** — a live firewall leak (the commit-subject cap bounded the SCAN and not the EMIT, so a credential behind 5,000 filler chars was emitted verbatim on every Phase-0 report) and the write path's index read (an uncaught `PermissionError` on the ceiling hold's own printed remedy); before that, **v0.4.47** — a crash 0.4.46 introduced (`Path.exists()` re-raises EACCES where `_safe_read_text` swallows it, so an unreadable index raised out of `cm sync` LIST), plus the two surfaces 0.4.45's own carried-forward list named: the SessionStart beacon's
 `held` advisory (the second site of the `_pull_index_seed` defect — one unreadable index both
 advertised a ceiling-refused pull and dropped every stale-mirror item), and the HTML archive's
 project-`CLAUDE.md` meter and global row (a green `0% · 4.0k Within budget`, and a row that
