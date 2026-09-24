@@ -5,6 +5,41 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.52] — 2026-09-24
+
+**Patch — the coverage holes a mutation lens found: three behaviours shipped in 0.4.46–0.4.49 whose
+MUTATION left both suites green, and the archive check that was reading its own comment.**
+
+A coverage lens did not read the code — it **mutated** it, one behaviour at a time, against a fresh
+copy, and reported every change that left `smoke` (2289) and `browser` (1340) both green. Three
+were real:
+
+1. **The beacon's `_pull_index_seed` routing** — reverting `_idx_seed` to `est_tokens(idx_text)`
+   passed. Every existing beacon pin runs on a **readable** index, where the two expressions are
+   *identical*, so none could distinguish them: the same blind spot the pull's own wiring had.
+   Measured consequence on a faulted index: `seed 3841 → 4`, so `held` empties and the line
+   advertises a pull the ceiling would refuse.
+2. **Both consumers of `_index_revision`** — `if _idx_err:` → `if False:` at the pull restores the
+   exact v0.4.49 crash (uncaught `PermissionError`), and the gc's `return 1` is a verdict nothing
+   reads. The helper was pinned; **neither call site was**.
+3. **The oversize refusal's stderr notice** — removing the `print` passed. It is the sole place the
+   offending file can be named, and without it the operator gets a permanently cold cache
+   (measured 1.3 ms → ~1.4 s per call) with no lead.
+
+Plus the archive's `sections.js` exemption, which had **no test at all** — and the check written to
+provide one failed twice, for two different reasons worth recording:
+
+- `document.body.textContent` includes the bundles **inlined as JS**, so the first cut found the
+  phrase *inside the comment explaining it* — this repo's own *"a text check reads prose about its
+  subject"* trap, committed while writing a check about that very family.
+- `#store-evidence` never carries the phrase at all (measured: it lives only inside the
+  `<script>`). The observable is `#store-checks`'s **state chip**, which is what a reader sees.
+
+⚠ All three smoke arms are **GUARDs, not pins** — every one is green on **both** trees, because the
+behaviours already shipped and were simply never checked. An earlier cut labelled them PINs; the
+pre-fix run falsified that. Their value is that **reverting** each behaviour now reddens, which
+nothing did before. Measured: 2301 / 0 on both trees, and the D6 total reconciles on both.
+
 ## [0.4.51] — 2026-09-24
 
 **Patch — the fault's POSITIVE verdicts, and four claims in the tests that measurement falsified.**

@@ -24094,6 +24094,78 @@ check("v0.4.50 (PIN, structural): no consumer reads a fault key through `.get(..
       "silently reading as 'no fault' (pre-fix: nine such defaults, all defaulting to healthy)",
       _defaulted_fk == [])
 
+# --- v0.4.52: THE COVERAGE HOLES A MUTATION LENS FOUND ------------------------------------------
+# The beacon's `_pull_index_seed` ROUTING was unpinned: reverting `_idx_seed` to
+# `est_tokens(idx_text)` left the whole suite green (measured), because every existing beacon pin
+# runs on a READABLE index where the two expressions are identical — the same blind spot the
+# `run()` wiring had. ⚠ ONE fixture pins BOTH halves, because one unreadable index fails twice:
+# the seed goes ceiling+1 → 4 (so `held` empties and the line stops saying "would be ceiling-held",
+# advertising a pull the ceiling would refuse), and the fault sentence disappears (so a count built
+# from a failed read reads as a complete advisory).
+# ⚠ STRUCTURAL, and the attempt at a behavioural fixture is abandoned rather than faked. I built
+# one — a store whose only `*.md` is a directory, plus a stacks cache — and MEASURED that
+# `_store_gaps` returns `(0, 0)` for it, so `beacon_line` short-circuits at
+# `if not missing and not stale: return ""` and the pin would assert against an empty line. Staging
+# a fact that survives `is_relevant` + `admit_cross_project` needs the same fixture the v0.4.10 pin
+# at `beacon_line`'s sibling uses, and reproducing that here would be a second copy of it.
+# So this asserts the CALL and the SENTENCE'S SOURCE, exactly as the `run()` wiring pin does, and
+# says so: it cannot prove the sentence fires, only that the branch is written and the read is
+# routed. A behavioural arm here remains a genuine hole.
+try:
+    import ast as _ast_bc52
+    _bc52 = next(n for n in _ast_bc52.walk(_ast_bc52.parse(
+        (ROOT / "plugins" / "consolidate-memory" / "scripts" / "session_beacon.py"
+         ).read_text(encoding="utf-8")))
+        if isinstance(n, _ast_bc52.FunctionDef) and n.name == "beacon_line")
+    _bc52_calls = {n.func.id for n in _ast_bc52.walk(_bc52)
+                   if isinstance(n, _ast_bc52.Call) and isinstance(n.func, _ast_bc52.Name)}
+    _bc52_src = (ROOT / "plugins" / "consolidate-memory" / "scripts"
+                 / "session_beacon.py").read_text(encoding="utf-8")
+except Exception:
+    _bc52_calls, _bc52_src = set(), ""
+check("v0.4.52 (GUARD, structural regression — green on both trees BY CONSTRUCTION: the beacon "
+      "was routed in v0.4.46, so this cannot redden pre-fix; its value is that REVERTING the "
+      "routing now reddens): the beacon reads its index through `_pull_index_seed` AND the "
+      "fault sentence is present — reverting the seed to `est_tokens(idx_text)` drops `held` to 0 "
+      "and the line advertises a pull the ceiling would refuse; dropping `_fault` leaves a count "
+      "built from a failed read reading as a complete advisory",
+      "_pull_index_seed" in _bc52_calls and "_idx_unreadable" in _bc52_src
+      and "could not be READ" in _bc52_src)
+
+# ⚠ The two REFUSE arms that consume `_index_revision` — the helper is pinned, neither CALL SITE
+# was, and a coverage lens measured that disabling either leaves the suite green: `if _idx_err:` →
+# `if False:` at the pull restores the exact v0.4.49 crash (uncaught `PermissionError`), and the
+# gc's `return 1` is a verdict nothing reads. Structural, like the `run()` wiring pin, on the same
+# reasoning: a correct helper nobody consults is the defect this family keeps producing.
+_sg52_src = (ROOT / "plugins" / "consolidate-memory" / "scripts" / "sync_global.py"
+             ).read_text(encoding="utf-8")
+check("v0.4.52 (GUARD, structural regression — green on both trees BY CONSTRUCTION: both "
+      "consumers shipped in v0.4.48/v0.4.49; its value is that DISABLING either now reddens): "
+      "BOTH consumers of `_index_revision` act on its refusal — the "
+      "pull returns the named error and the gc returns a non-zero code, rather than computing a "
+      "refusal nothing reads",
+      _sg52_src.count("_index_revision(") == 3          # 1 def + 2 call sites
+      and 'if _idx_err:' in _sg52_src and 'if _ir_err:' in _sg52_src)
+
+# ⚠ The OVERSIZE refusal's stderr notice — the sole place the offending file can be named, and a
+# coverage lens measured that DROPPING the print leaves the suite green. Without it the operator
+# gets a silently and permanently cold cache (measured 1.3 ms → ~1.4 s per call) with no lead.
+with _tf43.TemporaryDirectory() as _td_ov52:
+    _pd_ov52 = Path(_td_ov52) / "pdata"; _pd_ov52.mkdir()
+    _fd_ov52 = Path(_td_ov52) / "domains" / "dov" / "facts"; _fd_ov52.mkdir(parents=True)
+    (_fd_ov52 / "big.md").write_text(
+        "---\nname: big\ndescription: d\n---\n" + ("filler line\n" * 350000), encoding="utf-8")
+    _err_ov52 = _io73.StringIO()
+    with _ctx73.redirect_stderr(_err_ov52):
+        _fm44.ensure(_fd_ov52, _pd_ov52)
+    _msg_ov52 = _err_ov52.getvalue()
+    check("v0.4.52 (GUARD, regression — green on both trees BY CONSTRUCTION: the notice shipped "
+      "in v0.4.48; its value is that DELETING the print now reddens): the oversize refusal NAMES "
+      "the offending file and the cap on stderr — "
+          "the module's only chance to say why the cache went permanently cold, and a coverage "
+          "lens measured that removing the print left every check green",
+          "big.md" in _msg_ov52 and str(_fm44._READ_CAP) in _msg_ov52)
+
 # --- v0.4.51: THE FAULT'S POSITIVE VERDICTS -----------------------------------------------------
 # The named exception from v0.4.45 ("falsy can only SUPPRESS an alarm, never raise one") covered
 # `prune_pressure` AS AN ALARM and was stretched to cover everything downstream of it. It does not:
@@ -24592,6 +24664,23 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 3        # v0.4.52 — the coverage holes from the adversarial round: 3
+                                       #     GUARDs, NOT pins. ⚠ Every one of them is green on
+                                       #     BOTH trees by construction — the behaviours shipped in
+                                       #     v0.4.46–0.4.49 and were never pinned, which is
+                                       #     exactly the hole; an earlier cut labelled them PINs
+                                       #     and the pre-fix run would have falsified that. Their
+                                       #     value is that REVERTING each behaviour now reddens,
+                                       #     which no check did before. The old term text was:
+                                       #     round: 3 structural PINs on behaviours a mutation lens
+                                       #     found were unexercised — the beacon's
+                                       #     `_pull_index_seed` routing + its fault sentence, the
+                                       #     TWO consumers of `_index_revision` (disabling either
+                                       #     left the suite green), and the oversize refusal's
+                                       #     stderr notice. ⚠ All three are STRUCTURAL and say so:
+                                       #     the beacon's behavioural staging was attempted and
+                                       #     abandoned (measured: `_store_gaps` returns (0,0) for
+                                       #     the fixture, so the line short-circuits empty).
                             + 4        # v0.4.51 — THE FAULT'S POSITIVE VERDICTS: 3 PINs + 1
                                        #     CONTROL, one per
                                        #     manufactured verdict — a drift finding from an
