@@ -23799,6 +23799,51 @@ with _Env73() as _e_rep:
           "a report with no row at all",
           _out_rep.count("UNMEASURABLE") >= 2)
 
+# --- v0.4.45 adversarial round, the two carried-forward surfaces -------------------------------
+# (a) THE BEACON'S `held` ADVISORY — the second site of the `_pull_index_seed` defect, one file
+# over. It fails TWICE from one failed read: seeding 0 makes `held` 0, so the line ADVERTISES A
+# PULL THE CEILING WOULD REFUSE, and the same zero empties `line_cost`, dropping every
+# STALE-mirror item. ⚠ Structural, because driving `beacon_line` needs a relevance-filtered fleet
+# fixture: this asserts the CALL, and `_pull_index_seed`'s own three-state pin above asserts the
+# behaviour. A correct helper nobody calls is exactly the defect this closes.
+try:
+    import ast as _ast_bc
+    _bc_fn = next(n for n in _ast_bc.walk(_ast_bc.parse(
+        (ROOT / "plugins" / "consolidate-memory" / "scripts" / "session_beacon.py"
+         ).read_text(encoding="utf-8")))
+        if isinstance(n, _ast_bc.FunctionDef) and n.name == "beacon_line")
+    _bc_calls = {n.func.id for n in _ast_bc.walk(_bc_fn)
+                 if isinstance(n, _ast_bc.Call) and isinstance(n.func, _ast_bc.Name)}
+    # ⚠ NOT "no `_safe_read_text` at all": `beacon_line` legitimately reads the STATE file the
+    # same way, and a first cut of this pin forbade that too — red for the wrong reason on a
+    # correct tree. The rule is narrower and is the actual one: no `_safe_read_text` call may
+    # take the INDEX. Matched by walking the call's own argument for the `MEMORY.md` constant, so
+    # a reflow cannot hide it and an unrelated read is not collateral.
+    _bc_reads = [n for n in _ast_bc.walk(_bc_fn)
+                 if isinstance(n, _ast_bc.Call) and isinstance(n.func, _ast_bc.Name)
+                 and n.func.id == "_safe_read_text"
+                 and any(isinstance(c, _ast_bc.Constant) and c.value == "MEMORY.md"
+                         for a in n.args for c in _ast_bc.walk(a))]
+except Exception:
+    _bc_calls, _bc_reads = set(), []
+check("v0.4.45 adversarial (PIN, structural): the beacon reads its INDEX through "
+      "`_pull_index_seed`, NOT `_safe_read_text` — the second site of the same defect, where one "
+      "failed read both advertised a ceiling-refused pull and dropped every STALE-mirror item",
+      "_pull_index_seed" in _bc_calls and not _bc_reads)
+
+# (b) THE ARCHIVE's remaining two meters. The index meter was wired; the project CLAUDE.md meter
+# drew a green `0% · 0/4.0k Within budget` from the fault's zeros, and the global row vanished
+# (`present` is `bytes > 0`, false for a failed read, and it gated `display:none`).
+_TEMPLATE_SRC_45 = (ROOT / "plugins" / "consolidate-memory" / "scripts"
+                    / "dashboard.template.html").read_text(encoding="utf-8")
+check("v0.4.45 adversarial (PIN): the HTML archive's CLAUDE.md meters consult the third state — "
+      "the project meter draws `fault` rather than a green `0% Within budget`, and the global "
+      "row's visibility test is `present || unmeasurable` so an unreadable file cannot make the "
+      "row VANISH from the surface an end user opens",
+      "truthy(cmB.unmeasurable)" in _TEMPLATE_SRC_45
+      and "truthy(gcm.unmeasurable)" in _TEMPLATE_SRC_45
+      and "truthy(gcm.present)||truthy(gcm.unmeasurable)" in _TEMPLATE_SRC_45)
+
 # --- v0.4.45 review: the PULL's index seed, where the same unknown costs a WRITE ----------------
 # `_safe_read_text` collapses ABSENT and UNREADABLE into None (right for the scan it was factored
 # from, wrong here). Seeding 0 for an unreadable index does not read as unknown — it reads as
@@ -24169,6 +24214,12 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 2        # v0.4.45 ADVERSARIAL, carried-forward surfaces: 1 structural
+                                       #     PIN (the beacon reads its index through
+                                       #     `_pull_index_seed`, not `_safe_read_text`) + 1 PIN on
+                                       #     the archive's two remaining CLAUDE.md meters. Counted
+                                       #     apart from the report pins below because these are the
+                                       #     two surfaces the FIRST adversarial pass left open.
                             + 2        # v0.4.45 ADVERSARIAL round — the Phase-0 REPORT, the surface
                                        #     that runs on every invocation: 1 PIN (it names the
                                        #     unreadable index instead of drawing `0%` and

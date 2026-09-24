@@ -17,7 +17,12 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.45** — an operand that EXISTS but cannot be READ is a THIRD state all the way to the
+**v0.4.46** — the two surfaces 0.4.45's own carried-forward list named: the SessionStart beacon's
+`held` advisory (the second site of the `_pull_index_seed` defect — one unreadable index both
+advertised a ceiling-refused pull and dropped every stale-mirror item), and the HTML archive's
+project-`CLAUDE.md` meter and global row (a green `0% · 4.0k Within budget`, and a row that
+VANISHED because its visibility test was `bytes > 0`). An operand that EXISTS but cannot be READ
+is a THIRD state all the way to the
 decision layer (`index_reading`; `unmeasurable` on the index and on both CLAUDE.md gauges; the
 `--triage` all-clear and the schema-drift `offer backfill` both refused for an unread store), the
 beacon's read-only contract held at the DECISION site (`may_write`/`may_rebuild`, since `load()`

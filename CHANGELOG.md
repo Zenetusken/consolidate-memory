@@ -5,6 +5,41 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.46] — 2026-09-24
+
+**Patch — the two surfaces 0.4.45 left open, both named in its own carried-forward list.**
+
+1. **The beacon's `held` advisory was the second site of the `_pull_index_seed` defect.** 0.4.45
+   extracted the three-state read and routed `sync_global.run()` through it; `session_beacon`'s
+   `beacon_line` kept `_safe_read_text(...) or ""` and failed **twice** from one unreadable index:
+   seeding `0` made `held` come back `0`, so the line **advertised a pull the ceiling would
+   refuse** — the exact harm its own note records, one paragraph above — and the same zero emptied
+   `line_cost`, which drops every STALE-mirror item at the `elif cost_old and …`. Both halves of
+   the payload were built from a failed read. It now reads through the shared helper, and the line
+   says the headroom and stale tally are UNKNOWN rather than printing confident zeros.
+
+2. **The HTML archive's remaining two meters.** 0.4.45 wired the archive's **index** meter and
+   claimed the archive "says so"; the project-`CLAUDE.md` meter still drew a green
+   `0% · 0/4.0k Within budget` from the fault's zeros, and the global row **vanished** — its
+   visibility test was `truthy(gcm.present)`, which is `bytes > 0`, false for a failed read, so
+   `#m-global` stayed at `display:none`. That is the vanishing-row harm this cycle headlines, on
+   the surface an end user actually opens. Both now branch on the third state, and the global
+   row's test is `present || unmeasurable`.
+
+⚠ Both are the *same* defect class 0.4.45 was about — a value produced by a failed read spent as a
+measurement — surviving in a caller the patch did not census. Two adversarial lenses found them
+**after** 0.4.45's own review round had passed, which is the argument for the census being
+mechanical rather than remembered.
+
+**Still open** (unchanged by this patch, all measured): `_scrub_commit_log` scans the first 4 000
+chars but emits the uncapped line, so a credential past char 4 000 of a long commit subject reaches
+the model on every Phase-0 report (pre-existing since v0.1.70) · one >4 MiB fact disables the
+manifest for its domain permanently with no operator signal and no working remedy · the pull's
+refusal prints remedies that cannot clear it, one of which dies with an uncaught `PermissionError`
+· `load()` serves any row whose identity matches with no independent `secret` check · the archive's
+KPI and trajectory cells · `claude_md_hierarchy`'s swallowed `OSError` · an unclassifiable `*.md`
+directory counted as a fact.
+
 ## [0.4.45] — 2026-09-23
 
 **Patch — an operand that EXISTS but cannot be READ is a third state, all the way to the decision
