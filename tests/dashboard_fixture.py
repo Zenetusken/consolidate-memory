@@ -35,6 +35,13 @@ SHARED_FACTS = [
 
 
 def sample():
+    """The synthetic sample.
+
+    ⚠ Every cycle carries `unmeasurable: False` on its three gauge blocks, so the KEY EXISTS on the
+    healthy path and a reader can see where the third state lives. The FAULT itself is staged by
+    the BROWSER SUITE, which builds an ad-hoc page from this record with the flag set — a faulted
+    cycle here would change the cycle COUNT, and `#sel=N` is hardcoded at 22 sites with `7` as the
+    last cycle."""
     nodes = []
     for name, domain, groups, facts, baseline, stack, tokens in [
         ("atlas-api", "work", ["release-kit", "api-contract"], 24, 2, 3, 984),
@@ -199,6 +206,17 @@ def sample():
         for key in ("always_loaded_tokens", "mirror_index_tokens", "recall_tokens"):
             c["network"]["totals"][key] = sum(n[key] for n in c["network"]["nodes"])
         history.append(c)
+    # ⚠ The third state must be REACHABLE from some fixture, or every browser check about it is
+    # vacuous — measured: the `"fault"` meter sentinel survived mutation to `var fault=false` with
+    # BOTH suites green, because the fixture carried no `unmeasurable` key anywhere.
+    # ⚠ The key is written as `False` here, on EVERY cycle, so the healthy path exercises it. The
+    # FAULT is a separate OPT-IN variant (`faulted=True`) rather than an extra cycle: `#sel=N` is
+    # hardcoded at 22 sites in the browser suite with `7` as the last cycle, so changing the cycle
+    # COUNT shifts every one of them — the variant changes a FLAG instead, and the page count, the
+    # default selection and all 22 references stay exactly as they were.
+    for _c in history:
+        for _blk in ("index", "claude_md", "global_claude_md"):
+            _c["budget"][_blk].setdefault("unmeasurable", False)
     record = history[-1]
     diffs = {ms.diff_key(record["marker"], record["session"]): {
         "memory/retry-backoff.md": {"op": "created", "lines": [{"t": "+", "s": "Retry delays include jitter to avoid synchronized workers."}], "more": 0},

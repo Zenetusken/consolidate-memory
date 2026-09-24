@@ -3225,10 +3225,19 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
         idxp = store / "MEMORY.md"
         names = list(orphans) + [n for n, _r in frozen]
         expected: dict = {}
-        if idxp.is_file():
-            h = _fh_gc(idxp)
-            if h:
-                expected[str(idxp)] = h
+        # ⚠ The SAME guard as the pull path's, through the SAME helper — this is the third site of
+        # the family `measure_or_fault` documents ("`Path.exists` itself re-raises anything outside
+        # ENOENT/ENOTDIR/EBADF/ELOOP — EACCES among them"), and `is_file()` does not follow from
+        # `exists()` while `_fh_gc` reads bytes. A revision that cannot be READ is a precondition
+        # that cannot be HONOURED, so the gc REFUSES by exit code rather than writing without one.
+        _ir_sha, _ir_err = _index_revision(idxp)
+        if _ir_err:
+            print(f"sync_global: the store index {idxp} cannot be READ ({_ir_err}) — refusing the "
+                  f"gc rather than writing without a revision precondition for it; repair the file "
+                  f"and re-run", file=sys.stderr)
+            return 1
+        if _ir_sha:
+            expected[str(idxp)] = _ir_sha
         for name in names:
             p = store / f"{name}.md"
             if p.is_file():
