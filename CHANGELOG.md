@@ -5,6 +5,42 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.47] — 2026-09-24
+
+**Patch — a crash 0.4.46 introduced, and four claims 0.4.46's own batch made about itself.**
+
+1. **`Path.exists()` re-raises EACCES, and the new call site did not inherit the guard.** 0.4.46's
+   `_pull_index_seed` reads `raw = _safe_read_text(idxp)` (which *swallows* `OSError`) and then
+   `idxp.exists()` — which re-raises anything outside `ENOENT/ENOTDIR/EBADF/ELOOP`, **EACCES
+   included**. So an index that cannot be read but whose `exists()` re-raises (a symlink into a
+   non-traversable directory) raised **out of `cm sync`**: the call sits outside every `try` and
+   outside the enrollment gate, so a plain `cm sync` **LIST** hit it. Measured `PermissionError` on
+   3.8 and 3.12. ⚠ `measure_or_fault`'s docstring documents this exact escape and guards it; this
+   call site — written by the same hand in the same cycle — did not. Cannot-tell is now spent as
+   the fault, the safe direction. One true PIN, red on the released 0.4.46.
+
+2. **A false guard comment, and a suite that ABORTED at the revision three comments name.**
+   0.4.46 asserted "`_NONREBUILDABLE` needs no guard: it exists on both trees" — **false**; it
+   lands in `e868ecd`, *after* `8db50a6`, the PR base three comments in that batch cite as their
+   measurement. Against `8db50a6` the unguarded name raised `AttributeError` **at module scope**
+   and the run died at check #2251: **23 of 28 new checks never executed**, including the D6
+   surface pin, whose entire purpose is that an orphaned section cannot print green and which
+   cannot help when the crash precedes it. So those three `8db50a6` citations cannot have come
+   from a suite run at that revision. The guard is applied to both operands now.
+
+3. **Four more self-descriptions corrected.** Two arms labelled PIN/CONTROL reddened pre-fix for
+   **key-absence**, not for their stated claims — the same mislabelling 0.4.46 corrected three
+   times elsewhere in the same block; both are GUARDs now, with the disclosure. A third described
+   a directory fixture as "`is_file()` is true", which is false twice over (`is_file` does not
+   follow from `exists`, and it is false for a directory) and contradicts the same batch's own
+   comment a hundred lines above. And two coverage holes a mutation lens found are now closed:
+   moving `kill-switch` between the classification tuples kept the structural totality pin green
+   while **defeating the operator's kill switch**, and reverting `_pull_index_seed`'s **call site**
+   kept the whole suite green while the net-grow hold flipped ON → OFF.
+
+⚠ Items 2–3 are all the same shape: **a claim in the diff about the diff, falsified by running
+it.** Three adversarial lenses found them after 0.4.46 shipped. The census has to be mechanical.
+
 ## [0.4.46] — 2026-09-24
 
 **Patch — the two surfaces 0.4.45 left open, both named in its own carried-forward list.**
