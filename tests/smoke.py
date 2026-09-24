@@ -23827,11 +23827,19 @@ with _Env73() as _e_sib:
     _ctx_sib = sc.resolve_store(_e_sib.proj)
     _cfg_sib = _e_sib.store.parents[2]                  # <home>/.claude
     (_cfg_sib / "CLAUDE.md").write_text("# Global\n\nglobal rules\n", encoding="utf-8")
+    # ⚠ THE PROJECT OPERAND NEEDED A REAL FILE TOO, and a review lens measured that it had none:
+    # `_Env73` never writes `<proj>/CLAUDE.md`, so `_cm_ok` — read three lines before the fault arm
+    # below mkdirs that path — was all-zero, exactly like `_cm_f`. The conjunct therefore tested
+    # ABSENT ≠ FAULTED, not READABLE ≠ FAULTED, and could not tell "no fault on a readable operand"
+    # from "no fault on an operand nobody read" — the distinction the whole field exists for. The
+    # global operand already carried a real read, so the blind spot was INSIDE one check.
+    (_e_sib.proj / "CLAUDE.md").write_text("# Project\n\nproject rules\n", encoding="utf-8")
     _r_sib_ok = ms.seed_record(ms.build_context(_e_sib.proj))
     _gcm_ok = _r_sib_ok["budget"]["global_claude_md"]
     _cm_ok = _r_sib_ok["budget"]["claude_md"]
     (_cfg_sib / "CLAUDE.md").unlink()
     (_cfg_sib / "CLAUDE.md").mkdir()                    # EXISTS; not readable as a file
+    (_e_sib.proj / "CLAUDE.md").unlink()   # was the healthy FILE above; now a DIRECTORY
     (_e_sib.proj / "CLAUDE.md").mkdir()
     _r_sib_f = ms.seed_record(ms.build_context(_e_sib.proj))
     _gcm_f = _r_sib_f["budget"]["global_claude_md"]
@@ -24086,6 +24094,87 @@ check("v0.4.50 (PIN, structural): no consumer reads a fault key through `.get(..
       "silently reading as 'no fault' (pre-fix: nine such defaults, all defaulting to healthy)",
       _defaulted_fk == [])
 
+# --- v0.4.51: THE FAULT'S POSITIVE VERDICTS -----------------------------------------------------
+# The named exception from v0.4.45 ("falsy can only SUPPRESS an alarm, never raise one") covered
+# `prune_pressure` AS AN ALARM and was stretched to cover everything downstream of it. It does not:
+# the fault's zero MANUFACTURES VERDICTS — a `NO-OP` banner (a positive "reviewed, nothing
+# changed"), a `maintenance.work: False`, a `missing_node_type` count, an `index↔file` count — and
+# a manufactured verdict is not a suppressed alarm. MEASURED by a review lens: 3 facts + a 1504-tok
+# index → banner `LIGHT` with `remediation.required True`; the SAME store with `MEMORY.md` a
+# directory → banner `NO-OP`, `required` ABSENT, `work False`, drift `missing_node_type` 0→1 — all
+# while the report's own STORES row said UNMEASURABLE.
+with _tf43.TemporaryDirectory() as _td_pv51:
+    _st_pv51 = Path(_td_pv51) / "m"; _st_pv51.mkdir()
+    (_st_pv51 / "ok.md").write_text("---\nname: ok\ndescription: d\n---\nb\n", encoding="utf-8")
+    _bad_pv51 = _st_pv51 / "bad.md"
+    _bad_pv51.write_text("---\nname: bad\ndescription: d\nnode_type: fact\nscope: project-local\n"
+                         "originSessionId: x\n---\nb\n", encoding="utf-8")
+    _os53.chmod(_bad_pv51, 0o000)
+    try:
+        _dr51_ok = ms.schema_drift([Path(_st_pv51 / "ok.md")], set())
+        _dr51_bad = ms.schema_drift([_bad_pv51], set())
+    finally:
+        _os53.chmod(_bad_pv51, 0o644)
+    check("v0.4.51 (PIN): an unreadable FACT body is not scored as a fact MISSING its metadata — "
+          "`except OSError: text = \"\"` made an empty body, which is a CONTENT CLAIM, so a file "
+          "nobody read reported `missing_node_type` (pre-fix: 0→1 on a fact that carries all three "
+          "fields, driving a false 'Schema drift recorded' and a backfill WRITE into that file)",
+          # ⚠ `.get`, not `[...]` — `unreadable_facts` is NEW, and a KeyError inside the check
+          # EXPRESSION raises at module scope and truncates the run. TWELFTH occurrence of this
+          # trap on the arc; guarded BEFORE the pre-fix measurement that found it.
+          _dr51_ok.get("unreadable_facts") == 0
+          and _dr51_bad.get("unreadable_facts") == 1
+          and _dr51_bad["missing_node_type"] == 0 and _dr51_bad["advisory_no_scope"] == 0
+          and _dr51_bad["advisory_no_origin"] == 0)
+# (b) `render_log`'s coercion — a model-authored `"false"` is not a fault.
+_rl51 = getattr(__import__("render_log"), "_row")
+check("v0.4.51 (PIN): `cm log` COERCES the fault leaf like its sibling renderers — the STRING "
+      "`\"false\"` (and `\"no\"`, `\"0\"`, `\"unknown\"`) is a model-authored value and `bool()` "
+      "reads it as TRUE, so a MEASURED index printed as `UNMEAS.` in the file whose header "
+      "promises 'all fields defensively read'",
+      _rl51({"project": "p", "session": "s", "scope": {}, "entries": [],
+             "budget": {"index": {"after_tokens": 11, "before_tokens": 11, "unmeasurable": "false"}},
+             "marker": {"timestamp": "2026-09-24T00:00:00Z", "commit": "abc"}})[3] != "UNMEAS.")
+# (c) the dashboard's drift sum — the archive exempts `index_mismatch` on a fault; the dashboard did
+# not, so it printed a manufactured `index↔file` count two lines under its own UNMEASURABLE row.
+# ⚠ `missing_node_type: 1` is a REAL finding, deliberately present: with `index_mismatch` as the
+# ONLY finding the exemption makes `_drift_n` 0 and the line correctly does not print at all — so a
+# fixture carrying only the manufactured count would test the absence of a row, not the exemption.
+# ⚠ WIDENED FIRST: at the suite's default rule width (60) the HEALTH line is CLIPPED before the
+# drift text, so both conjuncts would read as absent and the PIN would pass for the wrong reason
+# while its CONTROL failed. Measured, not guessed — the first cut of this pin failed exactly here.
+_ui_w51 = rd._ui.W
+rd._ui.W = 200
+
+
+def _drift51(faulted: bool) -> str:
+    _rec = cast(ms.CycleRecord, {
+        "project": "p", "session": "s", "scope": {}, "entries": [],
+        "budget": {"index": {"after_tokens": 0, "before_tokens": 0, "budget_tokens": 1500,
+                             "over": False, "unmeasurable": faulted}},
+        "health": {"schema_drift": {"missing_node_type": 1, "malformed_scope": 0,
+                                    "malformed_origin": 0, "index_mismatch": 2}}})
+    # ⚠ the HEALTH line WRAPS at the rule width, so the drift text lands on CONTINUATION lines and
+    # matching one physical line reads only its first fragment. MEASURED — the first cut of this pin
+    # asserted against `'  HEALTH    ✓ all pointers resolve · ⚠ schema drift: 1'` while
+    # `index unreadable` sat two lines below it. Take the block, not the line.
+    _out = rd.render(_rec)
+    _i = _out.find("HEALTH")
+    return _out[_i:] if _i >= 0 else ""
+
+
+check("v0.4.51 (PIN): the dashboard does NOT print a manufactured `index↔file` count beside its "
+      "own UNMEASURABLE row — an index nobody could open names nothing, so every fact reads as "
+      "un-indexed; the archive already exempted this on exactly that argument",
+      # ⚠ `"2 index↔file"`, not `"index↔file"` — the fault note itself says "index↔file cannot be
+      # counted", so the bare phrase is present either way and the first cut of this assertion was
+      # satisfied by the sentence explaining the absence of the count. Assert the COUNT form.
+      "2 index↔file" not in _drift51(True) and "index unreadable" in _drift51(True))
+check("v0.4.51 (CONTROL): …and a MEASURED index still reports its real `index↔file` count — the "
+      "exemption is a branch on the fault, not the removal of a finding",
+      "2 index↔file" in _drift51(False) and "index unreadable" not in _drift51(False))
+rd._ui.W = _ui_w51
+
 # --- v0.4.50: THE ADVERSARIAL REMAINDER ---------------------------------------------------------
 # (a) `classify_store_doc`'s THIRD answer. `_is_archive_index`'s `except OSError: return False`
 # spent "could not classify" as "is a fact": MEASURED, MEMORY.md + one real fact + `adir.md/` gave
@@ -24239,10 +24328,14 @@ with _tf43.TemporaryDirectory() as _td45g:
 # every rendered surface still showed a healthy store. A field the contract pins and no surface
 # reads is inert state, and its own justification is the thing that makes it look done.
 #
-# ⚠ RED-BY-ABSENCE, guarded: pre-fix `_unmeasurable` does not exist at all, so the two fault arms
-# route through `getattr(rd, "_unmeasurable", None)` and the render calls sit in `try/except`
-# rather than raising at module scope and taking every later check down with them. Fifth occurrence
-# of this trap on the arc; guarded BEFORE the pre-fix measurement rather than found by it.
+# ⚠ RED-BY-ABSENCE, guarded — but the GUARD IS NARROWER THAN THIS COMMENT CLAIMED, and a review
+# lens measured the gap. It said the arms "route through `getattr(rd, "_unmeasurable", None)`",
+# which **does not exist anywhere in this file** (a grep for it finds only the sentence itself):
+# `rd.render` succeeds on both trees, so there is nothing to getattr. What actually guards is the
+# `try/except` below — and it wrapped only the FAULTY arm, leaving `_u45_clean_line` unguarded. Same
+# guard-one-operand-and-spare-its-sibling shape as the `_REBUILDABLE`/`_NONREBUILDABLE` asymmetry.
+# Both arms are wrapped now; the crash was latent rather than live (measured: `render(_u45_clean)`
+# does not raise at `99c42f0`), which is exactly why the asymmetry survived review.
 _u45_faulty = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
                                     "budget": {"index": {"before_lines": 20, "before_tokens": 1180,
                                                          "after_lines": 0, "after_tokens": 0,
@@ -24258,8 +24351,11 @@ try:
                             if "auto-mem index" in ln), "")
 except Exception:
     _u45_fault_line = ""
-_u45_clean_line = next((ln for ln in rd.render(_u45_clean).splitlines()
-                        if "auto-mem index" in ln), "")
+try:
+    _u45_clean_line = next((ln for ln in rd.render(_u45_clean).splitlines()
+                            if "auto-mem index" in ln), "")
+except Exception:
+    _u45_clean_line = ""
 check("v0.4.45 review (PIN): an index that EXISTS but could not be read renders its FAULT on the "
       "gauge line, so the fault reaches a SURFACE instead of terminating at the record",
       "UNMEASURABLE" in _u45_fault_line)
@@ -24407,9 +24503,15 @@ with _tf43.TemporaryDirectory() as _td45c:
     # kwarg it was one of the two "controls" in the 12-red pre-fix run.
     _rw45 = _fm44.ensure(_fd45c, _pd45c)
     _wrote_rw45 = _mp45c.exists()
+    # ⚠ The label NAMES THE DISCRIMINATING CONJUNCT, which the first cut did not. It presented
+    # "writes NO manifest" as evidence, and a review lens measured that half is TRUE BY
+    # CONSTRUCTION pre-fix: the call raised `TypeError` on the unknown kwarg before it could write
+    # anything, so "no manifest" held for the wrong reason. `_ro45[0] is None` is the conjunct that
+    # actually discriminates (`(' <no-may_write-kwarg>', '')` is not None).
     check("v0.4.45 review (PIN): a READ-ONLY caller gets the degradation, not a rebuild — "
-          "`may_write=False` returns (None, reason) and writes NO manifest, so a hook that must "
-          "not write cannot be made to write by a helper four frames down",
+          "`may_write=False` returns (None, reason), the conjunct that discriminates (pre-fix the "
+          "call raises TypeError on the unknown kwarg, so 'wrote nothing' held vacuously and only "
+          "this half is evidence)",
           _ro45[0] is None and not _wrote_ro45)
     check("v0.4.45 review (CONTROL): …and the ordinary write-capable caller still REBUILDS — the "
           "flag narrows the one call path that asks for it, it does not disable the cache",
@@ -24490,6 +24592,16 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 4        # v0.4.51 — THE FAULT'S POSITIVE VERDICTS: 3 PINs + 1
+                                       #     CONTROL, one per
+                                       #     manufactured verdict — a drift finding from an
+                                       #     unreadable fact body, a `UNMEAS.` cell from a
+                                       #     model-authored `"false"`, and a manufactured
+                                       #     `index↔file` count on the dashboard. ⚠ Grouped as one
+                                       #     term because they are one defect: the "falsy can only
+                                       #     SUPPRESS an alarm" rationale covers `prune_pressure` as
+                                       #     an alarm, NOT the affirmative verdicts its falsy value
+                                       #     creates downstream.
                             + 4        # v0.4.50 — the adversarial remainder: 1 PIN (an
                                        #     unclassifiable doc is neither fact nor archive) + 1
                                        #     PIN (an unreadable CLAUDE.md is reported, not
@@ -24585,8 +24697,14 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     padding for the unit arm: one proves the flag WORKS
                                        #     and the other proves the read-only caller ASKS, and a
                                        #     correct flag nobody passes is precisely the defect.
-                            + 2        # v0.4.45 — the fault-carrying pair: the GUARD above and its
-                                       #     absent-is-not-a-fault control. ⚠ Split OUT of the +22
+                            + 2        # v0.4.45 — the fault-carrying pair: the fault GUARD and the
+                                       #     absent-is-not-a-fault GUARD beside it. ⚠ Both are
+                                       #     GUARDs, NOT a pin and its control: pre-fix BOTH redden
+                                       #     for KEY-ABSENCE, which the check itself states and an
+                                       #     earlier cut of this term contradicted by calling the
+                                       #     second a "control". A ledger that describes an arm
+                                       #     differently from the arm does is the misattribution
+                                       #     this term's own paragraph is about. Split OUT of the +22
                                        #     below, whose comment attributed these two to
                                        #     v0.4.42 / v0.4.40 / v0.4.37. The +22 had been bumped
                                        #     to +24 with NO v0.4.45 term, so the total reconciled

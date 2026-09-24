@@ -951,7 +951,11 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
     # number is worst_path — a session in the heaviest subtree pays every ancestor CLAUDE.md every turn.
     hier = _dget(_dget(record, "budget"), "claude_md_hierarchy")
     _cmbud = _num(cm.get("budget_tokens", 0)) or 4000
-    if hier and (_num(hier.get("total_files", 0)) > 1 or _num(hier.get("worst_path_tokens", 0)) > _cmbud):
+    # ⚠ `or _hier_unread_d` — same gate, same zeroing numbers: see the report's note. A row that
+    # VANISHES is indistinguishable from one never warranted.
+    _hier_unread_d = _num(hier.get("unreadable_count", 0)) if hier else 0
+    if hier and (_num(hier.get("total_files", 0)) > 1
+                 or _num(hier.get("worst_path_tokens", 0)) > _cmbud or _hier_unread_d):
         wt, wp = _num(hier.get("worst_path_tokens", 0)), _clean(hier.get("worst_path", "?")) or "?"
         heavy = _c("  ⚠ heavy", "yellow") if wt > _cmbud else ""
         _brow("CLAUDE.md tree", f"≈{_g(wt)}", f"{_g(hier.get('total_files', 0))} files · a session in {wp} pays this/turn{heavy}")
@@ -1252,13 +1256,25 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         # model-authored, so a field may arrive as a non-numeric string and must NOT crash
         # render() (the established _num/_clean/_flag invariant). ms.drift_findings keeps its
         # int()-based definition for its clean-int callers (seed + smoke).
-        _drift_n = sum(_num(sd.get(k, 0)) for k in
-                       ("missing_node_type", "malformed_scope", "malformed_origin", "index_mismatch"))
+        # ⚠ `index_mismatch` is MANUFACTURED by an unreadable index — an index nobody could open
+        # names NOTHING, so every fact on disk reads as un-indexed — and `dashboard.sections.js`
+        # ALREADY exempts it on exactly that argument. This renderer did not, so the dashboard
+        # printed `⚠ schema drift: … 2 index↔file` two lines under its own
+        # `auto-mem index ⚠ UNMEASURABLE`, while the archive suppressed the same count. One of the
+        # two was wrong and the archive's argument is the one that holds: a count that exists only
+        # because of the read failure is not a finding about the store. MEASURED by a review lens.
+        _idx_unm_dr = _flag(_dget(_dget(record, "budget"), "index").get("unmeasurable"))
+        _drift_keys = ["missing_node_type", "malformed_scope", "malformed_origin"]
+        if not _idx_unm_dr:
+            _drift_keys.append("index_mismatch")
+        _drift_n = sum(_num(sd.get(k, 0)) for k in _drift_keys)
         if _drift_n > 0:
             bits.append(_c(f"⚠ schema drift: {_g(sd.get('missing_node_type', 0))} missing node_type · "
                            f"{_g(sd.get('malformed_scope', 0))} malformed scope · "
-                           f"{_g(sd.get('malformed_origin', 0))} malformed originSessionId · "
-                           f"{_g(sd.get('index_mismatch', 0))} index↔file", "yellow"))
+                           f"{_g(sd.get('malformed_origin', 0))} malformed originSessionId"
+                           + ("" if _idx_unm_dr else f" · {_g(sd.get('index_mismatch', 0))} index↔file")
+                           + (" · ⚠ index unreadable — index↔file cannot be counted"
+                              if _idx_unm_dr else ""), "yellow"))
         out.append("")
         out.append(_kv("HEALTH", " · ".join(bits)))
 
