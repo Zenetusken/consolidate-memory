@@ -90,6 +90,15 @@ against: hardening a display guard for an unreachable input is building ahead of
    (`select` + `os.read`, stop at a deadline). ⚠ The shape that isolates it is a pipe passed as
    `stdin=`; `sleep N | python3 X` does **not**, because the pipeline makes the *shell* wait for
    `sleep` — a confound this patch paid for once.
+   ⚠ **Two corrections the second lens forced, both in this patch's own claims.** (i) The first cut
+   said this "lands on the `cm beacon` debug path" — it does **not**: the `cm` wrapper is
+   byte-identical and already redirects (`exec python3 session_beacon.py </dev/null`), measured at
+   rc=0 / 0.055 s on the **pre-fix** tree. The exposure is a **direct script invocation**. (ii) The
+   bound is a **trade, not a free win**: the first cut's 0.35 s window DROPPED a payload written at
+   t = 0.40–0.60 s (0/3, 1/3, 0/3 across reps) and truncated one straddling the deadline mid-JSON,
+   swallowing the error into `{}` — and a dropped payload is **indistinguishable from "no stdin"**,
+   so it is silent by construction. The window is now **1.0 s**, sized to the hook's own 2 s budget;
+   the residual is stated, not hidden.
 9. **An unbound citation** — `docs/budget-trajectory-early-warning.spec.md`. The beacon's gate cite
    `session_beacon.py:84-86` was correct at the doc's CREATION revision (`633b2fb`) and was **missed by
    the `1d20166` sweep** that re-anchored **68 lines of that very file** and contains **zero**
@@ -146,7 +155,7 @@ recorded as open, because a verdict-shaped fault is a different repair from a cl
 explicitly), and `try_acquire` has exactly **two** call sites. No other site maps a transient cause
 onto a durable verdict.
 
-Suite: **2328 passed, 0 failed** (was 2319). `mypy`, `docs_links`, `manifests` and the accumulation sim
+Suite: **2329 passed, 0 failed** (was 2319). `mypy`, `docs_links`, `manifests` and the accumulation sim
 all green.
 
 ## [0.4.56] — 2026-09-24

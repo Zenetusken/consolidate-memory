@@ -58,7 +58,15 @@ from sync_global import (_body_hash, _mirror_key, _plan_pull, _pointer_line,  # 
 
 _HOOK_CACHE: dict | None = None
 
-_STDIN_DEADLINE_S = 0.35
+# ⚠ Sized to the HOOK BUDGET, not to a guess: `hooks/hooks.json` gives this script 2 s, so a 1 s
+# read window fits with room to spare. The first cut used 0.35 s and a review lens measured what that
+# cost — a payload written at t = 0.40–0.60 s was DROPPED (0/3, 1/3, 0/3 across reps) and a payload
+# split across the deadline was truncated MID-JSON, its `JSONDecodeError` swallowed into `{}`. A
+# dropped payload is INDISTINGUISHABLE from "no stdin" — `_cwd_from_stdin` then returns the process
+# cwd — so the failure is silent by construction. In the documented hook flow the payload is already
+# in the pipe before python starts, so the window is never paid; it is paid only by a harness that
+# writes LAZILY, which is exactly the debug shape this bound exists to survive.
+_STDIN_DEADLINE_S = 1.0
 
 
 def _read_stdin_bounded(deadline_s: float) -> bytes:
@@ -68,10 +76,18 @@ def _read_stdin_bounded(deadline_s: float) -> bytes:
     previous form hung not only on an OPEN EMPTY pipe but on a COMPLETE payload whose writer had
     not closed — a review lens measured 20 s with no output, versus 0.057 s with stdin at
     /dev/null and 0.056 s with a real payload followed by EOF. The hook path is unaffected (the
-    SessionStart hook always writes and closes), so this lands on the DEBUG path: `cm beacon`
-    under any stdin that is not a TTY and does not close — which is exactly how a lens agent
-    drives it. ⚠ It presents as a SILENT HANG, i.e. as a lock wait, which on a release about locks
-    is the wrong diagnosis of the right symptom.
+    SessionStart hook always writes and closes).
+    ⚠ It presents as a SILENT HANG, i.e. as a lock wait, which on a release about locks is the
+    wrong diagnosis of the right symptom.
+    ⚠ REACH, corrected by a second lens: the first cut of this docstring said it "lands on the
+    DEBUG path: `cm beacon`". It does NOT — the `cm` wrapper is byte-identical across the fix and
+    its beacon route already redirects (`exec python3 session_beacon.py </dev/null`), measured at
+    rc=0 / 0.055 s on the PRE-fix tree. The real exposure is a DIRECT script invocation, which is
+    what a lens agent does and what this module's own pin does.
+    ⚠ AND THE BOUNDED READ IS A TRADE, not a free win: a payload that arrives after the deadline,
+    or that straddles it, is dropped or truncated — and a dropped payload is INDISTINGUISHABLE
+    from "no stdin". The window is sized to the hook's own 2 s budget so that it is wide enough to
+    never be paid in the documented flow, but the residual is stated because it is silent.
     ⚠ `select` for readiness, `os.read` for whatever is present, stop at the deadline. Reading the
     fd directly bypasses `sys.stdin`'s buffer, which is safe here only because `_HOOK_CACHE` makes
     this a once-per-process read and nothing else consumes stdin. POSIX-only, like the plugin

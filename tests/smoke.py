@@ -24672,6 +24672,42 @@ check("v0.4.57 (PIN): `session_beacon.py` returns when stdin is an OPEN PIPE tha
       "lock wait on the one release whose theme is locks)",
       _rcb57 == 0 and _el57 < 10)
 
+# (3b) PIN — the read is not merely BOUNDED, it still DELIVERS a payload that arrives late.
+# A lens measured the gap this closes: mutating `_STDIN_DEADLINE_S` 0.35 -> 0.01 (35x tighter than
+# shipped) left the suite **fully green, 2326 passed / 0 failed** — because (3) asserts only
+# `rc == 0` and a time bound, which a payload-DROPPING regression satisfies perfectly. And a dropped
+# payload is INDISTINGUISHABLE from "no stdin" (`_cwd_from_stdin` silently returns the process cwd),
+# so the regression is invisible by construction rather than by accident.
+_importlib57 = __import__("importlib")
+_beacon57 = _importlib57.import_module("session_beacon")
+_th57 = __import__("threading")
+_rD57, _wD57 = _os57.pipe()
+
+
+def _late_write57() -> None:
+    _time57.sleep(0.45)                                   # well inside the shipped 1.0 s window
+    _os57.write(_wD57, b'{"cwd": "/late/payload"}')
+    _os57.close(_wD57)
+
+
+_th57.Thread(target=_late_write57, daemon=True).start()
+_stdin_orig57 = sys.stdin
+try:
+    _fake57 = _os57.fdopen(_os57.dup(_rD57), "r")
+    sys.stdin = _fake57                                   # `_read_stdin_bounded` reads this fd
+    try:
+        _got57 = _beacon57._read_stdin_bounded(1.0)
+    finally:
+        _fake57.close()
+        sys.stdin = _stdin_orig57
+finally:
+    _os57.close(_rD57)
+check("v0.4.57 (PIN): a payload arriving LATE (0.45 s) is still READ — a dropped payload is "
+      "indistinguishable from 'no stdin', so its fallback is silent. ⚠ The sibling pin above cannot "
+      "see this: it asserts only `rc == 0` and a time bound, which a 35x-tighter deadline satisfies "
+      "while dropping every payload (measured fully green)",
+      b"/late/payload" in _got57)
+
 # (4) PIN — `cm doctor` names the preflight-cache write it SKIPPED. The call sat in statement
 # position for a release, so the token was discarded and `doctor` was the one decline site that
 # could not name its own skip — on the command the preflight note itself points users at.
@@ -25530,7 +25566,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     "where is the lock TAKEN?"; the question was "what is
                                        #     REACHABLE from a read command?". A review lens swept 22
                                        #     read commands under a held lock and found it.
-                            + 9        # v0.4.57 — the open-items PR: 2 structural PINs on the SECOND
+                            + 10       # v0.4.57 — the open-items PR: 2 structural PINs on the SECOND
                                        #     reason vocabulary (`ensure`'s minted tokens are
                                        #     declared, and an undeclared one RAISES at the producer)
                                        #     + 1 PIN that `release_locks` frees every lock even when
