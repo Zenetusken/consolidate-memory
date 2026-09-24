@@ -24119,12 +24119,15 @@ check("v0.4.54 (GUARD, structural regression — green on both trees BY CONSTRUC
 # exit 0: a SWALLOWED refusal, indistinguishable to a script from "nothing to do", on the very
 # remedy (`--allow-net-grow`) the ceiling hold's message prints. Found by the review this arc was
 # opened for, in the guard I had added two patches earlier.
-_sg54_run = " ".join((ROOT / "plugins" / "consolidate-memory" / "scripts" / "sync_global.py"
-                      ).read_text(encoding="utf-8").split())
 check("v0.4.54 (PIN, structural): the pull READS its own refusal and exits non-zero — a key in a "
       "returned dict that no caller consumes is a silent swallow, not a refusal",
-      '_werr = str(_w.get("error") or "")' in _sg54_run
-      and 'if _werr:' in _sg54_run and 'return _done(1)' in _sg54_run)
+      # ⚠ ONE CONTIGUOUS SPAN, not three loose substrings. `return _done(1)` occurs all over this
+      # file, so asserting it separately would pass even if the refusal block printed and FELL
+      # THROUGH without returning — the third conjunct would discriminate nothing while looking
+      # like it did. The whitespace-normalized source is checked as a single phrase so the read,
+      # the branch and the return must be ADJACENT to satisfy it.
+      'if _werr: print(f"pull: refused — {_werr}", file=sys.stderr) return _done(1)'
+      in _sg54_src)
 
 # --- v0.4.54 (PIN): `cm data facts-refresh`'s EXIT CODE -----------------------------------------
 # Its MESSAGE was covered; its EXIT CODE was not, and a coverage lens measured that deleting the
