@@ -42,6 +42,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -57,6 +58,51 @@ from sync_global import (_body_hash, _mirror_key, _plan_pull, _pointer_line,  # 
 
 _HOOK_CACHE: dict | None = None
 
+_STDIN_DEADLINE_S = 0.35
+
+
+def _read_stdin_bounded(deadline_s: float) -> bytes:
+    """Read stdin until EOF or the deadline — NEVER past it.
+
+    ⚠ `json.load(sys.stdin)` is `loads(sys.stdin.read())`, and `read()` blocks until EOF. So the
+    previous form hung not only on an OPEN EMPTY pipe but on a COMPLETE payload whose writer had
+    not closed — a review lens measured 20 s with no output, versus 0.057 s with stdin at
+    /dev/null and 0.056 s with a real payload followed by EOF. The hook path is unaffected (the
+    SessionStart hook always writes and closes), so this lands on the DEBUG path: `cm beacon`
+    under any stdin that is not a TTY and does not close — which is exactly how a lens agent
+    drives it. ⚠ It presents as a SILENT HANG, i.e. as a lock wait, which on a release about locks
+    is the wrong diagnosis of the right symptom.
+    ⚠ `select` for readiness, `os.read` for whatever is present, stop at the deadline. Reading the
+    fd directly bypasses `sys.stdin`'s buffer, which is safe here only because `_HOOK_CACHE` makes
+    this a once-per-process read and nothing else consumes stdin. POSIX-only, like the plugin
+    (ADR 016).
+    """
+    import select
+    buf = b""
+    end = time.monotonic() + deadline_s
+    try:
+        fd = sys.stdin.fileno()
+    except (OSError, ValueError):
+        return b""
+    while True:
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            ready, _, _ = select.select([fd], [], [], remaining)
+        except (OSError, ValueError):
+            break
+        if not ready:
+            break
+        try:
+            chunk = os.read(fd, 65536)
+        except OSError:
+            break
+        if not chunk:
+            break                      # EOF
+        buf += chunk
+    return buf
+
 
 def _hook_from_stdin() -> dict:
     """SessionStart stdin JSON: cwd / session_id / transcript_path. Fail empty on error.
@@ -68,10 +114,12 @@ def _hook_from_stdin() -> dict:
         return _HOOK_CACHE
     try:
         if not sys.stdin.isatty():
-            data = json.load(sys.stdin)
-            if isinstance(data, dict):
-                _HOOK_CACHE = data
-                return _HOOK_CACHE
+            _buf = _read_stdin_bounded(_STDIN_DEADLINE_S)
+            if _buf:
+                data = json.loads(_buf.decode("utf-8", errors="replace"))
+                if isinstance(data, dict):
+                    _HOOK_CACHE = data
+                    return _HOOK_CACHE
     except (ValueError, OSError):
         pass
     _HOOK_CACHE = {}

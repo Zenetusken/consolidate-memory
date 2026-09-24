@@ -1471,18 +1471,34 @@ class FileLock:
             return False
 
     def release(self) -> None:
+        """Release the lock. NEVER raises — see `release_locks`, and the note below.
+
+        ⚠ The `except ImportError` beside `flock` caught ONLY that class, so an `OSError` out of
+        `LOCK_UN` (a corrupt or already-closed fd) propagated out of what is a CLEANUP path. That
+        is load-bearing, not pedantic: `release_locks` walks LIFO and `release` is the only thing
+        it calls, so one raising release ABORTS the walk and strands every lock after it —
+        MEASURED by a review lens with a stubbed `LOCK_UN`: a domain lock stayed HELD.
+        ⚠ A cleanup whose failure prevents other cleanups is worse than one that fails quietly.
+        The fd is still closed and `_fd` still cleared on every path, so the object can never be
+        left half-released either — a returning-but-still-held lock is the one outcome this must
+        not produce.
+        """
         if self._fd is None:
             return
         try:
             import fcntl
-            fcntl.flock(self._fd.fileno(), fcntl.LOCK_UN)
+            try:
+                fcntl.flock(self._fd.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
         except ImportError:
             pass
-        try:
-            self._fd.close()
-        except OSError:
-            pass
-        self._fd = None
+        finally:
+            try:
+                self._fd.close()
+            except OSError:
+                pass
+            self._fd = None
 
     def __enter__(self) -> "FileLock":
         self.acquire()
@@ -1555,8 +1571,21 @@ def acquire_mutation_locks(ctx: StoreContext, project_ids: list,
 
 
 def release_locks(locks: list) -> None:
+    """Release every lock, INCLUDING the ones after a failing release.
+
+    ⚠ The walk is LIFO and the loop used to be bare, so any exception from one `release()` skipped
+    every lock after it. Its caller is the partial-acquire rollback
+    (`except Exception: release_locks(locks); raise`), which would then leave held locks behind on
+    its way out — a WEDGE, not a wait. `FileLock.release` no longer raises (see its note), and
+    this is deliberately the SECOND enforcement site rather than a belt-and-braces duplicate: the
+    invariant is "a rollback frees everything it took", and fixing only the primitive leaves it
+    hostage to any future lock type that can raise.
+    """
     for lk in reversed(locks):
-        lk.release()
+        try:
+            lk.release()
+        except Exception:                                  # noqa: BLE001 — never abort a rollback
+            pass
 
 
 def sanitize_journal_payload(payload: dict) -> dict:

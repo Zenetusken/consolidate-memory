@@ -518,6 +518,26 @@ def run_and_cache(ctx: Any, verdict: Dict[str, Any]) -> str:
         return type(e).__name__
 
 
+def cache_skip_note(reason: str) -> str:
+    """The ONE sentence for a skipped preflight-cache write, keyed on its CAUSE.
+
+    ⚠ Two commands now name this skip — `cm status` and `cm doctor`, both under `--verbose` — and
+    the cause decides the sentence. `lock-busy` is TRANSIENT and clears itself; every other token
+    is the exception class of a write that FAILED, and promising a self-heal for THAT class was a
+    measured defect (a corrupt marker stayed corrupt while the note said "it will be cached on a
+    later run"). This is a constructor rather than two literals so the sites cannot drift into
+    disagreeing about what the same cause means — the `schema-funnel` rule, applied to prose.
+    ⚠ `cm doctor` reached v0.4.57 DISCARDING this token entirely (its call sat in statement
+    position), which made it the one decline site that could not name its own skip — on the very
+    command the preflight note points users at.
+    """
+    if reason == "lock-busy":
+        return ("cache not written (lock-busy) — the verdict is unaffected; it will be cached on "
+                "a later run")
+    return (f"cache NOT written ({reason}) — the verdict for THIS run is unaffected, but the "
+            f"cache stays cold until that is repaired")
+
+
 def _paths_from_ctx(ctx: Any) -> Dict[str, Any]:
     """Env paths from the resolved ctx — ctx's own mapping first (it carries session_dir
     and project_root, which doctor_dict omits), doctor_dict as the canonical fallback."""

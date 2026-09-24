@@ -610,8 +610,16 @@ def _resolve_identity(store: "Path | None", project: str | None) -> "StoreContex
             # purpose-built producer rather than resolve_store(<the row's root>): the latter mints
             # a different project id (the defect that producer's docstring records) and re-derives
             # the very store the row already names. The cwd template supplies only the environment
-            # and the two fields no row carries (`registry_state`, `plugin_data_dir`), which is why
-            # the rendered identity is cwd-invariant. The template still has to be
+            # and, beside the environment, the fields a row may not carry. ⚠ This comment said
+            # TWO (`registry_state`, `plugin_data_dir`) and concluded "the rendered identity is
+            # cwd-invariant" — that conclusion is FALSE, and the count was wrong in the same
+            # direction. `store_context_from_registry` falls back to this template on FOUR fields,
+            # each spelled `x if x else template.x`: `project_root`, `session_dir`, `project_id`
+            # and `display_name`. Invariance therefore holds only when the row carries ALL FOUR,
+            # which the schema permits but does not require (`projects.project_id TEXT PRIMARY KEY`
+            # carries no `NOT NULL`). ⚠ The claim was corrected rather than the code because the
+            # ENTRY to this source is now gated: `_resolve_identity` refuses rather than guesses, so
+            # a misattributed identity cannot reach the render. The template still has to be
             # BUILT from some directory, and `Path.cwd()` is unguarded at this site for the same
             # reason it is unguarded at the foot of this function — it is the call that raises, so
             # it cannot be an argument to a guard around `resolve()`.

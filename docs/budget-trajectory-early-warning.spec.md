@@ -3,6 +3,17 @@
 > **Reading the citations.** Every `file:line` below is **`1d20166`-numbered**. Resolve it against
 > that commit — `git show 1d20166:<path>` — and **never against the working tree**, which has moved
 > them.
+>
+> ⚠ **One citation is deliberately NOT a line number.** The beacon's gate is cited by its guard
+> (`session_beacon.py`, `if not missing and not stale:`) rather than by coordinates. Its former
+> `:84-86` was correct at this doc's CREATION revision (`633b2fb`, where those lines *are* the gate)
+> and was MISSED by the `1d20166` sweep — the commit that re-anchored **68 lines of this very file**
+> and contains **zero** occurrences of `session_beacon` in its diff. So the cite mis-aimed under
+> BOTH coordinate systems: wrong under the reading note's revision, and wrong at HEAD, for two
+> different reasons. A greppable anchor cannot go stale, which is the durable form this repo
+> prescribes; the family is analysed in `docs/prose-tied-to-the-tree.spec.md` § Family 4, whose
+> rule — *bind, then resolve* — is NOT yet gated, so this cite is fixed by hand rather than by a
+> check that would have caught it.
 
 **Status:** shipped (v0.1.86; carry-forward 0-vs-missing parity + HTML ceiling
 projection aligned v0.1.90). **Scope:**
@@ -260,7 +271,7 @@ purely synthetic; see gate 1d.
   the early-warning branch, the feature's one wholly new rendering surface. A node that is under
   its soft target with a flat or declining fit (consolidate-memory: 1438<1500, slope −33.5) gets
   BOTH `None` — silent, the healthy case costs nothing, same as the beacon's "0 missing AND 0
-  stale → silent" gate (`session_beacon.py:84-86`). This also resolves correction 1 without an
+  stale → silent" gate (`session_beacon.py`, the `if not missing and not stale:` guard). This also resolves correction 1 without an
   always-on line: a silent healthy node can never be confused with Doc-Flo, because nothing is
   presented for it to be confused with; a node whose existing gauge/REMEDIATION lines are already
   showing (over target) gets its staleness/breach `suffix` attached whenever there's something to

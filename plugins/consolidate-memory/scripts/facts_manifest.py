@@ -230,6 +230,30 @@ _REBUILDABLE = (
     "row-shape", "row-fields", "predicate-changed",
 )
 
+# ⚠ The OTHER vocabulary, and it exists because the two tuples above classify only what `load()`
+# returns. `ensure` MINTS terminal reasons of its own, and a token minted here had NO classifier:
+# a review lens measured that `_miss`-AST enumeration is structurally blind to it, so a future
+# consumer could read one as durable with nothing catching that. The first cut of this module's
+# comment said the token is "deliberately in neither tuple" — which was true and not enough: not
+# being mis-classified is not the same as being CLASSIFIED, and nothing forced a new mint to be
+# thought about. Validated at the producer by `_mint`, exactly as `load()`'s are by `_miss`.
+# ⚠ Each carries its TRANSIENCE, because that is the property consumers keep getting wrong:
+# `lock-busy` clears itself (TRY LATER); `oversize` does not (the file must shrink).
+_ENSURE_REASONS = (
+    "rebuilt",      # success sentinel — the rebuild ran and its rows are the answer
+    "lock-busy",    # TRANSIENT: another process holds the lock; the caller falls back and retries
+    "oversize",     # PERMANENT until the file shrinks below _READ_CAP
+)
+
+
+def _mint(reason: str) -> "tuple[None, str]":
+    """A terminal reason `ensure` MINTS, validated like `_miss` validates `load()`'s reasons."""
+    if reason not in _ENSURE_REASONS:
+        raise AssertionError(
+            f"unclassified ensure reason {reason!r} — declare it in _ENSURE_REASONS (and say "
+            f"whether it is transient) before `ensure` can return it")
+    return None, reason
+
 
 def build(facts_dir: Path) -> "tuple[list, str]":
     """Enumerate + classify the facts dir once. Returns (rows, domain).
@@ -451,17 +475,18 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
             print(f"facts_manifest: refusing to cache {facts_dir} — {_e}; every read will "
                   f"re-enumerate in full until this file is shrunk below {_READ_CAP} bytes",
                   file=sys.stderr)
-            return None, "oversize"
+            return _mint("oversize")
         if rows is None:
             # DECLINED, not failed: another process holds `global.lock` (see `_rebuild_locked`).
             # Terminal — `ensure` does not retry, and every caller already has the full-read
             # fallback this cache exists to skip.
-            # ⚠ `"lock-busy"` is deliberately in NEITHER `_REBUILDABLE` nor `_NONREBUILDABLE`.
-            # Those two tuples classify the reasons `load()` returns; this one is minted HERE, so
-            # filing it among them would repeat the defect that removed `"rebuild-failed"` — a
-            # member whose producer is somewhere else. (That removal's reasoning still holds and
-            # points the other way here: this token HAS a producer, it is just not `load()`.)
-            return None, "lock-busy"
+            # ⚠ `"lock-busy"` is deliberately in NEITHER `_REBUILDABLE` nor `_NONREBUILDABLE` —
+            # those classify the reasons `load()` returns, and filing this among them would repeat
+            # the defect that removed `"rebuild-failed"` (a member whose producer is elsewhere).
+            # ⚠ But "not mis-filed" is not "classified": it is minted HERE, so it belongs to the
+            # OTHER vocabulary, `_ENSURE_REASONS`, which names its TRANSIENCE — the property three
+            # separate consumers each had to get right by hand before this existed.
+            return _mint("lock-busy")
         # ⚠ `rows, "rebuilt"` UNCONDITIONALLY — never `if rows:`. `_rebuild_locked` returns a dict
         # on SUCCESS, and that dict is legitimately EMPTY for a domain with no facts: `build()`
         # returns `[]`, the manifest is written as `{"files": []}`, and the rebuild SUCCEEDED.

@@ -5695,14 +5695,10 @@ def main() -> int:
             # run. A promise the code cannot keep is worse than no note: only the contention case
             # is transient, so only that one is told to retry.
             if "--verbose" in argv and _pf_res.get("cache_skipped"):
-                _skip = str(_pf_res["cache_skipped"])
-                if _skip == "lock-busy":
-                    print(f"preflight: cache not written (lock-busy) — the verdict is unaffected; "
-                          f"it will be cached on a later run", file=sys.stderr)
-                else:
-                    print(f"preflight: cache NOT written ({_skip}) — the verdict for THIS run is "
-                          f"unaffected, but the cache stays cold until that is repaired",
-                          file=sys.stderr)
+                # The sentence comes from ONE constructor — `cm doctor` prints the same one for the
+                # same cause (v0.4.57), so the two sites cannot drift into disagreeing about it.
+                print(f"preflight: {preflight.cache_skip_note(str(_pf_res['cache_skipped']))}",
+                      file=sys.stderr)
         except Exception:  # noqa: BLE001 — the pre-flight can never break a dream
             pass
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)
