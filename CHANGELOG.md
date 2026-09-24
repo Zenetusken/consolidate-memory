@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.48] — 2026-09-24
+
+**Patch — a live firewall leak, a permanently-cold cache, and a crash on the escape path.**
+
+1. **The commit-subject firewall's cap applied to the SCAN and not to the EMIT — a live leak.**
+   `_scrub_commit_log` scanned `subject[:_COMMIT_SUBJECT_CAP]` and then appended the **whole** line
+   in the `else`. So the firewall got **weaker the longer the subject grew**: MEASURED on the
+   released 0.4.47, the same credential was redacted behind 100 filler characters and emitted
+   **verbatim** behind 5,000 — `_looks_secret(subject[:4000])` `False` while
+   `_looks_secret(subject)` `True`, with the credential present in the output of every Phase-0
+   report. Emitting text you refused to *scan* is the defect; the cap now bounds both sides, and
+   the truncation is marked so it stays auditable. This was the one Phase-2 source with a
+   secrets-firewall pass, and it was bypassable by padding — against CLAUDE.md's *"don't weaken
+   that"*.
+
+2. **One oversize fact made the facts-manifest permanently cold, silently, and the documented
+   repair restated a promise it could not keep.** `ensure` fails open past `_READ_CAP` and a failed
+   rebuild writes nothing, so a domain holding one 5 MiB fact never rebuilt: MEASURED, a 300-fact
+   store went from ~1.3 ms to ~1.4 s **every** call, forever, while `cm data facts-refresh`
+   reported that it "rebuilds lazily on next read". The refusal now names the offending file on
+   stderr, and `facts-refresh` **probes** the rebuild and reports the OUTCOME — exiting non-zero
+   when it could not — instead of printing an intent.
+
+3. **`cm sync --pull --allow-net-grow` died with an uncaught `PermissionError`.** `Path.exists()`
+   re-raises anything outside `ENOENT/ENOTDIR/EBADF/ELOOP` (EACCES among them) and `read_bytes`
+   raises on a mode-000 file, so an index that cannot be read took the write path out with a
+   traceback — on one of the two remedies the ceiling hold **itself prints**. The read is now
+   factored as `_index_revision`, guarded on both sides, and a revision that cannot be READ is a
+   precondition that cannot be HONOURED: it refuses by name rather than writing without one.
+
+⚠ Items 1 and 3 are the same escape `measure_or_fault` documents in its own docstring — *"`Path.exists`
+itself re-raises anything outside ENOENT/ENOTDIR/EBADF/ELOOP — EACCES among them"* — reproduced at
+two call sites written by the same hand in the same cycle. A documented trap is not a guarded one.
+
 ## [0.4.47] — 2026-09-24
 
 **Patch — a crash 0.4.46 introduced, and four claims 0.4.46's own batch made about itself.**

@@ -312,6 +312,33 @@ def _pull_index_seed(idxp: Path) -> "tuple[int, str, bool]":
     return (INDEX_CEILING_TOKENS + 1 if unreadable else est_tokens(text)), text, unreadable
 
 
+def _index_revision(idxp: Path) -> "tuple[str, str]":
+    """`(sha, "")` for the store index's write precondition, or `("", reason)` if unreadable.
+
+    ⚠ BOTH `exists()` and the read are guarded here, and this is the SAME escape
+    `measure_or_fault` documents and `_pull_index_seed` guards: `Path.exists()` re-raises anything
+    outside ENOENT/ENOTDIR/EBADF/ELOOP (EACCES among them) and `read_bytes` raises on a mode-000
+    file. MEASURED: with the index symlinked into a non-traversable directory,
+    `cm sync --pull --allow-net-grow` — one of the two remedies the ceiling hold itself prints —
+    died with an uncaught `PermissionError` before this existed.
+
+    Factored so the posture is pinnable without driving a fleet pull. ⚠ A revision we cannot READ
+    is a precondition we cannot HONOUR, so the caller REFUSES rather than writing without one:
+    the point of the precondition is that a concurrent edit aborts the write, and proceeding
+    without it silently disables exactly the guard that makes the write safe.
+    """
+    try:
+        _present = idxp.exists()
+    except OSError:
+        _present = True                      # cannot tell ⇒ try to read it ⇒ refuse below
+    if not _present:
+        return "", ""                        # genuinely absent: no precondition to record
+    try:
+        return hashlib.sha256(idxp.read_bytes()).hexdigest(), ""
+    except OSError as e:
+        return "", f"{type(e).__name__}"
+
+
 def _nonglobal_wikilinks(text: str, global_dir: Path, exclude: str = "") -> list[str]:
     """v0.1.25: the `[[wikilink]]` targets in `text` that are NOT global canonicals — so they DANGLE in every
     mirror of a promoted fact (a global fact's links travel with it into every project). Excludes code-span
@@ -1454,8 +1481,25 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         return hashlib.sha256(p.read_bytes()).hexdigest()
 
     if jobs or evict_stem:
-        if idxp.exists():
-            expected[str(idxp)] = _sha(idxp)
+        # ⚠ BOTH the `exists()` and the read are guarded, and this is the SAME escape
+        # `measure_or_fault` documents and `_pull_index_seed` now guards: `Path.exists()`
+        # re-raises anything outside ENOENT/ENOTDIR/EBADF/ELOOP (EACCES among them) and
+        # `read_bytes` raises on a mode-000 file. MEASURED: with the index symlinked into a
+        # non-traversable directory, `cm sync --pull --allow-net-grow` — one of the two remedies
+        # the ceiling hold prints — died here with an uncaught `PermissionError` traceback.
+        # ⚠ A revision we cannot READ is a precondition we cannot HONOUR, so this REFUSES rather
+        # than writing without one: the entire point of `expected` is that a concurrent edit
+        # aborts the write (`transact`'s optimistic check), and proceeding precondition-less
+        # would silently disable exactly the guard that makes the write safe.
+        _idx_sha, _idx_err = _index_revision(idxp)
+        if _idx_err:
+            print(f"sync_global: the store index {idxp} cannot be READ ({_idx_err}) — refusing "
+                  f"to write without a revision precondition for it; repair the file and re-run",
+                  file=sys.stderr)
+            return {"pulled": 0, "refreshed": 0, "fat": 0,
+                    "error": f"index-unreadable: {_idx_err}"}
+        if _idx_sha:
+            expected[str(idxp)] = _idx_sha
         for _n, _f, _s, path, _w in jobs:
             if path.exists():
                 expected[str(path)] = _sha(path)

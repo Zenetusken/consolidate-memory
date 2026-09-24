@@ -1894,8 +1894,11 @@ def cmd_data(args: argparse.Namespace) -> int:
         from facts_manifest import invalidate_all, manifest_path
         if getattr(args, "all", False):
             n = invalidate_all(ctx.plugin_data_dir)
-            print(f"facts-manifest: invalidated {n} domain manifest(s); "
-                  f"each rebuilds lazily on next read")
+            # ⚠ `--all` cannot probe every domain cheaply, so it does not CLAIM the rebuild
+            # happened — it names where a failure will surface instead. The single-domain arm
+            # below probes and reports the real outcome; this one must not promise more.
+            print(f"facts-manifest: invalidated {n} domain manifest(s); each rebuilds lazily on "
+                  f"next read — a domain that CANNOT rebuild says so on stderr")
         else:
             mp = manifest_path(ctx.plugin_data_dir, ctx.domain_id)
             existed = mp.exists()
@@ -1905,8 +1908,23 @@ def cmd_data(args: argparse.Namespace) -> int:
                 print(f"facts-manifest: could not unlink {mp}: {e}", file=sys.stderr)
                 return 1
             print(f"facts-manifest: {ctx.domain_id} "
-                  f"{'invalidated' if existed else 'was already absent'} ({mp}); "
-                  f"rebuilds lazily on next read")
+                  f"{'invalidated' if existed else 'was already absent'} ({mp})")
+            # ⚠ The promise is PROBED, not printed. "Rebuilds lazily on next read" is a claim
+            # about a future rebuild, and `ensure` fails open for a fact past `_READ_CAP` — so a
+            # domain holding one oversize fact never rebuilds at all, every read re-enumerates in
+            # full (measured ~1.4 s against ~1.3 ms on a 300-fact store), and THIS command, the
+            # documented repair, was the one place that could have said so. Report the OUTCOME.
+            from facts_manifest import ensure as _fm_ens
+            try:
+                _rows_probe, _why_probe = _fm_ens(ctx.canonical_domain_dir, ctx.plugin_data_dir)
+            except Exception as _e_probe:                      # noqa: BLE001 — report, never raise
+                _rows_probe, _why_probe = None, f"{type(_e_probe).__name__}: {_e_probe}"
+            if _rows_probe:
+                print(f"facts-manifest: {ctx.domain_id} rebuilt — {len(_rows_probe)} row(s)")
+            else:
+                print(f"facts-manifest: ⚠ {ctx.domain_id} did NOT rebuild ({_why_probe}) — every "
+                      f"read will re-enumerate in full until this clears", file=sys.stderr)
+                return 1
         return 0
     if args.data_cmd == "compact":
         from retention import (cycle_log_write_path, fleet_ledger_write_path,

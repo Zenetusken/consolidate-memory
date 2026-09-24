@@ -19,6 +19,7 @@ import functools
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -368,12 +369,20 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
     if reason not in _NONREBUILDABLE:
         try:
             rows, domain = _rebuild_locked(facts_dir, plugin_data_dir)
-        except _Oversize:
+        except _Oversize as _e:
             # ⚠ FAIL OPEN, and never write. Nothing was written (the raise precedes the atomic
             # write), so every later call re-enumerates rather than serving the truncated verdict
             # — the safe direction, and the only one available: a row for this file cannot be
             # built correctly WITHOUT reading all of it, and reading all of it is what the cap
             # exists to avoid on the hook path.
+            # ⚠ AND IT IS NOT SILENT. A refusal that names nothing leaves the operator with a
+            # permanently-cold cache and no lead: measured, a 300-fact domain with ONE 5 MiB fact
+            # went from 1.3 ms to ~1.4 s EVERY call, forever, with `cm data facts-refresh` — the
+            # documented repair — cheerfully reporting that it "rebuilds lazily on next read".
+            # This is the one place the offending file can be named, so it is named here.
+            print(f"facts_manifest: refusing to cache {facts_dir} — {_e}; every read will "
+                  f"re-enumerate in full until this file is shrunk below {_READ_CAP} bytes",
+                  file=sys.stderr)
             return None, "oversize"
         if rows:
             return rows, "rebuilt"
