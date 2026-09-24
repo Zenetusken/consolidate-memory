@@ -268,6 +268,29 @@ def _over(b: Mapping[str, Any]) -> str:
     return ""
 
 
+def _unmeasurable(b: Mapping[str, Any]) -> str:
+    """The fault flag for a tier whose operand EXISTS but was not measurable (v0.4.45).
+
+    A named sibling of `_over` rather than a branch inside it, because the two answer
+    different questions and only one of them has an answer here: `_over` asks "is this over
+    budget", and an unmeasured operand cannot be over or under anything — the 0 it would
+    compare is not a measurement. v0.4.35's refusal-verdict parity ("a refusal must never be
+    spelled like a verdict") applies one tier up: a store we could not READ must never be
+    spelled like a store that is fine.
+
+    A FUNCTION, and the callers suppress the gauge rather than printing this beside it —
+    `_bar(0, 1500)` draws a full-green empty bar, so a ⚠ printed next to it reproduces the
+    contradiction the `over_ceiling` splice exists to end (a red alarm on the same rendered
+    line as the healthy gauge that denies it). One line, one claim.
+    """
+    if _flag(b.get("unmeasurable")):
+        # Operand-NEUTRAL wording: this helper serves the index, the project CLAUDE.md and the
+        # user-global CLAUDE.md, and naming one of them made the other two's rows read as though
+        # the INDEX had failed. The caller's row label supplies the subject; this supplies the fact.
+        return _c("  ⚠ UNMEASURABLE — exists but could not be read", "red")
+    return ""
+
+
 def _outcome(record: Mapping[str, Any]) -> str:
     # L4 (v0.4.2): the single source lives in memory_status.outcome_of — the banner, the log
     # column, and the HTML embed share ONE vocabulary (the v0.1.37 pivoted-maintenance carve-out
@@ -389,7 +412,13 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
     out.append(f"    {_lbl('this cycle on')} {trig}: " + ("  ".join(parts) if parts else "no actions recorded"))
     extras = []
     if "after_tokens" in idx:
-        extras.append(f"always-loaded ≈{idx.get('before_tokens', 0)} → ≈{idx.get('after_tokens', 0)} tok")
+        # ⚠ The unread index must not be summarised as a PAIR OF NUMBERS. "≈0 → ≈0 tok" is a
+        # measured-looking claim built from a read that failed, and it is the shape this whole
+        # line is scanned for. Say what happened instead.
+        if _flag(idx.get("unmeasurable")):
+            extras.append("always-loaded: UNMEASURABLE — the index exists but could not be read")
+        else:
+            extras.append(f"always-loaded ≈{idx.get('before_tokens', 0)} → ≈{idx.get('after_tokens', 0)} tok")
     if xp.get("gc_removed"):
         extras.append(f"gc {xp['gc_removed']} orphan(s)")
     if xp.get("refreshed"):
@@ -862,11 +891,24 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         out.append(f"    {_lbl(label, lbl)}{value:<{val}} {tail}".rstrip())
 
     if cm:
-        at, bt = cm.get("after_tokens", 0), cm.get("budget_tokens", 0)
-        dln = _num(cm.get("after", 0)) - _num(cm.get("before", 0))
-        note = (f"  {'+' if dln >= 0 else ''}{_g(dln)} ln" if dln else "")
-        _brow("project CLAUDE.md", f"≈{_g(at)}/{_g(bt)}", f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(cm)}")
-    if gcm.get("present"):
+        # ⚠ Same rule as the index gauge above: an UNMEASURED operand gets the fault, not a gauge.
+        # `_bar(0, 4000)` draws a full-green empty bar and `note` would report a fabricated delta
+        # from the fault's zeros — two false claims on the line whose whole job is to price the
+        # tier that loads in every session.
+        if _flag(cm.get("unmeasurable")):
+            _brow("project CLAUDE.md", "?", _unmeasurable(cm).strip())
+        else:
+            at, bt = cm.get("after_tokens", 0), cm.get("budget_tokens", 0)
+            dln = _num(cm.get("after", 0)) - _num(cm.get("before", 0))
+            note = (f"  {'+' if dln >= 0 else ''}{_g(dln)} ln" if dln else "")
+            _brow("project CLAUDE.md", f"≈{_g(at)}/{_g(bt)}", f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(cm)}")
+    # ⚠ `present` is `bytes > 0`, which a FAILED read reports as False — so testing it alone made
+    # an unreadable global CLAUDE.md render as though there were no global tier at all. That is the
+    # worst available reading: a row that disappears is indistinguishable from a row that was
+    # never warranted, and this is the one operand every session of every project pays.
+    if _flag(gcm.get("unmeasurable")):
+        _brow("global CLAUDE.md", "?", _unmeasurable(gcm).strip())
+    elif gcm.get("present"):
         adv = _c("  ⚠ heavy — loads in every project", "yellow") if _flag(gcm.get("over")) else ""
         _brow("global CLAUDE.md", f"≈{_g(gcm.get('tokens', 0))}", f"read-only · every project{adv}")
     if idx:
@@ -877,7 +919,11 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         # record → tail unchanged). Thresholds come from ms (already imported for the record type).
         # v0.1.66 (Phase B): the hard-ceiling flag — ADDITIVE beside the target `_over(idx)` flag, never
         # replacing it; sourced from remediation.over_ceiling (absent on legacy records → tail unchanged).
-        tail = f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(idx)}"
+        # v0.4.45: an UNMEASURED index has no gauge, so the fault REPLACES the whole tail rather than
+        # qualifying it. Three leaves of that tail would each fabricate here: `_bar(0, 1500)` draws a
+        # full-green empty bar, `_pct` prints "0%", and `note` reports a shrink by `before_lines` —
+        # the fault's 0 read as a delta. One line, one claim.
+        tail = _unmeasurable(idx) or f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(idx)}"
         if _flag(_dget(record, "remediation").get("over_ceiling")):
             tail += _c(f" ⚠ HARD CEILING ≈{_g(idx.get('ceiling_tokens', 0))}t — M1 holds new pulls", "red")
         _cp = _num(idx.get("cliff_pct", 0))
@@ -1740,6 +1786,16 @@ def _refresh_post_state(record: "ms.CycleRecord", store: Path) -> None:
                 # The SAME comparison the over-budget warning below makes, so the warning and this
                 # leaf cannot disagree by construction.
                 "over": il[2] > ms.INDEX_TOKEN_BUDGET,
+                # ⚠ RE-WRITTEN HERE, and it must be. `unmeasurable` qualifies the two leaves above
+                # it, so leaving it to the seed couples the fault to a DIFFERENT read than the
+                # number it describes — and the guard above is `is_file()`, which is TRUE for a
+                # mode-000 index. So the harmful direction is reachable: an index Phase 0 read
+                # cleanly and which then became unreadable writes `after_tokens: 0, over: false`
+                # beside a stale `unmeasurable: false`, which is the healthy-store fabrication this
+                # field exists to prevent. Written from `local` — the same dict `il` came from —
+                # the fault and the measurement are one expression by construction, exactly as
+                # `budget_tokens` above is paired with its numerator.
+                "unmeasurable": bool(local["index_fault"]),
             }
             # The ceiling VERDICT rides along with the index it judges — `remediation` is the
             # top-level triage block, so LEAF-WISE holds: the parent exists or the leaf is not

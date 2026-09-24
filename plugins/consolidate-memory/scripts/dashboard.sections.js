@@ -284,7 +284,13 @@ var NocturneSections = (function(){
     add(h.index_pointers_ok===false||array(h.broken).length,'Broken index pointers'+(array(h.broken).length?': '+array(h.broken).join(', '):''),'store-checks');
     add(array(h.dangling_links).length,'Dangling links: '+array(h.dangling_links).map(value).join(', '),'store-checks');
     add(array(h.slug_orphans).length,'Orphan stores: '+array(h.slug_orphans).map(value).join(', '),'store-checks');
-    add(['missing_node_type','malformed_scope','malformed_origin','index_mismatch'].some(function(k){return num(g(h,'schema_drift.'+k,0))>0 && (k!=='index_mismatch'||!(truthy(g(c,'budget.index.over',false))||truthy(rem.standing_justified)));}),'Schema drift recorded','store-checks');
+    // ⚠ `unmeasurable` joins the exemption, for the same reason as `over`/`standing_justified` and
+    // one step stronger: `index_mismatch` counts facts on disk that the index does not name, and
+    // an index that could not be READ names nothing — so the mismatch is manufactured by the read
+    // failure, not observed in the store. Without this the archive raises "Schema drift recorded"
+    // for a store whose only fault is that nobody could open its index, sending the reader after
+    // drift that is not there while the real fault goes unnamed.
+    add(['missing_node_type','malformed_scope','malformed_origin','index_mismatch'].some(function(k){return num(g(h,'schema_drift.'+k,0))>0 && (k!=='index_mismatch'||!(truthy(g(c,'budget.index.over',false))||truthy(rem.standing_justified)||truthy(g(c,'budget.index.unmeasurable',false))));}),'Schema drift recorded','store-checks');
     add(g(a,'conservation.possible_loss',false),'Conservation concern: possible lost relocation','file-changes');
     add(truthy(rem.over_ceiling),'Hard ceiling exceeded: new shares held','store-checks');
     add(truthy(rem.required)&&!(measured(rem.achieved_index)&&rem.achieved_index<=IDXB),'Unresolved index remediation','store-checks');

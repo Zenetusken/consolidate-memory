@@ -17,7 +17,14 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.44** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.45** — an operand that EXISTS but cannot be READ is a THIRD state all the way to the
+decision layer (`index_reading`; `unmeasurable` on the index and on both CLAUDE.md gauges; the
+`--triage` all-clear and the schema-drift `offer backfill` both refused for an unread store), the
+beacon's read-only contract held at the DECISION site (`may_write`/`may_rebuild`, since `load()`
+was chosen deliberately and defeated four frames down), the manifest's 4 MiB read cap no longer
+caching a firewall verdict from a PREFIX, and the pull's index seed separating ABSENT from
+UNREADABLE — plus
+sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -284,6 +291,22 @@ ceiling, only shrinking satisfies). Everything in the v0.1.18 paragraph above �
 levers, standing-justify, prune-pressure, the maintenance pivot — is UNTOUCHED and still keys to the
 target. Surfaced as `remediation.over_ceiling` + a red flag on every gauge (dashboard, Phase-0 report,
 HTML archive). Design + the 3-lens gate that produced it: `docs/index-usage-and-budget-ladder.spec.md`.
+
+**When a gauge operand could not be READ (v0.4.45) — a THIRD state, beside under and over.**
+`budget.index.unmeasurable`, `budget.claude_md.unmeasurable` and
+`budget.global_claude_md.unmeasurable` mark an operand that **EXISTS but could not be read**
+(the path is a directory, mode-000, or otherwise unopenable). Its `0` is **not a measurement** —
+it is the fault's zero, and `over` is **not a verdict** on it. Treat it as a **store repair**,
+never as headroom: do **not** prune, do **not** backfill an `index↔file` gap (that advisory
+refuses the blind backfill itself now), and do **not** read the remediation triage's all-clear as
+authoritative — `--triage` prints it in **red** instead. Every rendered surface says
+`UNMEASURABLE` rather than drawing a gauge, because `_bar(0, 1500)` is a full-green empty bar and
+a `0%` beside it is a claim nothing measured. Repair the named file and re-run before treating the
+always-loaded tier as measured. ⚠ Note the direction: the over-budget gate above fires on a
+**KNOWN** overflow, this one on an **UNKNOWN** state — and an unknown must never be spent as the
+answer that reads as healthy. The same `unmeasurable` field rides the SEED that `seed_record`
+writes; a record from before v0.4.45 simply lacks the key, which means "no known fault", never
+"measured and clean".
 
 A separate **prune-pressure** flag (set when the index is over budget OR the store
 already holds ≥ a threshold of facts) forces **prune-or-propose this pass regardless of
@@ -1569,9 +1592,9 @@ this once warned against; the dashboard remains the source of the figures.)
   ],
   "budget": {
     "claude_md": {"before": 0, "after": 0, "before_tokens": 0, "after_tokens": 0,
-                  "budget_tokens": 4000, "over": false},
+                  "budget_tokens": 4000, "over": false, "unmeasurable": false},
     "global_claude_md": {"present": false, "lines": 0, "tokens": 0,
-                         "budget_tokens": 4000, "over": false},
+                         "budget_tokens": 4000, "over": false, "unmeasurable": false},
     "index": {"before_lines": 0, "after_lines": 0, "before_bytes": 0, "after_bytes": 0,
               "before_tokens": 0, "after_tokens": 0, "budget_tokens": 1500, "over": false, "unmeasurable": false,
               "fat_hooks": 0, "hook_max_tokens": 0, "cliff_pct": 0, "ceiling_tokens": 3840},

@@ -483,7 +483,7 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
     _prev_idx = (idx_snap.data or b"").decode("utf-8", errors="replace") if idx_snap.exists else ""
     ptr = _pointer_or_stored(_prev_idx, _prev_text, stem, _desc)
     # v0.4.44 (item 3): an archived placement is not re-added as a side effect of a body edit.
-    _archived_placement = _placement_decline(ctx, stem, _prev_idx)
+    _archived_placement, _placement_unreadable = _placement_decline(ctx, stem, _prev_idx)
     _warn_fat_hook(ptr, stem, source_path=str(dest))
     expected = {}
     expected.update(_expected_from_snap(dest_snap))
@@ -500,7 +500,12 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
         # v0.4.44 (item 3): MEMORY.md is left UNTOUCHED for an archived placement — no pointer,
         # no admission check (the index is not changing). The BODY still updates, so the operator
         # can edit an archived fact; only the eviction is protected.
-        if not _archived_placement:
+        # ⚠ `_placement_unreadable` takes the SAME branch, and must: a store doc that could not be
+        # read leaves "was this stem archived?" unanswerable, so the append branch — the one that
+        # re-adds a pointer an archive might own — is not available. It refuses in the SAFE
+        # direction and NAMES itself in the result, rather than silently re-adding the pointer the
+        # way the swallowed `except OSError` used to.
+        if not _archived_placement and not _placement_unreadable:
             if idx_snap.exists:
                 idx = (idx_snap.data or b"").decode("utf-8", errors="replace")
             else:
@@ -514,7 +519,10 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
                 modes[str(idxp)] = "create"
                 extra[str(idxp)] = ABSENT
         return {"stem": stem, "dest_modes": modes, "expected_revisions": extra,
-                "archived_placement": _archived_placement}
+                "archived_placement": _archived_placement,
+                # additive: the store docs that could not be read, so a withheld pointer is never
+                # an unexplained one — the same disposition `_rebuild_plan` reports.
+                "placement_unreadable": _placement_unreadable}
 
     try:
         out = transact(ctx, "local-upsert", {"stem": stem}, mutate,
@@ -524,38 +532,66 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
         return {"ok": False, "error": str(e)}
 
 
-def _archive_doc_paths(native: Path) -> list:
-    """The store-root docs that CLASSIFY as archive indexes — the ONE selection rule.
+def _archive_doc_paths(native: Path) -> "tuple[list, list]":
+    """The store-root docs that CLASSIFY as archive indexes — this site's selection rule.
 
-    Skips `MEMORY.md` and anything under `/quarantine/`, exactly as the rebuild's scan does; a
-    selection rule with two spellings is what makes two callers disagree about what "placed"
-    means.
+    Returns `(paths, unreadable)`. Skips `MEMORY.md` and anything under `/quarantine/`, the same
+    skip set `_rebuild_plan`'s scan uses.
+
+    ⚠ `unreadable` is RETURNED, never swallowed, and that is the whole point of the second value.
+    A store doc that exists but cannot be read cannot be CLASSIFIED, and "we could not tell" must
+    never be spent as "it was not an archive index": the caller would then conclude the stem was
+    NEVER ARCHIVED, take the append branch, and re-add a pointer an archive owns — silently undoing
+    an eviction, which is precisely the harm the decline exists to stop. `_rebuild_plan` reports
+    the identical condition (`unreadable`/`absent_docs`) and fails its plan CLOSED; a bare
+    `except OSError: continue` here made the two readers disagree about one store, which is the
+    divergence class this family keeps closing.
+
+    ⚠ NOT claimed: that `_rebuild_plan` calls this function. It does not — it re-globs and
+    re-classifies inline at its own scan, so the SELECTION is currently spelled twice even though
+    the classifier (`_is_archive_index_text`) is shared. An earlier revision of the caller's
+    comment asserted the sharing as fact; it is a not-yet-done refactor, and the honest statement
+    is that the divergence is bounded to the read-failure posture FIXED here, not eliminated.
     """
     from memory_status import _is_archive_index_text
     try:
         files = sorted(native.glob("*.md"))
     except OSError:
-        return []
+        return [], []
     out: list = []
+    unreadable: list = []
     for f in files:
         if f.name == "MEMORY.md" or "/quarantine/" in str(f):
             continue
         try:
             if not f.is_file():
+                # ⚠ NOT a silent skip either, and this arm is easy to miss because it raises
+                # nothing: a store-root `*.md` that is not a regular file (a DIRECTORY of that
+                # name — the shape the v0.4.45 fixtures use — or a dangling symlink) cannot be
+                # classified any more than an unreadable one can. `_rebuild_plan` reports this
+                # same condition as `absent_docs`; leaving it unreported here would keep the two
+                # readers disagreeing on the one input both agree is undecidable.
+                unreadable.append({"doc": f.name, "error": "not a regular file"})
                 continue
             text = f.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as e:
+            unreadable.append({"doc": f.name, "error": str(e)})
             continue
         if _is_archive_index_text(text):
             out.append(f)
-    return out
+    return out, unreadable
 
 
 def _placements_from(paths) -> dict:
-    """stem -> the archive doc NAMES placing it, over `paths` — the ONE extraction.
+    """stem -> the archive doc NAMES placing it, over `paths` — this site's extraction.
 
-    Each caller supplies the doc paths (and, in the rebuild's case, reads them from its PINNED
-    snapshots); this owns the `archive_index(...)["targets"]` walk so the rule has one spelling.
+    ⚠ ONE caller today (`_placement_decline`), NOT two. A previous revision of this docstring said
+    "each caller supplies the doc paths (and, in the rebuild's case, reads them from its PINNED
+    snapshots)", which asserted a second caller that has never existed — the same overstatement
+    family as the selection claim three functions up, and worth correcting rather than deleting
+    because the rebuild's pinned-snapshot read is a real difference a future refactor must carry.
+    This owns the `archive_index(...)["targets"]` walk so the rule has one spelling where it IS
+    shared.
     Evidence-carrying by construction: the value names the doc that claimed the placement, which
     is what makes an assertion checkable rather than vouched for.
     """
@@ -572,11 +608,14 @@ def _placements_from(paths) -> dict:
     return out
 
 
-def _placement_decline(ctx: StoreContext, stem: str, idx_text: str) -> list:
+def _placement_decline(ctx: StoreContext, stem: str, idx_text: str) -> tuple[list, list]:
     """v0.4.44 (item 3): the archive docs placing `stem`, when `MEMORY.md` does not index it.
 
-    Returns the doc NAMES (evidence, not a bare verdict) or `[]` — a NON-EMPTY return means the
-    caller must NOT re-add the pointer.
+    Returns `(doc_names, unreadable)`. `doc_names` is evidence, not a bare verdict, and a NON-EMPTY
+    return means the caller must NOT re-add the pointer. A NON-EMPTY `unreadable` means the same
+    thing for the same reason — see `_archive_doc_paths`: a store doc that could not be READ leaves
+    "was this stem archived?" unanswerable, and an unanswerable question must not be spent as the
+    answer that re-adds a pointer.
 
     ⚠ The harm this exists for: `local_upsert` read only the fact file and `MEMORY.md`, so after
     `cm local archive STEM` moved STEM's pointer into an archive doc, any later body-only upsert
@@ -600,16 +639,18 @@ def _placement_decline(ctx: StoreContext, stem: str, idx_text: str) -> list:
     # stricter one here would let this decline fire where the rebuild would not, which is the
     # divergence class this check was written to avoid. Same reader, same operand, same test.
     if stem in set(_LINK_RE.findall(idx_text)):
-        return []                                   # currently indexed → this is an update
-    # ⚠ The SELECTION is shared with `_rebuild_plan` (`_archive_doc_paths`); the EXTRACTION
-    # (`_placements_from`) currently has ONE caller, this one. An earlier revision of this comment
-    # claimed "one selection, one extraction, two callers" and the second half was false — the
-    # rebuild still walks `archive_index(...)["targets"]` inline. Stated accurately because a
-    # docstring claiming a sharing that has not happened is the class this whole family exists to
-    # catch, and the caller count is one `grep` away. Before that, this check re-globbed the store
-    # and re-classified for itself, and the two copies DID disagree — the rebuild skips
-    # `/quarantine/` and reads pinned snapshots, this one did neither.
-    return _placements_from(_archive_doc_paths(ctx.native_memory_dir)).get(stem, [])
+        return [], []                               # currently indexed → this is an update
+    # ⚠ What is and is NOT shared, stated from a `grep` rather than from intent. SHARED: the
+    # classifier (`memory_status._is_archive_index_text`). NOT SHARED: the selection — the rebuild
+    # re-globs and re-classifies inline at its own scan, so `_archive_doc_paths` has exactly ONE
+    # caller (this one). An earlier revision of this comment asserted "the SELECTION is shared with
+    # `_rebuild_plan`", which was the mirror-image error of the one it replaced ("one selection,
+    # one extraction, two callers"): both named a sharing that does not exist, one by overstating
+    # the extraction and one the selection. That refactor is still AVAILABLE and still undone.
+    # FIXED here instead: the read-failure posture, which is where the two readers actually
+    # disagreed — see `_archive_doc_paths`.
+    _paths, _unreadable = _archive_doc_paths(ctx.native_memory_dir)
+    return _placements_from(_paths).get(stem, []), _unreadable
 
 
 def local_forget(ctx: StoreContext, stem: str) -> dict:

@@ -110,6 +110,8 @@ class ClaudeMdBudget(TypedDict, total=False):
     after_tokens: int
     budget_tokens: int
     over: bool
+    unmeasurable: bool     # v0.4.45: the project CLAUDE.md EXISTS but could not be read — `over`
+                           # is not trustworthy when this is set (see IndexBudget.unmeasurable)
 
 
 class GlobalClaudeMd(TypedDict, total=False):
@@ -118,6 +120,13 @@ class GlobalClaudeMd(TypedDict, total=False):
     tokens: int
     budget_tokens: int
     over: bool
+    # ⚠ v0.4.45. Without this field the ONLY signal an unreadable global CLAUDE.md produced was a
+    # stderr line: `present` is `bytes > 0`, which a failed read reports as FALSE — so the
+    # renderers skipped the row entirely (`if gcm.get("present")`) and the operator saw a global
+    # tier that looked UNPRESENT rather than UNREADABLE. Absent and unreadable are different facts,
+    # and this is the one operand that loads on EVERY session of EVERY project, so its cost being
+    # silently zeroed understates the always-loaded total for everyone at once.
+    unmeasurable: bool
 
 
 class IndexBudget(TypedDict, total=False):
@@ -818,6 +827,26 @@ def suggested_tier(git_commits: float, session_candidates: float) -> str:
 # `over_ceiling: false`. "budget" is the word the ladder reserves for the WHOLE two-rung ladder, so
 # naming the LOWER rung with it read as the upper one.
 PRUNE_REASON_INDEX_OVER_TARGET = "index-over-target"
+
+
+def index_reading(index_tokens: int, fault: bool) -> "tuple[str, int]":
+    """The gate operand as THREE states, because TWO cannot express it.
+
+    Returns `(state, tokens)` with state in `"over"` / `"under"` / `"unmeasurable"`.
+
+    ⚠ THE DEFECT THIS EXISTS TO END. `store_local_index` reports `(0, 0, 0)` both for a store
+    that is genuinely empty and for one whose `MEMORY.md` EXISTS but could not be read, and
+    distinguishes them only in `index_fault`. Every consumer compared the bare number against a
+    budget, so the second case answered "under budget" at every DECISION site — not only the
+    display ones: `--triage` printed its green all-clear, the schema-drift advisory offered
+    `backfill` (the one action the no-net-grow gate FORBIDS), and `remediation.required` stayed
+    False so SKILL's mandatory HEAVY hard-stop never fired. v0.4.35's rule one tier up: an
+    UNKNOWN must never be spelled like a VERDICT. Callers must handle all three states — there
+    is deliberately no two-valued shorthand, because every one of them is wrong for the fault.
+    """
+    if fault:
+        return "unmeasurable", index_tokens
+    return ("over" if index_tokens > INDEX_TOKEN_BUDGET else "under"), index_tokens
 
 
 def prune_pressure(index_over: bool, memories_reviewed: int) -> tuple[bool, str]:
@@ -3301,9 +3330,16 @@ def store_local_index(auto_mem: Path) -> dict:
     # E (v0.1.18.x): a 0-token index read WHILE facts exist is anomalous (a write-truncate race) and would
     # wrongly clear the over-budget gate — re-read ONCE to settle it. A persistent 0 is a genuine all-unindexed
     # store (schema_drift flags the mismatch), not "under budget / all well".
-    if index_lb[2] == 0 and fact_files and index_path.exists():
-        index_lb, _f2 = measure_or_fault(index_path)
-        index_fault = index_fault or _f2
+    # ⚠ `and not index_fault`: the settle re-read is REDUNDANT once the first measurement
+    # already faulted, and provably so — every fault arm of `measure_or_fault` returns the
+    # constant (0, 0, 0) with `faulted=True`, so the second read cannot change `index_lb` and
+    # `index_fault or _f2` is True either way. It re-ran `exists()`/`is_file()` and, on the
+    # EACCES arm, a failed `open`+`read`, to reach the same answer.
+    # ⚠ And the two halves now come from ONE call. Assigning `index_lb` from the re-read while
+    # keeping `index_fault` from the first via `or` updated a single read's two halves by
+    # different rules; reached only when the first read faulted, which this guard now excludes.
+    if index_lb[2] == 0 and fact_files and index_path.exists() and not index_fault:
+        index_lb, index_fault = measure_or_fault(index_path)
     # v0.1.63 (Phase A): hook-cost + native-cliff telemetry for the always-loaded index. This is a
     # SECOND, independent read of the same file — its text feeds hook_stats here and
     # demotion_candidates in build_context — so the two can legitimately disagree if the file is
@@ -3315,7 +3351,6 @@ def store_local_index(auto_mem: Path) -> dict:
     return {
         "index_path": index_path,
         "index_lb": index_lb,
-        "index_fault": index_fault,   # v0.4.45: the index EXISTS but was not measurable
         "index_text": index_text,
         "fact_files": fact_files,
         "archive_docs": archive_docs,
@@ -3341,12 +3376,13 @@ def build_context(project_dir: Path) -> dict:
     # warned below rather than absorbed.
     # ⚠ `_rdoc` not `_name`: this scope later binds `_name` to a regex Match, and the collision
     # type-errors rather than shadowing quietly.
-    repo, repo_faults = {}, []
+    repo, repo_faults, repo_fault_names = {}, [], set()
     for _rdoc in REPO_DOCS:
         _rm, _rfault = measure_or_fault(project_dir / _rdoc)
         repo[_rdoc] = _rm
         if _rfault:
             repo_faults.append(str(project_dir / _rdoc))
+            repo_fault_names.add(_rdoc)
 
     # The USER-GLOBAL CLAUDE.md (~/.claude/CLAUDE.md): loaded into EVERY session of EVERY
     # project, so it's part of THIS session's always-loaded tax even though it's neither a
@@ -3593,11 +3629,21 @@ def build_context(project_dir: Path) -> dict:
         "proj_root": proj_root,
         "auto_mem": auto_mem,
         "repo": repo,
+        # ⚠ The FAULTS travel beside the measurements they qualify, as NAMES (not paths): the seed
+        # needs to ask "was THIS doc readable" per block, and a path-keyed set cannot answer that
+        # for `CLAUDE.md`, whose global and repo forms share a basename.
+        "repo_fault_names": repo_fault_names,
         "global_claude_md": global_claude_md,
+        "global_claude_md_fault": _gcm_fault,
         "claude_md_hierarchy": claude_md_hierarchy(project_dir),   # v0.1.22: whole-hierarchy measure (read-only)
         "index_path": index_path,
         "index_lb": index_lb,
-        "index_fault": _local.get("index_fault", False),
+        # ⚠ PLAIN INDEXING, like its sibling `index_lb` above — never `.get(k, False)`. A default
+        # here is a SECOND silent default stacked on the producer's, and it defaults to the
+        # DANGEROUS value: a rename or a dropped key in `store_local_index` would read as
+        # "measured and healthy" with nothing failing, which is the exact shape this field was
+        # added to end. A KeyError names the site; `False` hides it.
+        "index_fault": _local["index_fault"],
         "index_hooks": index_hooks, "index_cliff": index_cliff,   # v0.1.63 (Phase A) telemetry
         "fact_files": fact_files,
         "stale_facts": stale_facts,
@@ -3820,6 +3866,10 @@ def seed_record(ctx: dict) -> CycleRecord:
                 "before_tokens": ctx["repo"]["CLAUDE.md"][2], "after_tokens": ctx["repo"]["CLAUDE.md"][2],
                 "budget_tokens": CLAUDE_MD_TOKEN_BUDGET,
                 "over": ctx["repo"]["CLAUDE.md"][2] > CLAUDE_MD_TOKEN_BUDGET,
+                # ⚠ the operand EXISTS but could not be read: `over` is then not a verdict, and
+                # this is the only way the record can say so — the stderr warning `build_context`
+                # stages is not a rendered surface.
+                "unmeasurable": "CLAUDE.md" in ctx.get("repo_fault_names", set()),
             },
             # USER-GLOBAL ~/.claude/CLAUDE.md — read-only / no before↔after (the skill never
             # edits it); a flat per-session cost present in EVERY project. Rendered as its
@@ -3830,6 +3880,10 @@ def seed_record(ctx: dict) -> CycleRecord:
                 "tokens": ctx["global_claude_md"][2],
                 "budget_tokens": GLOBAL_CLAUDE_MD_TOKEN_BUDGET,
                 "over": ctx["global_claude_md"][2] > GLOBAL_CLAUDE_MD_TOKEN_BUDGET,
+                # ⚠ WITHOUT this leaf `present: False` is the whole story and it reads as
+                # NOT PRESENT — see GlobalClaudeMd's note. The two facts are different and only
+                # one of them is a reason to skip the row.
+                "unmeasurable": bool(ctx.get("global_claude_md_fault", False)),
             },
             "index": {
                 "before_lines": ctx["index_lb"][0], "after_lines": ctx["index_lb"][0],
@@ -5017,13 +5071,28 @@ def print_report(ctx: dict) -> None:
         add(f"    {_ui.lbl('CLAUDE.md tree', 14)}"
             + _ui.c(f"≈{_wt} tok · {_hier.get('total_files', 0)} files · a session in {_hier.get('worst_path', '?')} pays this/turn", "dim") + _heavy)
     gl, gb, gt = ctx["global_claude_md"]
-    if gl or gb:
+    # ⚠ `or _gcm_faulted`, and the fault arm prints a ROW rather than skipping one. A row that
+    # VANISHES on a read failure is worse than a wrong number here: this is the one operand that
+    # loads in every session of every project, so an unreadable one would silently stop being
+    # reported at all, and the always-loaded total would quietly understate for everyone at once.
+    # Absent and unreadable are different facts and only one of them means "no row".
+    _gcm_faulted = bool(ctx.get("global_claude_md_fault", False))
+    if _gcm_faulted:
+        add(f"    {_ui.lbl('~/.claude/CLAUDE.md', 14)}"
+            + _ui.c("UNMEASURABLE — exists but could not be read; its per-session cost is "
+                    "UNKNOWN, not zero", "red"))
+    elif gl or gb:
         heavy = _ui.c("  ⚠ heavy", "yellow") if gt > GLOBAL_CLAUDE_MD_TOKEN_BUDGET else ""
         add(f"    {_ui.lbl('~/.claude/CLAUDE.md', 14)}" + _ui.c(f"≈{gt} tok · {gl} ln · read-only, every project (never edited here)", "dim") + heavy)
+    _repo_fault_names = ctx.get("repo_fault_names", set())
     for nm in ("MEMORY.md", "AGENTS.md"):
         r = ctx["repo"].get(nm)
         if r and (r[0] or r[1]):
             add(f"    {_ui.lbl(nm, 14)}" + _ui.c(f"{r[0]} ln · {r[1]} by · ≈{r[2]} tok  [on-demand, committed]", "dim"))
+        elif nm in _repo_fault_names:
+            add(f"    {_ui.lbl(nm, 14)}"
+                + _ui.c("UNMEASURABLE — exists but could not be read; its cost is UNKNOWN, not "
+                        "zero", "red"))
     if ctx["auto_mem"].exists():
         facts = ctx["fact_files"]
         add("    " + _ui.c(f"recall facts ({len(facts)}) — bodies read on-demand in Phase 1:", "dim"))
@@ -5118,9 +5187,20 @@ def print_report(ctx: dict) -> None:
         # D3/D11 (v0.1.21): when the index is OVER budget, the index↔file gap is INTENTIONAL (a mature store earns
         # density by NOT indexing everything) — do NOT offer "backfill" (it net-grows under the no-net-grow gate).
         # Under budget, backfill is legit. Only the index_mismatch clause is gate-sensitive; the rest always show.
-        _mismatch = (f"{d['index_mismatch']} un-indexed (over budget → INTENTIONAL, do NOT backfill — net-grows)"
-                     if ctx["index_lb"][2] > INDEX_TOKEN_BUDGET
-                     else f"{d['index_mismatch']} index↔file — offer backfill, confirm first")
+        # ⚠ THREE states, not two — and the third one's advice points the OPPOSITE way. This
+        # advisory is gate-sensitive, so an index that could not be READ must not fall through to
+        # the under-budget arm: that arm offers `backfill`, which is the single action the
+        # no-net-grow gate forbids, and it would be offered on a store whose budget state is
+        # exactly what is unknown. Saying so is the honest third answer; guessing is not.
+        _ix_state, _ = index_reading(ctx["index_lb"][2], bool(ctx.get("index_fault", False)))
+        if _ix_state == "unmeasurable":
+            _mismatch = (f"{d['index_mismatch']} index↔file — but the INDEX COULD NOT BE READ, so "
+                         f"whether this gap is the intentional mature-store density is UNKNOWN: "
+                         f"do NOT backfill blind, repair the store first")
+        elif _ix_state == "over":
+            _mismatch = f"{d['index_mismatch']} un-indexed (over budget → INTENTIONAL, do NOT backfill — net-grows)"
+        else:
+            _mismatch = f"{d['index_mismatch']} index↔file — offer backfill, confirm first"
         sig.append(_ui.li(f"schema drift: {d['missing_node_type']} missing node_type · {d['malformed_scope']} malformed scope · "
                           f"{d['malformed_origin']} malformed origin · {_mismatch}",
                           bullet="⚠", bullet_color="yellow"))
@@ -5396,8 +5476,21 @@ def main() -> int:
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)
         _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv, width=_ui.resolve_width(argv, sys.stdout))
         rem = ctx.get("remediation") or {}
-        body = _remediation_section(rem) if rem else [
-            _ui.kv("REMEDIATION", _ui.c(f"✓ index under budget ({ctx['index_lb'][2]}/{INDEX_TOKEN_BUDGET} tok) — nothing to remediate", "green"))]
+        # ⚠ NOT an all-clear when the operand could not be read. This surface is the SKILL
+        # Phase-5 gate the model reads, and its `✓ … nothing to remediate` is the exact string
+        # the v0.4.45 comment names as the pre-fix failure — so a fault falling through to this
+        # arm would re-spell the defect on the one surface that decides whether the pass runs
+        # HEAVY. Red, not green, and it names the repair rather than a remediation.
+        _rem_state, _ = index_reading(ctx["index_lb"][2], bool(ctx.get("index_fault", False)))
+        if rem:
+            body = _remediation_section(rem)
+        elif _rem_state == "unmeasurable":
+            body = [_ui.kv("REMEDIATION", _ui.c(
+                "⚠ index could not be READ — this is NOT an under-budget all-clear; repair the "
+                "store's MEMORY.md and re-run before treating the always-loaded tier as healthy",
+                "red"))]
+        else:
+            body = [_ui.kv("REMEDIATION", _ui.c(f"✓ index under budget ({ctx['index_lb'][2]}/{INDEX_TOKEN_BUDGET} tok) — nothing to remediate", "green"))]
         print(_ui.ascii_translate(_ui.rule() + "\n  " + _ui.c("✦ REMEDIATION TRIAGE · " + ctx["project"], "cyan")
                                   + "\n" + _ui.rule() + "\n\n" + "\n".join(body)))
         return 0
