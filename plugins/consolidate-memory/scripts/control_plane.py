@@ -161,6 +161,18 @@ class CrashSimulated(RuntimeError):
     """Test-only: mutation stopped after a named journal step."""
 
 
+class LockBusy(RuntimeError):
+    """A lock could not be taken WITHOUT WAITING — the holder is another process.
+
+    ⚠ Raised from TWO sites, and only these: `_acquire_or_busy` (the composite acquisition, when
+    `blocking=False`), and `FileLock._take(wait=False)` underneath it. Never from a plain
+    `acquire()` — which always waits. It is deliberately NOT a `WriteRefused`: that means "this
+    write is refused and will be refused again", while this means "try later, the work is fine".
+    The distinction is what lets a caller SKIP an optional write (the preflight cache, the
+    facts-manifest rebuild) without also swallowing a genuine refusal.
+    """
+
+
 ABSENT = "ABSENT"
 MARKER_FILE = ".consolidation-state.json"
 
@@ -238,7 +250,7 @@ def atomic_write_bytes(path: Path, data: bytes, *, mode: int = 0o600) -> str:
 
 
 def update_project_state(ctx: StoreContext, mutator: Callable,
-                         no_mint: bool = False) -> dict:
+                         no_mint: bool = False, *, blocking: bool = True) -> dict:
     """Merge native `.consolidation-state.json` under the project lock.
 
     `mutator(state: dict, snap: FileSnapshot) -> dict`. Missing marker → empty
@@ -255,7 +267,7 @@ def update_project_state(ctx: StoreContext, mutator: Callable,
     """
     marker = ctx.native_memory_dir / MARKER_FILE
     require_interprocess_lock()
-    locks = acquire_mutation_locks(ctx, [ctx.project_id])
+    locks = acquire_mutation_locks(ctx, [ctx.project_id], blocking=blocking)
     try:
         snap = read_snapshot(marker)
         if snap.exists:
@@ -1394,22 +1406,69 @@ class FileLock:
         self.path = path
         self._fd: Optional[Any] = None
 
-    def acquire(self) -> None:
+    def _take(self, *, wait: bool) -> None:
+        """The ONE flock path. `wait=False` raises `LockBusy` instead of blocking.
+
+        ⚠ The two public forms are separate METHODS (`acquire` / `try_acquire`) rather than one
+        `blocking=` keyword. v0.4.56 shipped the keyword, and it broke this class's
+        substitutability: ANY subclass overriding `acquire(self)` — this repo has one in its own
+        fixture set — raises `TypeError` the moment a caller passes the keyword, which is a
+        breakage at the CALL SITE, arbitrarily far from the override that caused it. `try_acquire`
+        is ADDITIVE: a subclass that overrides `acquire` keeps its exact original signature and is
+        never handed a keyword it does not declare.
+        ⚠ BUT THE ADDITIVE FORM IS NOT FULLY SUBSTITUTABLE EITHER, and the first cut of this
+        docstring claimed it was. Measured by a review lens with the smoke suite's own `_Boom`
+        shape: `Boom.acquire()` raises (its refusal of `global.lock`) while `Boom.try_acquire()`
+        returns True for the SAME lock — the subclass's POLICY is silently skipped, because
+        `try_acquire` reaches `_take` directly and never calls `acquire`. So the honest contract is
+        narrower: the TypeError half of substitutability is fixed; the policy half is not, and
+        cannot be without re-introducing the keyword. A subclass that narrows acquisition must
+        override `try_acquire` (or `_take`, where the policy belongs) as well as `acquire`.
+        Latent in-tree — the only patch window drives blocking acquisition — but it is a real
+        hole in the primitive, so it is stated here rather than left to be rediscovered.
+        ⚠ The no-`fcntl` path is IDENTICAL in both forms, and that is load-bearing: a non-waiting
+        acquire on a platform without `fcntl` would be a no-op lock, so it refuses via
+        `require_interprocess_lock` rather than silently succeeding because waiting was not needed.
+        "Cannot lock at all" and "someone else holds it" must stay distinguishable.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd = open(self.path, "a+")
         try:
             import fcntl
-            fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+            flags = fcntl.LOCK_EX if wait else (fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                fcntl.flock(fd.fileno(), flags)
+            except BlockingIOError:
+                raise LockBusy(f"lock held by another process: {self.path}")
         except ImportError:
             fd.close()
             require_interprocess_lock()
         except Exception:
+            # ⚠ Reached by `LockBusy` too — it is a `RuntimeError`. So the fd is CLOSED on a
+            # busy give-up and `_fd` stays None, which is what makes `release()` safe to call
+            # on a lock that was never taken.
             try:
                 fd.close()
             except OSError:
                 pass
             raise
         self._fd = fd
+
+    def acquire(self) -> None:
+        """Take the lock, WAITING for whoever holds it. The original signature, unchanged."""
+        self._take(wait=True)
+
+    def try_acquire(self) -> bool:
+        """True if the lock is now held; False if another process holds it. Never waits.
+
+        ⚠ `False` is a RESULT, not a fault: the caller declines an OPTIONAL write and carries on.
+        A platform without `fcntl` still RAISES out of `_take` — see the note there.
+        """
+        try:
+            self._take(wait=False)
+            return True
+        except LockBusy:
+            return False
 
     def release(self) -> None:
         if self._fd is None:
@@ -1437,9 +1496,34 @@ def lock_dir(ctx: StoreContext) -> Path:
     return ctx.plugin_data_dir / "locks"
 
 
+def _acquire_or_busy(lock: FileLock, blocking: bool) -> None:
+    """`lock.acquire()`, or `lock.try_acquire()` re-spelled as the same raise-on-busy contract.
+
+    ⚠ `try_acquire` returns a bool, and this layer deliberately converts it back into an
+    EXCEPTION: the caller's rollback is a single `except Exception: release_locks(locks)`, and
+    that one path is what frees the domain lock(s) taken before a give-up on the global one.
+    Returning the bool upward instead would need its own release call at the call site — a second
+    place to forget, which is precisely the defect class the rollback exists to prevent.
+    """
+    if blocking:
+        lock.acquire()
+    elif not lock.try_acquire():
+        raise LockBusy(f"lock held by another process: {lock.path}")
+
+
 def acquire_mutation_locks(ctx: StoreContext, project_ids: list,
-                           extra_domains: Optional[list] = None) -> list:
-    """Domain lock(s) in sorted name order, then global, then project locks."""
+                           extra_domains: Optional[list] = None, *,
+                           blocking: bool = True) -> list:
+    """Domain lock(s) in sorted name order, then global, then project locks.
+
+    `blocking=False` raises `LockBusy` rather than waiting. ⚠ The cleanup is ALREADY here and is
+    what makes the try-mode safe: the `except Exception` below releases whatever was taken before
+    the give-up, so declining on the GLOBAL lock leaves the DOMAIN lock(s) free. `LockBusy` is an
+    `Exception`, so it rides that path with no new code — and a unit pin holds us to it, because
+    "the cleanup happens to cover it" is exactly the kind of claim that stops being true quietly.
+    ⚠ `blocking` is a keyword on a MODULE FUNCTION here, not on `FileLock.acquire` — see
+    `FileLock._take` for why that difference is deliberate and load-bearing.
+    """
     from identifiers import IdentifierRefused, safe_child, validate_domain_id, validate_project_id
     require_interprocess_lock()
     locks: list = []
@@ -1451,10 +1535,10 @@ def acquire_mutation_locks(ctx: StoreContext, project_ids: list,
         for raw in sorted(set(names)):
             dname = validate_domain_id(raw, allow_unknown=True)
             dlock = FileLock(safe_child(lock_dir(ctx), f"domain-{dname}.lock"))
-            dlock.acquire()
+            _acquire_or_busy(dlock, blocking)
             locks.append(dlock)
         glob = FileLock(lock_dir(ctx) / "global.lock")
-        glob.acquire()
+        _acquire_or_busy(glob, blocking)
         locks.append(glob)
         for pid in sorted(set(project_ids)):
             try:
@@ -1462,7 +1546,7 @@ def acquire_mutation_locks(ctx: StoreContext, project_ids: list,
             except IdentifierRefused:
                 raise
             pl = FileLock(safe_child(lock_dir(ctx), f"project-{pid}.lock"))
-            pl.acquire()
+            _acquire_or_busy(pl, blocking)
             locks.append(pl)
         return locks
     except Exception:

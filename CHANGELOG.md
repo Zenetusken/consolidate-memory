@@ -5,6 +5,210 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.56] — 2026-09-24
+
+**Patch — `cm status` no longer hangs waiting for a writer. This is the defect 0.4.54 claimed to fix
+and did not — and 0.4.56's own first cut repeated the mistake in a smaller way, which is recorded
+below rather than quietly amended.**
+
+### The defect, root-caused by stack dump
+
+```
+control_plane.py:1402  FileLock.acquire          -> fcntl.flock(fd, LOCK_EX)   [BLOCKING]
+control_plane.py:1457  acquire_mutation_locks
+control_plane.py:258   update_project_state
+preflight.py:500       run_and_cache
+preflight.py:578       run_for_project
+memory_status.py:5663  main
+```
+
+Run `cm sync` in one terminal and `cm status` in another and the second **hangs indefinitely** —
+the command a user reaches for to see what is going on is the one a running write blocks.
+
+**Trigger condition, measured both ways:** it blocked **iff the preflight cache was cold** — no
+`preflight` block with a UTC `at` younger than `preflight.FRESH_TTL_S` (3600 s). A fresh cache
+returned early (`preflight.py:566-573`) and took **no lock**, which is why the hang needs *both* a
+cold cache and a concurrent writer, and why it survived so long.
+
+### The fix — the cache write TRIES instead of waiting
+
+The write caches a verdict `run_for_project` has **already computed and is about to return**; the
+verdict reaches the caller and `ctx["preflight"]` reaches the record either way. A cache that cannot
+get the lock is skipped, not waited for.
+
+- **`FileLock.try_acquire()`** — a new, additive method returning `True`/`False`; `acquire()` keeps
+  its **exact original signature** and still waits. ⚠ This is a correction *within* the release: the
+  first cut added a `blocking=` keyword to `acquire` instead, and that broke the class's
+  substitutability — a subclass overriding `acquire(self)` raises `TypeError` the moment a caller
+  passes the keyword, i.e. at the *call site*, arbitrarily far from the override that caused it.
+  This repo's own smoke fixture hit it immediately (mypy's override check caught the subclass, which
+  then had to be widened **and** had to accept the keyword without forwarding it, because forwarding
+  is a `TypeError` on the other tree). A new method breaks nobody: a subclass that never heard of it
+  inherits correct behaviour. **`LockBusy`** (kept distinct from `WriteRefused`: this means *try
+  later*, that means *never*) is raised by `acquire_mutation_locks(..., blocking=False)` and by
+  `_take(wait=False)` beneath it; the no-`fcntl` path is unchanged in **both** forms — it still
+  refuses via `require_interprocess_lock` rather than silently succeeding because waiting was not
+  needed.
+- `acquire_mutation_locks(..., blocking=True)`, `update_project_state(..., blocking=True)` — threaded.
+  ⚠ **No new cleanup was needed**: the existing `except Exception: release_locks(locks); raise`
+  already frees a partly-acquired set, so declining on the *global* lock leaves the *domain* lock
+  free. A unit pin holds that property rather than trusting it.
+- `preflight.run_and_cache` — tries, returns a **reason token** (`""` = written) instead of a bool,
+  so the caller can tell *lock-busy* from *the write failed*. `run_for_project` carries it as the
+  additive `cache_skipped` key.
+- **`--verbose`** names the skip (`preflight: cache not written (lock-busy) — the verdict is
+  unaffected`). Silent by default: the command succeeded and the cache is an optimization — the
+  no-silence rule this arc enforces is about **refusals and faults**, not about declining one. ⚠
+  `--verbose` is the first verbosity flag here and is **mode-neutral**, so it is deliberately NOT in
+  the read-only-mode exclusion list that decides *which modes write*.
+
+### ⚠ The frame the first cut MISSED — the facts-manifest rebuild
+
+**The preflight cache was not the only `global.lock` taker on a read command, and this release's
+first cut asserted that it was.** `cm status` still hung. Second stack dump, same method:
+
+```
+facts_manifest.py:436  _rebuild_locked      -> fcntl.flock(fd, LOCK_EX)   [BLOCKING]
+facts_manifest.py:436  ensure
+sync_global.py:861     _admissible_records
+sync_global.py:1165    iter_canonicals
+memory_status.py:3702  build_context
+memory_status.py:5646  main
+```
+
+The trigger is a **second** cold-cache condition, independent of the first: an **enrolled** project
+whose **facts manifest** is cold, with `global.lock` held. The fix is the same discipline at the
+same kind of site — the rebuild protects a *cache*, so it **tries and never waits**:
+`_rebuild_locked` calls `try_acquire()` and returns `(None, "lock-busy")` on contention, and the
+caller falls back to the full enumeration the cache exists to skip. Every `ensure` caller already
+had that fallback.
+
+⚠ `"lock-busy"` is deliberately in **neither** `_REBUILDABLE` nor `_NONREBUILDABLE`: those two
+tuples classify the reasons `load()` returns, and this token has a producer in `ensure`. Filing it
+among them would repeat the defect that removed `"rebuild-failed"` — a member whose producer lives
+somewhere else.
+
+⚠ **Why nothing caught it, stated precisely:** every v0.4.56 pin used an **unenrolled** fixture, so
+`ctx.canonical_domain_dir.is_dir()` was false and `_admissible_records` skipped the manifest
+entirely. The suite was fully green while the defect survived. A fixture that cannot reach the
+branch is not a weak pin — it is a pin about a different code path.
+
+Measured on that fixture, this release vs. the first cut:
+
+| | first cut | here |
+|---|---|---|
+| `global.lock` held, cold manifest, drained for 25 s | **rc 124 (hung)** | **rc 0 / 0.15 s** |
+| manifest written, contended | — | **no** (declined) |
+| manifest written, uncontended | — | **yes** (warmed) |
+
+The last row is the one that separates this repair from 0.4.54's: `may_rebuild=False` also stopped
+the hang, by **never rebuilding at all** — which is what cost ~100× on every read. This declines the
+*wait*, not the *write*.
+
+### ⚠⚠ And a THIRD taker — found by a census of the wrong set
+
+**After fixing the second site I enumerated every `.acquire()` in the tree, classified all six, and
+declared the read path clean. That was the wrong instrument.** A review lens instrumented
+`FileLock._take`/`try_acquire` and swept **22 read commands** under a held `global.lock`; it found
+one more, and — usefully — the boundary of the set: **zero** blocking takes anywhere else.
+
+```
+store_context.py:98  warn_unenrolled_share -> update_project_state(blocking=True, the default)
+  <- control_plane.py:270 -> acquire_mutation_locks -> glob.acquire() -> flock(LOCK_EX)
+  reached by render_html.py:803 (`cm report`) and sync_global.py:1934 (`cm sync --list`)
+```
+
+`store_context.py:98` contains **no `.acquire()` at all** — it calls `update_project_state(...)` and
+the blocking happens four frames down. A grep of the primitive answers *"where is the lock **taken**?"*;
+the question was *"what is **reachable** from a read command?"*. Precondition: an **unenrolled**
+project whose native marker exists — which a plain `cm status` mints — plus a concurrent writer.
+Measured by that lens: `cm report` rc 124 and `cm sync --list` rc 124 at 10 s. Re-measured here
+after the fix, each against its own uncontended control rather than against a constant:
+**`cm sync --list` rc 0 / 0.08 s** (was rc 124), and **`cm report`'s rc is UNCHANGED by the lock**
+(contended 0.06 s / uncontended 0.08 s, both rc 1 — this fixture's report genuinely returns 1, so
+"it did not time out" would have been satisfied by a command that had started failing).
+
+The fix is one keyword: the write records the *once* flag — a cache of a decision
+`is_unenrolled_share` has already made — so it takes `blocking=False`, and the `except Exception`
+already there routes `LockBusy` to the documented safe direction (*print the warning again*; a lost
+once-flag costs a repeated line, a wait costs the command).
+
+⚠ **The miss, not the site, is the lesson.** Two successive sole-claims — "the only lock on a read
+command", then "all six sites, read path clean" — were both answered by an instrument that could not
+see the complement they asserted about.
+
+### ⚠ What the review round corrected in this release's own work
+
+Two independent lenses reviewed the committed revision. Three findings fixed above; these are the
+corrections to **this patch's own instruments**, which is where the arc keeps finding its real
+defects:
+
+- **A PIN of ours was a GUARD wearing the wrong name.** The LEAK check (does a give-up on the
+  *global* lock release the *domain* lock already taken?) reddened pre-fix — but because its **probe
+  called `try_acquire()`**, which does not exist on the revision before this one. It failed for its
+  instrument's absence *while naming the property*. Re-probed with a version-agnostic raw `flock`,
+  the domain lock **is free** on that tree: the rollback already worked, so the check is green on
+  both and is a GUARD by definition. NINTH mislabelling on the arc; the probe is now
+  version-agnostic and the label is honest.
+- **`try_acquire` is NOT a full substitute for an `acquire` override**, and the first cut of its
+  docstring said it was. It reaches `_take` directly, so a subclass that overrides `acquire` — this
+  repo's own `_Boom` is one — has its **policy silently skipped** for the try path:
+  `Boom.acquire()` raises on `global.lock`, `Boom.try_acquire()` returns `True` for the same lock.
+  The TypeError half of substitutability is genuinely fixed (no caller hands a subclass a keyword it
+  does not declare); the policy half is not, and cannot be without re-introducing the keyword. It is
+  now **stated** in `_take`'s docstring as a hole rather than claimed away.
+- ⚠⚠ **One of our own pins HUNG THE SUITE, which is worse than failing.** The `facts-refresh` check
+  drove the probe **in-process** while the parent held `global.lock` — and `flock` has no
+  same-process deadlock detection, so a second fd of the same file blocks **forever**. On this
+  branch it passed (the rebuild now tries rather than waits); on both `18c79f4` and `main` the suite
+  **froze at check 2286 with no totals line**. Every sibling in those blocks already shelled out
+  under an explicit timeout; this one broke the pattern, and the cost was not a red check but the
+  entire pre-fix measurement — a hanging pin takes the self-counting D6 counter down with it. Now a
+  subprocess under a 30 s timeout, so pre-fix it is a clean 124 the counter survives.
+- **A tenth mislabelling, of the ninth's exact shape.** The `v0.4.56b` `--verbose` check was labelled
+  GUARD "sharing the pin's precondition" — a lens measured it **RED** on the revision preceding this
+  one, which by the rule accepted one round earlier makes it a **third arm of that PIN** (the census
+  is 3 PINs + 1 CONTROL, not 2 + 1 + 1 GUARD). Its stated mechanism was wrong too, in the same way
+  the LEAK pin's had been one revision before: "pre-fix it reddens as the hang's rc 124" is true of
+  `18c79f4` only — on this branch's own predecessor the red is *purely the note's absence* (rc 0),
+  and on `main` it is rc 2 (`unknown flag: --verbose`). A parenthetical naming one of three reds is
+  a claim about the tree you happened to measure.
+- **A control's named mutation cannot be observed through the suite.** The `v0.4.56b` control is
+  hand-discriminated (manifest 0→1 normally, 0→0 under a never-rebuild mutation), but that mutation
+  aborts the run ~10,500 lines upstream at an unguarded `_mp.stat()`, so the suite never reaches the
+  control to show it. The abort site predates this patch; it is flagged, not fixed here.
+
+Confirmed sound by the same lenses: **no fd leak** on any `try_acquire` path (200 consecutive busy
+tries → fd delta 0; the no-`fcntl` path raises rather than returning `False`), and the rollback
+across six lock combinations — with one **pre-existing** residual they labelled as not this patch's
+(`release_locks`' LIFO walk can strand locks if `LOCK_UN` raises).
+
+### Deliberately unchanged
+
+The three other `update_project_state` callers in `memory_status` (`:2327`, `:2560`, `:2664` —
+`--stamp-marker`, `--justify-demotion`, `--justify-defrag`) are **write** commands and still **wait**:
+a CONTROL asserts they are killed by the timeout rather than completing. `session_beacon.py` takes no
+locks at all and reads the cache read-only, so it is untouched.
+
+⚠ **Known cost, stated rather than discovered:** on a store whose windows never let the lock
+through, the preflight cache stays cold and the checks re-run each time (the verdict is unaffected;
+only the cache misses). `--verbose` makes that visible; it is not silent-by-accident.
+
+⚠ **One decline site still cannot name its own skip, and it is deliberately left that way for now.**
+`cm_ops.py`'s `cm doctor` call discards `run_and_cache`'s token, and `doctor` has no `--verbose`
+(measured on this revision: with the lock held the token is `lock-busy` and `doctor`'s stderr is
+empty at rc 0). This is a **silence, not a wrong verdict** — nothing false reaches the operator, and
+the preflight verdict itself is unaffected — which is why it is recorded rather than fixed here.
+Adding a verbosity flag to `doctor` is a new CLI surface with its own review; smuggling it into this
+patch would be the larger error. ⚠ What makes it worth naming anyway: `doctor` is the command the
+preflight note itself points users at, so the one place a user is sent to diagnose a cold cache is
+the one place that cannot say the cache was skipped.
+
+Measured both ways: against this release's **first cut** (the tree that fixed only the preflight
+cache) — **2312 passed / 3 failed**, the three failures being *exactly* the new PINs below and
+nothing else; here **2315 / 0**. The suite's pre-fix corpus needs a real `.git`: an archived tree
+without one reddens the v0.4.37 history pins for the fixture's sake, not the code's.
+
 ## [0.4.55] — 2026-09-24
 
 **Patch — 0.4.54's headline change is REVERTED. It did not do what it claimed, and it cost ~100×.**

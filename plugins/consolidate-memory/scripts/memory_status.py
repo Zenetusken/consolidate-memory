@@ -5458,10 +5458,14 @@ _CUE_PHASE5 = ("Phase-5 beat due — narrate the audit/defrag dreamily (plain it
 # _ui's global set (`--color`/`--no-color` bare; `--color=`/`--width=` are the equals allowance).
 # A bare `--width` is absent on purpose: `_ui.resolve_width` matches `startswith("--width=")` only,
 # so blessing it would be a flag that parses and does nothing.
+# v0.4.56: `--verbose` is the first VERBOSITY flag here — mode-neutral by construction (it selects
+# no mode and gates no write), which is why it is absent from the read-only-mode exclusion list at
+# the preflight call site. The list below is the parse surface, so a flag must be BOTH parsed and
+# listed; adding it to only one of the two is the drift this comment's own rule warns about.
 _KNOWN_FLAGS = ("--ascii", "--audit", "--before", "--color", "--diffs", "--force", "--into",
                 "--json", "--justify-defrag", "--justify-demotion", "--no-color", "--sections",
                 "--seed", "--snapshot", "--snooze-until", "--stamp-marker",
-                "--standing-justify-facts", "--standing-justify-tokens", "--triage")
+                "--standing-justify-facts", "--standing-justify-tokens", "--triage", "--verbose")
 
 
 def main() -> int:
@@ -5656,12 +5660,49 @@ def main() -> int:
     # modes — read-only modes (--triage/--sections/--snapshot/--diffs/--audit) stay write-free
     # and keep the audit path's "never the native plane" invariant. The read-only flags ALONE
     # are the gate (a --triage --json combo must not smuggle a write through the --json clause).
+    # ⚠ v0.4.56b: the SIBLING of the preflight note below, and it exists because the ASYMMETRY was
+    # the defect — `_MAN_ROWS_STASH["reason"]` was written by `_admissible_records` and read by
+    # nobody, so a declined manifest rebuild went unmentioned while its sibling was named. Only the
+    # CONTENTION case is printed: `oversize` already names its offending file at its own refusal
+    # site (printing it again here would be the second statement of one fact), and `kill-switch` is
+    # the operator's own instruction, deliberately not restated.
+    if "--verbose" in argv:
+        try:
+            from sync_global import last_manifest_reason as _mf_reason
+            _mf_why = _mf_reason()
+        except Exception:  # noqa: BLE001 — a diagnostic note never breaks the command
+            _mf_why = ""
+        if _mf_why == "lock-busy":
+            print("facts-manifest: not rebuilt (lock-busy) — this read enumerated the domain in "
+                  "full; it rebuilds on the next uncontended read", file=sys.stderr)
     if not any(f in argv for f in ("--triage", "--sections", "--snapshot",
                                    "--diffs", "--audit")):
         try:
             import preflight
             _pf_res = preflight.run_for_project(project_dir)
             ctx["preflight"] = preflight.verdict_for_cache(_pf_res)
+            # ⚠ v0.4.56: the cache write TRIES rather than waits, so it can be SKIPPED when another
+            # process holds the mutation locks — the verdict above is computed and used either way.
+            # The skip is named only under `--verbose`: the command SUCCEEDS, and the no-silence
+            # rule this arc enforces is about REFUSALS and FAULTS, not about declining an optional
+            # cache. ⚠ `--verbose` is deliberately NOT in the mode list above — that list decides
+            # which modes WRITE, and a verbosity flag deciding that would be its own defect.
+            # ⚠ v0.4.56c: the cause is now SPLIT, because one sentence was promising a self-heal
+            # that does not always come. `cache_skipped` carries `"lock-busy"` for a contended lock
+            # AND the exception class name for a genuine write failure — and the old message told
+            # BOTH "it will be cached on a later run". Measured by a review lens with a corrupt
+            # marker (`{not json`): `WriteRefused`, and the marker was still corrupt on the next
+            # run. A promise the code cannot keep is worse than no note: only the contention case
+            # is transient, so only that one is told to retry.
+            if "--verbose" in argv and _pf_res.get("cache_skipped"):
+                _skip = str(_pf_res["cache_skipped"])
+                if _skip == "lock-busy":
+                    print(f"preflight: cache not written (lock-busy) — the verdict is unaffected; "
+                          f"it will be cached on a later run", file=sys.stderr)
+                else:
+                    print(f"preflight: cache NOT written ({_skip}) — the verdict for THIS run is "
+                          f"unaffected, but the cache stays cold until that is repaired",
+                          file=sys.stderr)
         except Exception:  # noqa: BLE001 — the pre-flight can never break a dream
             pass
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)

@@ -95,7 +95,16 @@ def warn_unenrolled_share(ctx: "StoreContext", stream: Optional[TextIO] = None,
                 # review fix: no_mint closes the TOCTOU between the is_file() guard above
                 # and the locked write — a concurrent marker delete mid-warning can no
                 # longer mint a flag-only state file (the no-mint rule is atomic now)
-                update_project_state(ctx, _mut, no_mint=True)
+                # ⚠ v0.4.56c: `blocking=False` — the write records the ONCE flag, which is a
+                # cache of a decision this function has already made (`is_unenrolled_share` has
+                # returned True) and can reach without it. Waiting here made `cm report` and
+                # `cm sync --list` hang INDEFINITELY on an unenrolled project whenever another
+                # process held `global.lock` — measured rc=124 at 10 s, and it is the THIRD such
+                # site, after preflight's cache and the facts manifest. ⚠ It needs no new
+                # recovery: `LockBusy` is a RuntimeError, so the `except Exception: pass` below
+                # already routes it to the documented safe direction — print the warning AGAIN.
+                # A lost once-flag costs a repeated line; a wait costs the command.
+                update_project_state(ctx, _mut, no_mint=True, blocking=False)
                 if already:
                     return
             except Exception:

@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml"><img src="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.55-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.55"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.56-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.56"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7fd8b8?style=flat-square&labelColor=0f1c2e" alt="MIT license"></a>
   <a href="#start"><img src="https://img.shields.io/badge/python-3.8%2B-63d3e8?style=flat-square&labelColor=0f1c2e" alt="Python 3.8 or newer"></a>
   <a href="https://github.com/Zenetusken/consolidate-memory"><img src="https://img.shields.io/badge/marketplace-zenetusken--plugins-b9c9da?style=flat-square&labelColor=0f1c2e" alt="Marketplace: zenetusken-plugins"></a>
@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <sub>Current release <strong>v0.4.55</strong> · <a href="CHANGELOG.md">what changed</a></sub>
+  <sub>Current release <strong>v0.4.56</strong> · <a href="CHANGELOG.md">what changed</a></sub>
 </p>
 
 <p align="center">

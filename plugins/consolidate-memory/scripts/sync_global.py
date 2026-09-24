@@ -731,6 +731,18 @@ process — run() consumes it so one pull parses the facts manifest ONCE (it use
 re-ensure after iter_admissible_facts and parse the 10k-row JSON a second time)."""
 
 
+def last_manifest_reason() -> str:
+    """Why the most recent enumeration could not use the facts manifest ("" if it could).
+
+    ⚠ v0.4.56b: the stash carried `reason` from the day it was written and NOBODY READ IT, so a
+    DECLINED manifest rebuild was silent — while its sibling, the declined preflight cache write,
+    is named under `--verbose`. Two sites making the same class of decision, one of them wired:
+    that is the v0.4.45 defect shape ("wired one surface, left the other silent"), and the manifest
+    decline is the more expensive of the two, because its fallback enumerates the whole domain.
+    """
+    return str(_MAN_ROWS_STASH.get("reason") or "")
+
+
 _PROJECT_MEMBERSHIPS_CACHE: dict = {}
 
 # `_classify_frozen`'s admit-raise is systematic (a broken registry hits every mirror in the

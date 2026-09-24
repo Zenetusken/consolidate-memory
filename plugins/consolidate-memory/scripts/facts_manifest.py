@@ -408,6 +408,9 @@ def load(facts_dir: Path, plugin_data_dir: Path):
 def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
     """Load, or rebuild-under-lock when the cache needs it. (rows_by_stem | None, reason).
 
+    ⚠ The rebuild NEVER WAITS for `global.lock`; a held lock returns `(None, "lock-busy")` and the
+    caller falls back to a full read. See `_rebuild_locked`.
+
     `may_write=False` is the READ-ONLY form: a caller whose own contract forbids writing gets
     `(None, reason)` instead of a rebuild, so it degrades to its full-read fallback rather than
     taking `global.lock` and writing a manifest. The SessionStart beacon needs exactly this —
@@ -449,6 +452,16 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
                   f"re-enumerate in full until this file is shrunk below {_READ_CAP} bytes",
                   file=sys.stderr)
             return None, "oversize"
+        if rows is None:
+            # DECLINED, not failed: another process holds `global.lock` (see `_rebuild_locked`).
+            # Terminal — `ensure` does not retry, and every caller already has the full-read
+            # fallback this cache exists to skip.
+            # ⚠ `"lock-busy"` is deliberately in NEITHER `_REBUILDABLE` nor `_NONREBUILDABLE`.
+            # Those two tuples classify the reasons `load()` returns; this one is minted HERE, so
+            # filing it among them would repeat the defect that removed `"rebuild-failed"` — a
+            # member whose producer is somewhere else. (That removal's reasoning still holds and
+            # points the other way here: this token HAS a producer, it is just not `load()`.)
+            return None, "lock-busy"
         # ⚠ `rows, "rebuilt"` UNCONDITIONALLY — never `if rows:`. `_rebuild_locked` returns a dict
         # on SUCCESS, and that dict is legitimately EMPTY for a domain with no facts: `build()`
         # returns `[]`, the manifest is written as `{"files": []}`, and the rebuild SUCCEEDED.
@@ -462,14 +475,35 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
 
 
 def _rebuild_locked(facts_dir: Path, plugin_data_dir: Path):
+    """Rebuild the cache under `global.lock`, or DECLINE. `(rows | None, domain)`.
+
+    ⚠ `rows is None` means the lock was held by another process and we did not wait. It is a
+    THIRD state beside "rebuilt (possibly to zero rows)" and "raised", and the caller must test it
+    with `is None` — a domain with no facts legitimately rebuilds to `{}`, which is falsy.
+
+    ⚠ IT TRIES, IT NEVER WAITS, and that is unconditional — there is no flag. The lock serializes
+    two concurrent REBUILDERS; it does not guard anything whose value depends on the wait. Losing
+    the race costs a full enumeration for this call and leaves the cache to be warmed by whichever
+    process holds it (or by the next uncontended read) — never a wrong row, because the fallback
+    is the full read this cache exists to skip. Measured: with `global.lock` held, an ENROLLED
+    project with a cold manifest made `cm status --json` hang past 10 s at exactly this line, while
+    the whole command takes ~0.1 s uncontended. ⚠ This is the frame the v0.4.54 and v0.4.56 fixes
+    each MISSED from opposite sides: 0.4.54 disabled the rebuild outright (`may_rebuild=False`,
+    which cost ~100x on every read forever), and 0.4.56 fixed the preflight cache — a different
+    `global.lock` taker — while claiming it was "the only lock on a read command". Both were
+    claims about a SET, settled by finding one member. The stack dump is the instrument for a set
+    question; this line is what it named.
+    """
     from control_plane import FileLock, atomic_write_bytes
     domain = Path(facts_dir).parent.name
     pdir = Path(plugin_data_dir)
     pdir.mkdir(parents=True, exist_ok=True)
     lock = FileLock(pdir / "locks" / "global.lock")
-    lock.acquire()
+    if not lock.try_acquire():
+        return None, domain
     try:
-        # double-checked: another reader may have rebuilt while we waited
+        # double-checked: another reader may have rebuilt in the window between the `load()` that
+        # sent us here and the acquire above. (It is NOT "while we waited" — we never wait.)
         rows, reason = load(facts_dir, pdir)
         if rows is not None:
             return rows, domain
