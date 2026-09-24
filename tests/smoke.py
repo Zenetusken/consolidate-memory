@@ -19630,6 +19630,38 @@ with _tf43.TemporaryDirectory() as _td30:
           _ref30_22 == "called" and _rR30 == _auth22
           and len([l for l in _e22.getvalue().splitlines()
                    if "post-state refresh skipped" in l]) == 1)
+
+    # (v0.4.45 review — the splice's THIRD leaf) `unmeasurable` is written by the SEED and was
+    # written by nothing else, so the fault and the two leaves it qualifies came from DIFFERENT
+    # reads. That is not theoretical here: the skip guard above is `is_file()`, which is TRUE for a
+    # mode-000 index, so an index Phase 0 read CLEANLY and which became unreadable by persist time
+    # wrote `after_tokens: 0` / `over: False` beside a stale `unmeasurable: False` — a healthy
+    # store, fabricated out of a read that failed, on the one path where the number is written
+    # down as truth. The stub stages exactly that split: the store MEASURES normally and only the
+    # FAULT differs, so the `after_tokens` conjunct below proves the splice RAN rather than bailing
+    # (a bail would leave the seed's `False` too, and pass this pin for the wrong reason).
+    _sU45 = _store30("u45")
+    _rU45 = _rec30_full()
+    _rU45["budget"]["index"]["unmeasurable"] = False    # the SEED's value: Phase 0 read it cleanly
+    _orig_sli45 = ms.store_local_index
+
+    def _sli_u45(auto_mem: Path) -> dict:
+        _d = _orig_sli45(auto_mem)
+        _d["index_fault"] = True                        # …but at persist time it could not be read
+        return _d
+
+    ms.store_local_index = _sli_u45
+    try:
+        _refU45 = _refresh30(_rU45, _sU45)
+    finally:
+        ms.store_local_index = _orig_sli45
+    check("v0.4.45 review (PIN): the post-state splice RE-WRITES `unmeasurable` from the SAME read "
+          "that produced `after_tokens`/`over`, so a fault appearing after the seed cannot leave a "
+          "healthy-looking post-state behind (pre-fix: the seed's `False` survives the splice — and "
+          "it survives BESIDE a fresh `after_tokens` that the failed read produced)",
+          _refU45 == "called"
+          and _rU45["budget"]["index"].get("unmeasurable") is True
+          and _rU45["budget"]["index"].get("after_tokens") == _K30)
 # --- v0.4.33 §2.5: the docstring census, PINNED on the body ----------------------------------
 # §2.5's defect is "a count in a comment is a claim no test reads" — and the FIRST correction of
 # that count ("two" -> an enumeration) was ITSELF short a row: the far side also carries
@@ -23424,6 +23456,43 @@ with _Env73() as _e_a44:
           "](live-fact.md)" in (_e_a44.store / "MEMORY.md").read_text(encoding="utf-8")
           and _out_live.get("archived_placement") == [])
 
+# --- v0.4.45 review: THE DECLINE'S THIRD ANSWER. `_archive_doc_paths` skipped an unreadable store
+# doc with a bare `except OSError: continue`, and a non-regular file with a bare `continue` — so a
+# doc that could not be CLASSIFIED was spent as "it was not an archive index", the caller concluded
+# the stem was never archived, took the append branch, and re-added a pointer an archive owns. That
+# is the v0.4.44 harm re-entering through the read-failure door, and `_rebuild_plan` reports the
+# SAME two conditions (`unreadable`/`absent_docs`) and fails its plan closed. The two readers now
+# agree. ⚠ The directory arm is the one that raises nothing, so a check driven only by mode-000
+# would leave it unpinned: `is_file()` is False for a directory of that name, which is the shape
+# the v0.4.45 fixtures themselves use.
+with _Env73() as _e_a45:
+    _ctx_a45 = sc.resolve_store(_e_a45.proj)
+    import local_ingress as _li_a45
+    # seed the store FIRST: `MEMORY.md` is created by an upsert, so the blocked write below must
+    # not be the one that was supposed to create it (measured — the first cut of this fixture
+    # raised FileNotFoundError reading an index the refusal had, correctly, never written)
+    _li_a45.local_upsert(_ctx_a45, "seed-fact", _FACT_V1.replace("shipped-fact", "seed-fact"))
+    (_e_a45.store / "SHIPPED.md").mkdir()            # a store-root doc that cannot be classified
+    _out_a45 = _li_a45.local_upsert(
+        _ctx_a45, "new-fact", _FACT_V1.replace("shipped-fact", "new-fact"))
+    check("v0.4.45 review (PIN): a store doc that cannot be READ or CLASSIFIED blocks the append "
+          "rather than being spent as 'not an archive index' — an unanswerable question must never "
+          "become the answer that re-adds a pointer, and the refusal NAMES the doc it could not "
+          "read (pre-fix: the bare `continue` reads it as never-archived and the pointer returns)",
+          "](new-fact.md)" not in (_e_a45.store / "MEMORY.md").read_text(encoding="utf-8")
+          and [u["doc"] for u in _out_a45.get("placement_unreadable", [])] == ["SHIPPED.md"])
+    (_e_a45.store / "SHIPPED.md").rmdir()            # the store is healthy again
+    _out_a45b = _li_a45.local_upsert(
+        _ctx_a45, "new-fact", _FACT_V1.replace("shipped-fact", "new-fact"))
+    # ⚠ BEHAVIOURAL ONLY. An earlier cut also asserted `placement_unreadable == []`, which reddened
+    # PRE-FIX for KEY-ABSENCE (the field is new) — a pin's failure mode on an arm labelled CONTROL.
+    # The field's own assertion belongs to the PIN above; this arm's job is that a HEALTHY store
+    # still indexes its fact, and that is true on both trees by construction.
+    check("v0.4.45 review (CONTROL): …and once the doc is readable again the pointer IS written — "
+          "the refusal is CLEARABLE by repairing the store, so a transient unreadable doc is not "
+          "a permanent wedge on indexing that fact",
+          "](new-fact.md)" in (_e_a45.store / "MEMORY.md").read_text(encoding="utf-8"))
+
 # --- v0.4.44 item 5 (PIN — RED at `783cbde`, where both forms RAISED out of the report path).
 # `_measure` guarded with `exists()`, which a DIRECTORY and a mode-000 file both satisfy, so
 # `read_text` raised and the exception propagated out of `build_context`. The inline block this
@@ -23460,11 +23529,18 @@ check("v0.4.44 item 5 (CONTROL): a readable file is still MEASURED — the guard
 # pre-fix measurement caught it. Same idiom as the v0.4.40 sibling-header pins.
 _mof44 = getattr(ms, "measure_or_fault", None)
 # ⚠ v0.4.44 item 5, the FAULT ARM (PIN — RED at the cut where `_measure` degraded every operand
-# class identically). The degrade is right for the STORE INDEX, whose caller only displays the
-# figure. It is WRONG for a GAUGE operand: `budget.claude_md.over` is `tokens > budget`, so an
-# unreadable CLAUDE.md reading 0 renders as `over=False` and the over-budget warning silently
-# vanishes — a loud fault turned into a clean reading, in the direction this repo's
-# teeth-loss-never-clean rule forbids. Absent and unreadable are different facts.
+# class identically). The degrade is right for an operand whose caller only DISPLAYS the figure.
+# It is WRONG for a GAUGE operand: `budget.claude_md.over` is `tokens > budget`, so an unreadable
+# CLAUDE.md reading 0 renders as `over=False` and the over-budget warning silently vanishes — a
+# loud fault turned into a clean reading, in the direction this repo's teeth-loss-never-clean rule
+# forbids. Absent and unreadable are different facts.
+# ⚠ AMENDED IN v0.4.45, and the amendment is the point: this sentence used to read "The degrade is
+# right for the STORE INDEX, whose caller only displays the figure." That was true when written and
+# is FALSE one version later — v0.4.45 made the store index THE gate operand (`index_lb` feeds
+# `prune_pressure`, `remediation_triage`, `over_ceiling` and the record's `over`), which is why
+# `store_local_index` was moved onto `measure_or_fault` and why the pin below this block asserts
+# the opposite of the old sentence. A rationale that a sibling change can silently invert is worth
+# NAMING rather than deleting: the next reader sees which claim moved and why.
 # ⚠ The fixture is SELF-CONTAINED: `_f44` was chmod-ed back to readable by the block above, so
 # re-asserting the mode here is what makes this pin independent of the earlier block's order — a
 # pin whose precondition is another block's cleanup is a pin that breaks the day that block moves.
@@ -23492,9 +23568,12 @@ try:
                ms._measure(_d44 / "nothing-here.md"))
 except OSError:
     _ctrl44 = None
-check("v0.4.44 item 5 (CONTROL): `_measure` still returns the VALUE ALONE for its display-only "
-      "callers — the store index degrades to a plain (0,0,0) and never raises. ⚠ Asserted on the "
-      "DIRECTORY, whose state no other block restores, rather than on the chmod-ed file",
+check("v0.4.44 item 5 (CONTROL): `_measure` still returns the VALUE ALONE and never raises — the "
+      "value-only wrapper its own display-only callers need. ⚠ It is NOT any longer a claim about "
+      "the STORE INDEX, which the label here used to name: v0.4.45 moved that operand onto "
+      "`measure_or_fault`, so a fault-carrying reading is what the store index gets and this "
+      "CONTROL must not be read as licence to route it back. Asserted on the DIRECTORY, whose "
+      "state no other block restores, rather than on the chmod-ed file",
       _ctrl44 == ((0, 0, 0), (1, 2, 1), (0, 0, 0)))
 
 # --- v0.4.44 item 4 (PIN — RED at `783cbde`: no `secret_pred` existed, so a row's cached
@@ -23549,6 +23628,493 @@ check("v0.4.44 item 4 (CONTROL): invalidating an ALREADY-EMPTY set is a no-op, n
       "refresh is idempotent so an operator can run it twice",
       _fm44.invalidate_all(_pdir44b) == 0)
 
+# --- v0.4.45 review: the identity's COMPLETENESS claim, made true rather than weakened ---------
+# `secret_pred`'s docstring says "COMPLETE over the predicate's inputs" while hashing `_SECRET`'s
+# pattern AND flags but `_BLOB`'s pattern ALONE — the asymmetry sat in the one place the claim is
+# strongest. ⚠ LATENT, and pinned as an IDENTITY property rather than a behavioural one, because
+# no flag can be constructed that both leaves `_BLOB`'s pattern text intact and changes what its
+# explicit character class matches (re.I/re.ASCII/re.M/re.S are all inert there). So the honest
+# observable is not "the firewall matches differently" — it cannot — but "the identity MOVES",
+# which is what makes a future flag that is NOT inert invalidate instead of serving stale rows.
+_cp45 = getattr(_fm44, "secret_pred", None)
+_bp45_before = _cp45() if _cp45 else ""
+_borig45 = ms._BLOB
+try:
+    import re as _re45
+    ms._BLOB = _re45.compile(_borig45.pattern, _borig45.flags | _re45.IGNORECASE)
+    _bp45_after = _cp45() if _cp45 else ""
+finally:
+    ms._BLOB = _borig45
+check("v0.4.45 review (PIN): the firewall identity hashes `_BLOB`'s FLAGS as well as its pattern "
+      "— a flag change moves the hash, so the COMPLETENESS claim covers the input set the fix for "
+      "`_SECRET` already covered (pre-fix: `_BLOB.flags` is absent from the payload and the "
+      "identity is byte-identical)",
+      _cp45 is not None and _bp45_before != "" and _bp45_after != _bp45_before)
+check("v0.4.45 review (CONTROL): …and restoring `_BLOB` restores the identity exactly — the "
+      "movement is a function of the predicate, not of being called twice",
+      (_cp45() if _cp45 else "") == _bp45_before)
+
+# --- v0.4.45 review: the rebuild classification, TESTED rather than asserted in prose ----------
+# a9's finding: `_NONREBUILDABLE` named two reasons while `load()` could return ten, and nothing
+# enumerated them — so a new terminal arm fell through to the rebuild default SILENTLY. The safe
+# direction, but not a decision. Both halves are now enumerated and this reads the PRODUCER's own
+# returns off the AST: a new reason appears in neither tuple and reddens until someone places it.
+# ⚠ The success sentinel `""` is excluded — it is not a reason to rebuild, it is the absence of a
+# refusal, and classifying it either way would make the pin assert something untrue.
+try:
+    import ast as _ast_rb
+    _load_fn_rb = next(n for n in _ast_rb.walk(_ast_rb.parse(
+        (ROOT / "plugins" / "consolidate-memory" / "scripts" / "facts_manifest.py"
+         ).read_text(encoding="utf-8")) )if isinstance(n, _ast_rb.FunctionDef) and n.name == "load")
+    _reasons_rb = sorted({e[1].value for n in _ast_rb.walk(_load_fn_rb)
+                          if isinstance(n, _ast_rb.Return)
+                          and isinstance(n.value, _ast_rb.Tuple) and len(n.value.elts) == 2
+                          for e in [n.value.elts]
+                          if isinstance(e[1], _ast_rb.Constant) and isinstance(e[1].value, str)
+                          and e[1].value})
+except Exception:
+    _reasons_rb = []
+check("v0.4.45 review (PIN, structural): EVERY reason `load()` returns is classified — in "
+      "`_NONREBUILDABLE` or in `_REBUILDABLE`, never in both and never in neither, so a new "
+      "terminal reason reddens here instead of silently defaulting to a lock-acquiring rebuild",
+      # ⚠ `getattr` for `_REBUILDABLE`: pre-fix the tuple does not exist, and reaching for it
+      # directly raised AttributeError AT MODULE SCOPE and took every later check with it — the
+      # EIGHTH occurrence of the RED-BY-ABSENCE trap on this arc, this time introduced by the very
+      # pin written to close a coverage hole. Guarded before the pre-fix measurement, which is
+      # what caught it. `_NONREBUILDABLE` needs no guard: it exists on both trees.
+      len(_reasons_rb) >= 8
+      and all((r in _fm44._NONREBUILDABLE) != (r in getattr(_fm44, "_REBUILDABLE", ()))
+              for r in _reasons_rb))
+
+# --- v0.4.45 review: THE READ CAP WAS A FIREWALL BYPASS, not a truncation --------------------
+# `build()` read `os.read(fd, 4 MiB)` and classified the PREFIX, while the fallback reads the whole
+# file and `sync_global`'s skip-the-re-scan justification says it trusts "the FULL text". MEASURED
+# at `99c42f0` on a 4,800,090-byte fact whose credential sits in the tail: `_looks_secret(whole)` is
+# True and the cached row said `secret: False` — and the warm-pull gate is `if r.get("secret"):
+# return`, so it does NOT return and the fact is admitted cross-project into context with no
+# admit-side re-scan. That is CLAUDE.md's "secrets firewall at retrieval … don't weaken that",
+# running the dangerous way. The repair is the module's own stated posture — an anomaly this cache
+# cannot classify FAILS OPEN to full enumeration.
+with _tf43.TemporaryDirectory() as _td45d:
+    _pd45d = Path(_td45d) / "pdata"; _pd45d.mkdir()
+    _fd45d = Path(_td45d) / "domains" / "d45d" / "facts"; _fd45d.mkdir(parents=True)
+    # ⚠ The credential is a GENERIC high-entropy blob, deliberately NOT a vendor-shaped literal.
+    # The first cut of this fixture used a `sk_live_…` string and GitHub's push protection refused
+    # the push — the firewall under test, catching the test. That is the correct outcome and it is
+    # recorded here rather than worked around: a fixture imitating a real vendor's key format is a
+    # secret-shaped literal in a public repo, and `_BLOB` + the entropy arm detect it just as well.
+    (_fd45d / "big.md").write_text(
+        "---\nname: big\ndescription: d\n---\n" + ("filler line\n" * 350000)
+        + "\napi_key = 'Xq7v2Kd9Lm4Np8Rt3Ws6Yz1Bc5Ef0Gh2Jk4Mn6Pq7Rv9Tw1'\n", encoding="utf-8")
+    _big45d = (_fd45d / "big.md").stat().st_size
+    _rows45d, _why45d = _fm44.ensure(_fd45d, _pd45d)
+    check("v0.4.45 review (PIN): a fact file past the read cap FAILS OPEN — no row is cached from "
+          "its PREFIX, so the warm pull cannot be handed a `secret: False` for a credential the "
+          "read never reached",
+          _rows45d is None and _why45d == "oversize")
+    # ⚠ The LITERAL cap, not `_fm44._READ_CAP`. Reaching for the module constant reddened this
+    # arm PRE-FIX for KEY-ABSENCE (the constant is new) — the second mislabeled CONTROL on this
+    # arc, and the same failure the two arms above were just reclassified for. `4 * 1024 * 1024` is
+    # the cap on BOTH revisions — pre-fix it was inline in the `os.read` this pin is about — so
+    # asserting the fixture against it is green on both trees by construction, which is what a
+    # control must be. It is deliberately NOT derived from the module: a control that reads the
+    # thing it checks cannot distinguish "the fixture is over the cap" from "the cap moved".
+    check("v0.4.45 review (CONTROL): the fixture genuinely exceeds the cap, so the arm above is "
+          "not satisfied by a file the read happened to reach the end of",
+          _big45d > 4 * 1024 * 1024)
+
+# --- v0.4.45 review: THE FAULT'S SIBLING OPERANDS, and the row that VANISHED -------------------
+# `store_local_index`'s fault was wired; the two GAUGE operands beside it were not. Worse, the
+# global CLAUDE.md's only unreadable signal was a stderr line: its `present` is `bytes > 0`, which a
+# FAILED read reports as False, so every renderer SKIPPED the row (`if gcm.get("present")`) and the
+# one operand that loads in every session of every project simply stopped being reported — worse
+# than a wrong number, because a missing row is indistinguishable from a row never warranted.
+with _Env73() as _e_sib:
+    _ctx_sib = sc.resolve_store(_e_sib.proj)
+    _cfg_sib = _e_sib.store.parents[2]                  # <home>/.claude
+    (_cfg_sib / "CLAUDE.md").write_text("# Global\n\nglobal rules\n", encoding="utf-8")
+    _r_sib_ok = ms.seed_record(ms.build_context(_e_sib.proj))
+    _gcm_ok = _r_sib_ok["budget"]["global_claude_md"]
+    _cm_ok = _r_sib_ok["budget"]["claude_md"]
+    (_cfg_sib / "CLAUDE.md").unlink()
+    (_cfg_sib / "CLAUDE.md").mkdir()                    # EXISTS; not readable as a file
+    (_e_sib.proj / "CLAUDE.md").mkdir()
+    _r_sib_f = ms.seed_record(ms.build_context(_e_sib.proj))
+    _gcm_f = _r_sib_f["budget"]["global_claude_md"]
+    _cm_f = _r_sib_f["budget"]["claude_md"]
+    check("v0.4.45 review (PIN): BOTH sibling gauge operands carry the fault — the project and the "
+          "user-global CLAUDE.md reach the record exactly as the index does (pre-fix: neither "
+          "budget block has the field, so `over: False` is the whole story for a file nobody read)",
+          _gcm_ok.get("unmeasurable") is False and _cm_ok.get("unmeasurable") is False
+          and _gcm_f.get("unmeasurable") is True and _cm_f.get("unmeasurable") is True)
+    check("v0.4.45 review (PIN): …and `present` is NOT the fault signal — it is `bytes > 0`, which "
+          "a failed read reports as False. That is the exact value the renderers used to SKIP the "
+          "row on, so the fault must be readable from a field of its own",
+          _gcm_f.get("present") is False and _gcm_f.get("unmeasurable") is True)
+    _rd_sib = "\n".join(ln for ln in rd.render(_r_sib_f).splitlines())
+    check("v0.4.45 review (PIN): the DASHBOARD renders the fault for both siblings instead of "
+          "dropping the global row and drawing a full-green empty bar for the project one",
+          _rd_sib.count("UNMEASURABLE") >= 2
+          and "global CLAUDE.md" in _rd_sib and "project CLAUDE.md" in _rd_sib)
+    _rd_sib_ok = "\n".join(ln for ln in rd.render(_r_sib_ok).splitlines())
+    check("v0.4.45 review (CONTROL): …and readable operands still draw their normal rows — the "
+          "repair is a branch, not a permanent alarm",
+          "UNMEASURABLE" not in _rd_sib_ok and "global CLAUDE.md" in _rd_sib_ok)
+    # the cell reads `budget.index`, and this fixture's fault is on the CLAUDE.md operands — so the
+    # leaf is set here rather than manufacturing a second unreadable store for one column's pin
+    _r_sib_f["budget"]["index"]["unmeasurable"] = True
+    _rl_sib = getattr(__import__("render_log"), "_row")(_r_sib_f)
+    check("v0.4.45 review (PIN): the lean audit TABLE does not print a measured-looking `0 (+0)` "
+          "for an index nobody could read — a dense column is scanned, not read, so a zero there "
+          "sits in the same visual register as a real one",
+          _rl_sib[3] == "UNMEAS.")
+
+# --- v0.4.45 adversarial round: THE REPORT, WHICH RUNS EVERY TIME ------------------------------
+# Three independent lenses measured the same hole. `--triage`, the dashboard, the archive and
+# `cm log` were each given the third state; the Phase-0 ASCII report — the surface every single
+# invocation prints — was not, and drew `[░░░░░░░░░░] 0% ≈0/1500 tok [ALWAYS-LOADED]` for an index
+# it could not read, then handed the same 0 to `budget_trajectory_advisory`, which turned it into a
+# confident forecast ("cross the index budget in ~19 dream(s)") from an unopened file. Its project
+# CLAUDE.md row ALSO vanished, while the record carried `unmeasurable: True` — the vanishing-row
+# harm this very patch headlines, missed on its own sibling.
+with _Env73() as _e_rep:
+    (_e_rep.store / "MEMORY.md").write_text("# Memory Index\n\n", encoding="utf-8")
+    (_e_rep.store / "a-fact.md").write_text("---\nname: a\ndescription: d\n---\nb\n", encoding="utf-8")
+    (_e_rep.proj / "CLAUDE.md").mkdir()                 # the project doc cannot be read
+    (_e_rep.store / "MEMORY.md").unlink()
+    (_e_rep.store / "MEMORY.md").mkdir()                # …nor can the index
+    _out_rep = _sp53.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
+                                               / "scripts" / "memory_status.py"), str(_e_rep.proj)],
+                         capture_output=True, text=True, timeout=60,
+                         env={**_os53.environ, "HOME": str(_e_rep.store.parents[3])}).stdout
+    check("v0.4.45 adversarial (PIN): the Phase-0 REPORT names the unreadable index rather than "
+          "drawing a full-green `0%` gauge — the surface that runs on EVERY invocation, and the "
+          "one the first cut of this patch left on a different code path from `--triage`",
+          "UNMEASURABLE" in _out_rep and "≈0/1500 tok" not in _out_rep)
+    # ⚠ `>= 2`: the index AND the project CLAUDE.md. One occurrence would pass an arm that only
+    # fixed the index, which is exactly the miss — the CLAUDE.md row's fault was in the SAME
+    # `repo_fault_names` set `seed_record` already read, and the report still dropped the row.
+    check("v0.4.45 adversarial (PIN): …and the project CLAUDE.md row does not VANISH — both red "
+          "rows are printed, so a record saying `unmeasurable: True` is no longer contradicted by "
+          "a report with no row at all",
+          _out_rep.count("UNMEASURABLE") >= 2)
+
+# --- v0.4.45 review: the PULL's index seed, where the same unknown costs a WRITE ----------------
+# `_safe_read_text` collapses ABSENT and UNREADABLE into None (right for the scan it was factored
+# from, wrong here). Seeding 0 for an unreadable index does not read as unknown — it reads as
+# "nowhere near the ceiling", which SWITCHES OFF the M1 hold and lets a pull GROW a store nobody
+# could measure. Measured as a three-state table rather than by driving a fleet pull.
+with _tf43.TemporaryDirectory() as _td_seed:
+    _p_seed = Path(_td_seed)
+    _ok_seed = _p_seed / "ok.md"
+    _ok_seed.write_text("# Memory Index\n\n- [a](a.md) — one fact\n", encoding="utf-8")
+    _bad_seed = _p_seed / "bad.md"; _bad_seed.mkdir()
+    # ⚠ `getattr`: pre-fix the helper does not exist, and reaching for it directly raised
+    # AttributeError AT MODULE SCOPE — the NINTH RED-BY-ABSENCE on this arc, and the second
+    # introduced by a pin written in the same batch as the fix it covers. Guarded before the
+    # pre-fix measurement that found it. The sentinel tuple keeps the arms below failing as
+    # CHECKS rather than crashing, which is the difference between a red and a truncated log.
+    _pull_seed = getattr(sg, "_pull_index_seed", None)
+    _err_seed = _io73.StringIO()
+    if _pull_seed is None:
+        _absent_seed = _read_seed = _fault_seed = ("<no-helper>", "", None)
+    else:
+        _absent_seed = _pull_seed(_p_seed / "nope.md")
+        _read_seed = _pull_seed(_ok_seed)
+        with _ctx73.redirect_stderr(_err_seed):
+            _fault_seed = _pull_seed(_bad_seed)
+    check("v0.4.45 review (PIN): the pull's index seed separates ABSENT from UNREADABLE — absent "
+          "seeds the truth (an empty index), unreadable seeds PAST the ceiling so the M1 hold "
+          "engages rather than switching off (pre-fix: both seeded 0 and the hold went quiet)",
+          _absent_seed[0] == ms.est_tokens("# Memory Index\n\n") and _absent_seed[2] is False
+          and _fault_seed[0] > ms.INDEX_CEILING_TOKENS and _fault_seed[2] is True
+          and "UNMEASURABLE" in _err_seed.getvalue())
+    check("v0.4.45 review (CONTROL): …and a READABLE index seeds its real measurement, so the "
+          "hold is not engaged for a store that is genuinely under budget",
+          _read_seed[2] is False and _read_seed[0] == ms.est_tokens(_ok_seed.read_text(encoding="utf-8")))
+
+# --- v0.4.45 review: the SEED RELAY, which nothing pinned ------------------------------------
+# The existing v0.4.45 PIN asserts the PRODUCER (`store_local_index(...)["index_fault"]`). Nothing
+# asserted that the record LEAF is actually reached — so deleting the relay in `seed_record` left
+# the whole suite green, which is measure-zero coverage on the field every rendered surface reads.
+with _Env73() as _e_a45b:
+    _ctx_a45b = sc.resolve_store(_e_a45b.proj)
+    # `build_context` READS the store, it does not create it — so the healthy arm needs a real
+    # index to read, and the fault arm needs that same path to exist as something unreadable
+    (_e_a45b.store / "MEMORY.md").write_text("# Memory Index\n\n", encoding="utf-8")
+    _r45_healthy = ms.seed_record(ms.build_context(_e_a45b.proj))
+    _ok45 = _r45_healthy.get("budget", {}).get("index", {}).get("unmeasurable")
+    (_e_a45b.store / "MEMORY.md").unlink()
+    (_e_a45b.store / "MEMORY.md").mkdir()            # now EXISTS but cannot be read
+    _r45_faulty = ms.seed_record(ms.build_context(_e_a45b.proj))
+    # ⚠ A REGRESSION GUARD, NOT A PIN — and the label an earlier cut of this carried was wrong.
+    # It read "GUARD — reddens for KEY-ABSENCE, the leaf is new", which the pre-fix MEASUREMENT
+    # falsified: the relay is already committed at `99c42f0`, so this arm is GREEN ON BOTH TREES
+    # by construction and cannot redden for absence. What it does is red the day someone deletes
+    # the relay — which is the hole a9 found (`unmeasurable` had zero suite-wide hits, so removing
+    # `seed_record`'s line left everything green). A check that cannot flip is a guard; saying so
+    # is the difference between a coverage claim and a coverage fact.
+    check("v0.4.45 review (GUARD, regression — green on both trees BY CONSTRUCTION, since the "
+          "relay already exists at HEAD): the record LEAF carries the fault, so removing the "
+          "producer→`budget.index.unmeasurable` relay reddens here instead of silently thinning "
+          "the field every rendered surface reads",
+          _ok45 is False
+          and _r45_faulty.get("budget", {}).get("index", {}).get("unmeasurable") is True)
+
+# --- v0.4.45 (PIN — RED at `8db50a6`, where `store_local_index` measured the store index with the
+# value-only `_measure` and the fault was lost). This is THE gate operand: `index_lb` feeds
+# `prune_pressure`, `remediation_triage`, `over_ceiling` and the record's `over`, so an unreadable
+# index read as "under budget, nothing to remediate" — and SKILL makes the HEAVY remediation
+# hard-stop mandatory on the flag that had just gone quiet.
+def _fault_of45(_p: Path):
+    """`store_local_index(p)["index_fault"]`, or None pre-fix.
+
+    ⚠ ONE helper rather than the same `try/except` twice — the fourth-occurrence copy-paste family
+    the suite keeps finding. ⚠ The `except OSError` is belt-and-braces, NOT load-bearing: MEASURED
+    at `8db50a6`, `store_local_index` does not raise on either fixture below. It is kept because
+    this is the block that documents the RED-BY-ABSENCE trap and a future revision could put the
+    raise back — but the comment above says as much, so a reader is not misled into thinking it
+    was ever doing work here.
+    """
+    try:
+        return ms.store_local_index(_p).get("index_fault")
+    except OSError:
+        return None
+
+
+# ⚠ `with _tfNN.TemporaryDirectory()` — the suite's convention (180 uses against 9 `mkdtemp`s), and
+# the `mkdtemp` form leaked both fixtures. ⚠ The helper stays at column 0 ABOVE the block: a `def`
+# placed at column 0 inside an indented block closes the block early and traps every statement
+# after it, which this file has been bitten by before.
+with _tf43.TemporaryDirectory() as _td45g:
+    _g45 = Path(_td45g) / "g"; _g45.mkdir()
+    (_g45 / "MEMORY.md").mkdir()
+    (_g45 / "some-fact.md").write_text("---\nname: x\ndescription: y\n---\nbody\n", encoding="utf-8")
+    _e45 = Path(_td45g) / "e"; _e45.mkdir()
+    # ⚠ RED-BY-ABSENCE, and the guard here is UNNECESSARY — kept, but the justification it used to
+    # carry was FALSE and is corrected. An earlier cut of this comment claimed "pre-fix
+    # `store_local_index` RAISES `IsADirectoryError` on this fixture — that raise IS the defect".
+    # MEASURED at `8db50a6` (the revision this block names), on this exact fixture: NO RAISE — it
+    # returns `index_lb=(0,0,0)` with `index_fault` ABSENT, because `measure_or_fault` already
+    # existed there and its `if not p.is_file()` arm catches the directory. So the `except OSError`
+    # cannot fire at that revision, and the claim had smuggled in the raise class of the revision
+    # BEFORE it (`783cbde`) — two revisions' defects collapsed into one sentence. What this check
+    # therefore does is redden for KEY-ABSENCE, not for behaviour, which is the SAME class as the
+    # check labelled a GUARD below and which no pin on a newly-introduced field can escape:
+    # pre-fix there is no fault CONCEPT to assert on, so every arm reddens the same way.
+    _g45_fault = _fault_of45(_g45)
+    _e45_fault = _fault_of45(_e45)
+    check("v0.4.45 (GUARD, necessarily — the fault is a NEW field, so pre-fix this reddens for "
+          "KEY-ABSENCE and no arm could redden for behaviour): an index that EXISTS but cannot be "
+          "measured carries a FAULT — the value stays (0,0,0) but the record must not read it as "
+          "'under budget'",
+          _g45_fault is True)
+    check("v0.4.45 (GUARD): an ABSENT index is not a fault — absent and unreadable must not share "
+          "an answer in this direction either. Note it is a GUARD, not a control: pre-fix it "
+          "reddens for KEY-ABSENCE (the key did not exist), not for behaviour, and a check that is "
+          "not green on both trees is a guard on the repair's shape",
+          _e45_fault is False)
+
+# --- v0.4.45 review round: THE FAULT HAD NO CONSUMER. `unmeasurable` was written into the record
+# and read by NOTHING — a `grep -rn unmeasurable plugins/` returned exactly three sites: the
+# TypedDict declaration, the seed, and SKILL's schema block. Not the dashboard, not the HTML
+# template, not its JS. So the ⚠ comment beside the seed — "the record must carry the fault, or
+# every rendered surface shows a healthy store" — was FALSE as shipped: the record carried it and
+# every rendered surface still showed a healthy store. A field the contract pins and no surface
+# reads is inert state, and its own justification is the thing that makes it look done.
+#
+# ⚠ RED-BY-ABSENCE, guarded: pre-fix `_unmeasurable` does not exist at all, so the two fault arms
+# route through `getattr(rd, "_unmeasurable", None)` and the render calls sit in `try/except`
+# rather than raising at module scope and taking every later check down with them. Fifth occurrence
+# of this trap on the arc; guarded BEFORE the pre-fix measurement rather than found by it.
+_u45_faulty = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                    "budget": {"index": {"before_lines": 20, "before_tokens": 1180,
+                                                         "after_lines": 0, "after_tokens": 0,
+                                                         "budget_tokens": 1500, "over": False,
+                                                         "unmeasurable": True}}})
+_u45_clean = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                   "budget": {"index": {"before_lines": 20, "before_tokens": 1180,
+                                                        "after_lines": 20, "after_tokens": 1180,
+                                                        "budget_tokens": 1500, "over": False,
+                                                        "unmeasurable": False}}})
+try:
+    _u45_fault_line = next((ln for ln in rd.render(_u45_faulty).splitlines()
+                            if "auto-mem index" in ln), "")
+except Exception:
+    _u45_fault_line = ""
+_u45_clean_line = next((ln for ln in rd.render(_u45_clean).splitlines()
+                        if "auto-mem index" in ln), "")
+check("v0.4.45 review (PIN): an index that EXISTS but could not be read renders its FAULT on the "
+      "gauge line, so the fault reaches a SURFACE instead of terminating at the record",
+      "UNMEASURABLE" in _u45_fault_line)
+check("v0.4.45 review (PIN): …and the fault REPLACES the gauge rather than being printed beside "
+      "it. Three leaves of that tail would each fabricate here — `_bar(0, 1500)` draws a "
+      "full-green EMPTY bar, `_pct` prints `0%`, and `note` reads the fault's 0 as a 20-line "
+      "SHRINK. One line, one claim; a flag qualified by a contradictory bar is the defect the "
+      "`over_ceiling` splice exists to end",
+      _u45_fault_line != "" and "░" not in _u45_fault_line
+      and "0%" not in _u45_fault_line and " ln" not in _u45_fault_line)
+check("v0.4.45 review (CONTROL): a MEASURED index still draws its gauge. The repair is a BRANCH on "
+      "the fault, not a flag printed unconditionally — a renderer that always said UNMEASURABLE "
+      "would satisfy both pins above and destroy the gauge they protect",
+      "UNMEASURABLE" not in _u45_clean_line and "≈1180/1500" in _u45_clean_line
+      and "░" in _u45_clean_line)
+# The SECOND consumer, on a different rendered line: the lifecycle line's `always-loaded` extra,
+# which summarised an unread index as the measured-looking pair `≈0 → ≈0 tok`.
+#
+# ⚠ SELECTED BY AN EXCLUSION, and the decoy is named because it very nearly made these two checks
+# GREEN ON THE WRONG SUBJECT. `always-loaded` is a substring of TWO rendered lines — this one, and
+# the network block's `network total   ≈6461 always-loaded · ≈208995 recall-pool`. A bare `next(...)`
+# over that needle returns whichever sorts first, and the decoy does: both checks reddened here for
+# the trivial reason that the line they got had no "tok" in it. Had the ORDER been the other way
+# round, they would have passed while reading a network total, and nothing would have said so.
+# Excluding the decoy keeps the assertion non-vacuous — selecting BY the asserted string
+# (`"always-loaded: UNMEASURABLE"`) would make the check true by construction and prove nothing.
+_u45_demo = rd._demo_record()
+_u45_demo["budget"]["index"]["unmeasurable"] = True
+_u45_demo["budget"]["index"]["after_tokens"] = 0
+_u45_demo["budget"]["index"]["after_lines"] = 0
+
+
+def _u45_extra(rec: "ms.CycleRecord") -> str:
+    """The lifecycle line's `always-loaded` extra, never the network total that shares the word."""
+    return next((ln for ln in rd.render(rec).splitlines()
+                 if "always-loaded" in ln and "network total" not in ln), "")
+
+
+_u45_extra_fault = _u45_extra(_u45_demo)
+_u45_extra_clean = _u45_extra(rd._demo_record())
+check("v0.4.45 review (PIN): the `always-loaded` extra reports the FAULT instead of a "
+      "measured-looking `≈N → ≈N tok` pair — a second consumer on a second surface, so a repair "
+      "that wired only the gauge reddens here",
+      _u45_extra_fault != "" and "UNMEASURABLE" in _u45_extra_fault
+      and "tok" not in _u45_extra_fault)
+check("v0.4.45 review (CONTROL): …and a record with NO `unmeasurable` key at all still renders the "
+      "pair. That is the LEGACY-RECORD arm as much as the control arm: every record written before "
+      "v0.4.45 lacks the key, and a truthiness test that read absence as a fault would relabel this "
+      "store's whole history",
+      _u45_extra_clean != "" and "UNMEASURABLE" not in _u45_extra_clean
+      and "tok" in _u45_extra_clean)
+
+# --- v0.4.45 review, second pass: THE FAULT REACHED THE RECORD BUT NOT THE DECISION LAYER --------
+# The display surfaces were wired first. These are the consumers that ACT, and they were still
+# reading the bare `index_lb[2]`, where an unreadable index is indistinguishable from an empty one.
+# MEASURED at `99c42f0` on a store whose `MEMORY.md` is a DIRECTORY — it EXISTS, so `is_file()` is
+# true and the refresh guard does not skip, while `measure_or_fault` returns (0,0,0) with the fault:
+#   `--triage`  → `✓ index under budget (0/1500 tok) — nothing to remediate`, in GREEN
+#   the report  → `1 index↔file — offer backfill, confirm first`
+# The first is VERBATIM the string the v0.4.45 comment names as the pre-fix defect, printed on the
+# very surface SKILL Phase 5 reads to decide whether the pass runs HEAVY. The second OFFERS THE ONE
+# ACTION THE NO-NET-GROW GATE FORBIDS, on a store whose budget state is exactly what is unknown.
+# Both are driven through the real CLI, so the coverage is the call path and not just the branch.
+with _tf43.TemporaryDirectory() as _td45b:
+    _h45b = Path(_td45b) / "home"; _h45b.mkdir()
+    _p45b = Path(_td45b) / "proj"; _p45b.mkdir()
+    _st45b = _h45b / ".claude" / "projects" / ms.slug_for(_p45b) / "memory"
+    _st45b.mkdir(parents=True)
+    (_st45b / "MEMORY.md").mkdir()                      # exists; NOT readable as a file
+    (_st45b / "a-fact.md").write_text("---\nname: a\ndescription: d\nnode_type: fact\n---\nbody\n",
+                                      encoding="utf-8")
+    _h45c = Path(_td45b) / "home2"; _h45c.mkdir()       # the CONTROL: same shape, a real index
+    _p45c = Path(_td45b) / "proj2"; _p45c.mkdir()
+    _st45c = _h45c / ".claude" / "projects" / ms.slug_for(_p45c) / "memory"
+    _st45c.mkdir(parents=True)
+    (_st45c / "MEMORY.md").write_text("# Memory Index\n\n- [a](a-fact.md) — d\n", encoding="utf-8")
+    (_st45c / "a-fact.md").write_text("---\nname: a\ndescription: d\nnode_type: fact\n---\nbody\n",
+                                      encoding="utf-8")
+
+    def _ms45(_proj: Path, _home: Path, *args: str) -> str:
+        return _sp53.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
+                                              / "scripts" / "memory_status.py"),
+                          str(_proj), *args], capture_output=True, text=True, timeout=60,
+                         env={**_os53.environ, "HOME": str(_home)}).stdout
+
+    _tri45f = _ms45(_p45b, _h45b, "--triage")
+    _tri45c = _ms45(_p45c, _h45c, "--triage")
+    _rep45f = _ms45(_p45b, _h45b)
+    check("v0.4.45 review (PIN): the fault reaches the DECISION layer — `--triage`, the surface "
+          "SKILL Phase 5 reads to decide whether the pass runs HEAVY, names the unreadable index "
+          "instead of printing its green all-clear (pre-fix, measured at `99c42f0`: `✓ index under "
+          "budget (0/1500 tok) — nothing to remediate`)",
+          "could not be READ" in _tri45f and "under budget" not in _tri45f)
+    check("v0.4.45 review (CONTROL): …and a READABLE index still reports the green all-clear. The "
+          "repair is a THIRD state, not a refusal to ever say nothing-to-remediate — a surface "
+          "that always warned would satisfy the pin above and destroy the all-clear it protects",
+          "under budget" in _tri45c and "could not be READ" not in _tri45c)
+    check("v0.4.45 review (PIN): the schema-drift advisory refuses the BLIND backfill — `offer "
+          "backfill` is the one action the no-net-grow gate forbids, and on an unreadable index "
+          "the budget state its advice keys on is exactly what is unknown (pre-fix: `1 index↔file "
+          "— offer backfill, confirm first`)",
+          "COULD NOT BE READ" in _rep45f and "offer backfill" not in _rep45f)
+    # ⚠ RED-BY-ABSENCE, guarded: `index_reading` does not exist pre-fix, so this routes through
+    # `getattr` rather than raising at module scope (sixth occurrence of the trap on the arc).
+    _ir45 = getattr(ms, "index_reading", None)
+    check("v0.4.45 review (PIN): the gate operand reads as THREE states, because two cannot express "
+          "it — the two-valued reading is what let an unreadable index answer 'under budget' at "
+          "every decision site (and, necessarily, this one reddens pre-fix for KEY-ABSENCE: the "
+          "function itself is the repair)",
+          _ir45 is not None and _ir45(0, True)[0] == "unmeasurable"
+          and _ir45(ms.INDEX_TOKEN_BUDGET + 1, False)[0] == "over"
+          and _ir45(0, False)[0] == "under")
+
+# --- v0.4.45 review, third pass: THE BEACON'S READ-ONLY CONTRACT HELD ONE CALL DEEP -------------
+# `session_beacon` chose `load()` over `ensure()` deliberately, with a comment saying it was "the
+# read-only form" — and was still defeated four frames down, because `iter_admissible_facts` →
+# `_admissible_records` → `facts_manifest.ensure` REBUILDS UNDER LOCK for a missing or stale
+# manifest. So a SessionStart could take `global.lock` (held by any concurrent `cm sync`) and WRITE,
+# inside a 2s hook deadline, on the one surface CLAUDE.md documents as "read-only, no-nag tiers,
+# silent-exit-0". The v0.4.45 `_NONREBUILDABLE` inversion is what widened it: `predicate-changed` and
+# `row-fields` used to return read-only, so the latent hole became live on every firewall edit.
+# ⚠ RED-BY-ABSENCE, guarded (`may_write` does not exist pre-fix → TypeError, not a red).
+with _tf43.TemporaryDirectory() as _td45c:
+    _pd45c = Path(_td45c) / "pdata"; _pd45c.mkdir()
+    _fd45c = Path(_td45c) / "domains" / "d45" / "facts"; _fd45c.mkdir(parents=True)
+    (_fd45c / "one.md").write_text("---\nname: one\ndescription: d\n---\nbody\n", encoding="utf-8")
+    _mp45c = _fm44.manifest_path(_pd45c, "d45")
+
+    def _ens45(*a: object, **k: object) -> "tuple[object, object]":
+        try:
+            return _fm44.ensure(*a, **k)
+        except TypeError:
+            return ("<no-may_write-kwarg>", "")
+
+    _ro45 = _ens45(_fd45c, _pd45c, may_write=False)
+    _wrote_ro45 = _mp45c.exists()
+    # ⚠ NO kwarg on the control arm. Passed `may_write=True` it reddened PRE-FIX for KEY-ABSENCE
+    # (the kwarg did not exist), which is what a PIN does and precisely what a CONTROL must not —
+    # the point of this arm is that the DEFAULT is unchanged on both trees. Measured: with the
+    # kwarg it was one of the two "controls" in the 12-red pre-fix run.
+    _rw45 = _fm44.ensure(_fd45c, _pd45c)
+    _wrote_rw45 = _mp45c.exists()
+    check("v0.4.45 review (PIN): a READ-ONLY caller gets the degradation, not a rebuild — "
+          "`may_write=False` returns (None, reason) and writes NO manifest, so a hook that must "
+          "not write cannot be made to write by a helper four frames down",
+          _ro45[0] is None and not _wrote_ro45)
+    check("v0.4.45 review (CONTROL): …and the ordinary write-capable caller still REBUILDS — the "
+          "flag narrows the one call path that asks for it, it does not disable the cache",
+          isinstance(_rw45[0], dict) and bool(_rw45[0]) and _wrote_rw45)
+    try:
+        import ast as _ast45
+        _tree45 = _ast45.parse((ROOT / "plugins" / "consolidate-memory" / "scripts"
+                                / "session_beacon.py").read_text(encoding="utf-8"))
+        _calls45 = [n for n in _ast45.walk(_tree45)
+                    if isinstance(n, _ast45.Call) and isinstance(n.func, _ast45.Name)
+                    and n.func.id == "iter_admissible_facts"]
+        _asked45 = [c for c in _calls45
+                    if any(k.arg == "may_rebuild"
+                           and getattr(k.value, "value", None) is False for k in c.keywords)]
+    except (SyntaxError, OSError):
+        _calls45, _asked45 = [], []
+    # ⚠ STRUCTURAL, and deliberately so: the unit pin above proves the flag WORKS, this one proves
+    # the beacon ASKS for it. Neither implies the other — a correct `may_write` that no read-only
+    # caller passes is the exact defect being repaired, and it is invisible to every behavioural
+    # assertion about `ensure` itself. Read off the AST rather than the text, so a reflowed call
+    # cannot forge it and a renamed keyword cannot hide.
+    check("v0.4.45 review (PIN, structural): EVERY `iter_admissible_facts` call in the beacon "
+          "carries `may_rebuild=False` — the unit pin proves the flag works, this proves the "
+          "read-only caller asks, and a correct flag nobody passes is the defect it repairs",
+          len(_calls45) > 0 and len(_asked45) == len(_calls45))
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
@@ -23574,6 +24140,93 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #          + 6: the D1c review round — 4 masking-arm
                                        #              pins + 1 control + the disclosure
                                        #              reaching the operator surface.
+                            + 6        # v0.4.45 review round — the fault had NO consumer:
+                                       #     2 gauge PINs (the fault renders; and it REPLACES the
+                                       #     gauge, so no contradictory bar/`0%`/shrink rides
+                                       #     beside it) + 1 gauge CONTROL (a measured index still
+                                       #     draws its bar) + 1 extras PIN + 1 extras CONTROL
+                                       #     (which is also the LEGACY-RECORD arm — no key at
+                                       #     all) + 1 splice PIN (the post-state re-write).
+                                       #     ⚠ The two PIN pairs are counted separately because
+                                       #     each CONTROL is the only arm that catches an
+                                       #     unconditional flag, and the two consumers live on
+                                       #     different rendered lines — wiring one leaves the
+                                       #     other silent.
+                            + 4        # v0.4.45 review, SECOND pass — the fault reached the
+                                       #     RECORD but not the DECISION layer: 1 `--triage` PIN +
+                                       #     1 CONTROL (a readable index keeps its all-clear) +
+                                       #     1 schema-drift PIN (the blind-backfill refusal) +
+                                       #     1 unit PIN on the three-state reading. ⚠ Counted
+                                       #     apart from the display pair above, and the split is
+                                       #     the whole finding: wiring the surfaces a human READS
+                                       #     leaves the ones that ACT still answering "under
+                                       #     budget" — and one of those was advising the single
+                                       #     action the no-net-grow gate forbids.
+                            + 1        # v0.4.45 review — a9's producer-declared rebuildability,
+                                       #     made TESTABLE: a structural PIN that every reason
+                                       #     `load()` returns appears in exactly one of the two
+                                       #     classification tuples. ⚠ It is not a restatement of the
+                                       #     prose: the prose says what the DEFAULT is, this says
+                                       #     which reasons were DECIDED, and only the second can
+                                       #     redden when `load()` grows an arm.
+                            + 2        # v0.4.45 ADVERSARIAL round — the Phase-0 REPORT, the surface
+                                       #     that runs on every invocation: 1 PIN (it names the
+                                       #     unreadable index instead of drawing `0%` and
+                                       #     forecasting from a file it never opened) + 1 PIN that
+                                       #     the project CLAUDE.md row does not VANISH. ⚠ Found by
+                                       #     three independent lenses, and the second is the
+                                       #     vanishing-row harm this very patch headlines, missed
+                                       #     on its own sibling.
+                            + 7        # v0.4.45 review — the fault's SIBLING operands and the pull
+                                       #     seed, where the same unknown costs a WRITE: 2 sibling
+                                       #     PINs (both gauge operands carry the fault; `present` is
+                                       #     NOT the fault signal) + 1 dashboard PIN + 1 dashboard
+                                       #     CONTROL + 1 render_log PIN (no measured-looking `0
+                                       #     (+0)` in a dense column) + 1 pull-seed PIN (absent vs
+                                       #     unreadable separated) + 1 pull-seed CONTROL (a readable
+                                       #     index still seeds its real measurement).
+                            + 3        # v0.4.45 review — the read cap was a FIREWALL BYPASS: 1 PIN
+                                       #     (a file past the cap fails open, no prefix verdict) +
+                                       #     1 CONTROL (the fixture really exceeds the cap) + 1
+                                       #     GUARD on the SEED RELAY, which nothing pinned — a9
+                                       #     measured that deleting `seed_record`'s relay left the
+                                       #     whole suite green, i.e. zero coverage on the leaf
+                                       #     every rendered surface reads.
+                            + 2        # v0.4.45 review — the identity's completeness claim: 1 PIN
+                                       #     (`_BLOB.flags` moves the hash) + 1 CONTROL (restoring
+                                       #     `_BLOB` restores it exactly). ⚠ Pinned as an IDENTITY
+                                       #     property, not a behavioural one, because no flag can
+                                       #     both leave the pattern text intact and change what an
+                                       #     explicit character class matches — a behavioural pin
+                                       #     would be vacuous by construction.
+                            + 2        # v0.4.45 review — the decline's THIRD answer: 1 PIN (an
+                                       #     unreadable/non-regular store doc blocks the append
+                                       #     instead of being read as never-archived) + 1 CONTROL
+                                       #     that the refusal is CLEARABLE by repairing the store.
+                                       #     ⚠ The control is not padding: it is the arm that
+                                       #     distinguishes a safe refusal from a permanent wedge,
+                                       #     and the fix's own blast radius (every upsert of a
+                                       #     not-currently-indexed fact) is exactly what it bounds.
+                            + 3        # v0.4.45 review, THIRD pass — the beacon's read-only
+                                       #     contract held only one call deep: 1 read-only PIN
+                                       #     (no rebuild, no write) + 1 CONTROL (the write-capable
+                                       #     caller still rebuilds) + 1 STRUCTURAL PIN (every
+                                       #     `iter_admissible_facts` call in the beacon passes
+                                       #     `may_rebuild=False`). ⚠ The structural arm is not
+                                       #     padding for the unit arm: one proves the flag WORKS
+                                       #     and the other proves the read-only caller ASKS, and a
+                                       #     correct flag nobody passes is precisely the defect.
+                            + 2        # v0.4.45 — the fault-carrying pair: the GUARD above and its
+                                       #     absent-is-not-a-fault control. ⚠ Split OUT of the +22
+                                       #     below, whose comment attributed these two to
+                                       #     v0.4.42 / v0.4.40 / v0.4.37. The +22 had been bumped
+                                       #     to +24 with NO v0.4.45 term, so the total reconciled
+                                       #     while the ledger's terms stopped covering their own
+                                       #     region — and reconciling is precisely why nothing
+                                       #     reddened and a per-version audit could not find them.
+                                       #     A ledger whose terms do not sum to its total is the
+                                       #     defect; a ledger that sums and misattributes is the
+                                       #     same defect with a green light.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

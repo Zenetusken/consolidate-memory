@@ -277,6 +277,28 @@ def _safe_read_text(path: Path) -> "str | None":
         return None
 
 
+def _pull_index_seed(idxp: Path) -> "tuple[int, str, bool]":
+    """`(seed_tokens, index_text, unreadable)` — the ONE read of the store index the pull plans from.
+
+    Factored so the three states are decidable in one place, and pinnable without driving a whole
+    fleet pull. ⚠ `_safe_read_text` collapses ABSENT and UNREADABLE into `None`, which is right for
+    the scan it was factored from and wrong here: absent means "no index yet", where an empty seed
+    is the TRUTH; unreadable means the cost is UNKNOWN, and seeding 0 there does not read as
+    unknown — it reads as "nowhere near the ceiling", which SWITCHES OFF the M1 hold and lets a
+    pull GROW an index nobody could measure. The seed for that case is past the ceiling by
+    construction, because there is no honest measurement to choose and the safe direction is the
+    only one available.
+    """
+    raw = _safe_read_text(idxp)
+    unreadable = raw is None and idxp.exists()
+    if unreadable:
+        print(f"sync_global: {idxp} exists but could not be read — the index is UNMEASURABLE, so "
+              f"the pull ceiling is treated as EXCEEDED (net-grow held) rather than as headroom",
+              file=sys.stderr)
+    text = raw if raw is not None else "# Memory Index\n\n"
+    return (INDEX_CEILING_TOKENS + 1 if unreadable else est_tokens(text)), text, unreadable
+
+
 def _nonglobal_wikilinks(text: str, global_dir: Path, exclude: str = "") -> list[str]:
     """v0.1.25: the `[[wikilink]]` targets in `text` that are NOT global canonicals — so they DANGLE in every
     mirror of a promoted fact (a global fact's links travel with it into every project). Excludes code-span
@@ -650,13 +672,17 @@ def _all_domain_records() -> list:
     return recs
 
 
-def iter_admissible_facts(ctx) -> list:
+def iter_admissible_facts(ctx, *, may_rebuild: bool = True) -> list:
     """Facts this StoreContext may pull. Named-domain files only (ADR 008).
 
     Unenrolled / unhealthy registry → empty. Untagged legacy is not pullable.
     Hermetic tests that patch GLOBAL treat that dir as the current domain store.
+
+    `may_rebuild=False` keeps the whole call path read-only, including the facts-manifest
+    rebuild a missing/stale manifest would otherwise trigger. Read-only callers (the
+    SessionStart beacon) MUST pass it — see `facts_manifest.ensure`'s `may_write`.
     """
-    return [(s, fm, t) for s, fm, t, _p in _admissible_records(ctx)]
+    return [(s, fm, t) for s, fm, t, _p in _admissible_records(ctx, may_rebuild=may_rebuild)]
 
 
 _MAN_ROWS_STASH: dict = {"ddir": "", "rows": None, "reason": ""}
@@ -751,7 +777,7 @@ def _recipients_stale_for(fm: dict, memberships: set, g_created: dict) -> bool:
     return all((g_created.get(g) or "") > stamp for g in inter)
 
 
-def _admissible_records(ctx) -> list:
+def _admissible_records(ctx, *, may_rebuild: bool = True) -> list:
     """iter_admissible_facts plus the actual source path.
 
     Phase-5 closeout: the facts manifest (facts_manifest.py) serves fresh rows'
@@ -788,7 +814,7 @@ def _admissible_records(ctx) -> list:
     if ddir.is_dir() and not _is_fixture_now:
         try:
             from facts_manifest import ensure as _fm_ensure
-            man_rows, _man_reason = _fm_ensure(ddir, ctx.plugin_data_dir)
+            man_rows, _man_reason = _fm_ensure(ddir, ctx.plugin_data_dir, may_write=may_rebuild)
             _MAN_ROWS_STASH["ddir"] = str(ddir)
             _MAN_ROWS_STASH["rows"] = man_rows
             _MAN_ROWS_STASH["reason"] = _man_reason
@@ -1972,11 +1998,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # existing line (the anchor-keyed map built below), so a stale-refresh delta and a
     # line-without-file drift state both net honestly instead of slipping the ceiling.
     _idxp = store / "MEMORY.md"
-    idx_text = _safe_read_text(_idxp) or "# Memory Index\n\n"
+    seed_idx, idx_text, _ = _pull_index_seed(_idxp)
     _is_fixture_run = _global_is_fixture()
     _hermetic_run = _hermetic_home()
     _ddir_s = str(ctx.canonical_domain_dir)
-    seed_idx = est_tokens(idx_text)
     # P3 (v0.4.2 warm-pull margin): run-local memos keyed on the RAW strings — a fleet's canonicals
     # share `stacks:`/`applies:` lines, and a 10k-canonical pull re-parses them all per fact. The
     # applies decision depends only on those raw fields plus the run-constant (_rel_tags,

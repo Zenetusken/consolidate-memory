@@ -1847,7 +1847,13 @@ var NocturneSections = (function(){
     add(h.index_pointers_ok===false||array(h.broken).length,'Broken index pointers'+(array(h.broken).length?': '+array(h.broken).join(', '):''),'store-checks');
     add(array(h.dangling_links).length,'Dangling links: '+array(h.dangling_links).map(value).join(', '),'store-checks');
     add(array(h.slug_orphans).length,'Orphan stores: '+array(h.slug_orphans).map(value).join(', '),'store-checks');
-    add(['missing_node_type','malformed_scope','malformed_origin','index_mismatch'].some(function(k){return num(g(h,'schema_drift.'+k,0))>0 && (k!=='index_mismatch'||!(truthy(g(c,'budget.index.over',false))||truthy(rem.standing_justified)));}),'Schema drift recorded','store-checks');
+    // ⚠ `unmeasurable` joins the exemption, for the same reason as `over`/`standing_justified` and
+    // one step stronger: `index_mismatch` counts facts on disk that the index does not name, and
+    // an index that could not be READ names nothing — so the mismatch is manufactured by the read
+    // failure, not observed in the store. Without this the archive raises "Schema drift recorded"
+    // for a store whose only fault is that nobody could open its index, sending the reader after
+    // drift that is not there while the real fault goes unnamed.
+    add(['missing_node_type','malformed_scope','malformed_origin','index_mismatch'].some(function(k){return num(g(h,'schema_drift.'+k,0))>0 && (k!=='index_mismatch'||!(truthy(g(c,'budget.index.over',false))||truthy(rem.standing_justified)||truthy(g(c,'budget.index.unmeasurable',false))));}),'Schema drift recorded','store-checks');
     add(g(a,'conservation.possible_loss',false),'Conservation concern: possible lost relocation','file-changes');
     add(truthy(rem.over_ceiling),'Hard ceiling exceeded: new shares held','store-checks');
     add(truthy(rem.required)&&!(measured(rem.achieved_index)&&rem.achieved_index<=IDXB),'Unresolved index remediation','store-checks');
@@ -2170,12 +2176,20 @@ var NocturneSections = (function(){
     // v0.1.66 (Phase B): ceilTxt — an OVERRIDE status line for the index meter when the record carries
     // remediation.over_ceiling (the hard ceiling is a SECOND signal beside the target `over`, never a
     // relabel of it; absent on legacy records → meters render exactly as before).
-    function meter(box,lab,val,max,over,status){var f=Math.max(0,Math.min(1,max>0?val/max:0));
-      var col=(status==="crit"||(over&&!status))?"var(--crit)":(over||status||f>=.85)?"var(--warn)":"var(--data)";
-      box.innerHTML='<div class="top"><span class="lab">'+esc(lab)+'</span><span class="val" style="color:'+col+'">'+pct(val,max)+'% · '+fmt(val)+'/'+fmt(max)+((max>0&&val>max)?" ⚠":"")+'</span></div>'
+    // ⚠ "fault" is a THIRD sentinel beside "crit", and it is not a longer status string: the
+    // sibling below interpolates the NUMBERS into the value slot, so an unmeasured operand would
+    // render as "0% · 0/1500" — a full-green empty gauge — and then style it as a fault, printing
+    // a contradiction on one line. The whole value slot is replaced instead, because for an
+    // operand nobody could read there is no value to show, only the fact that it is unknown.
+    function meter(box,lab,val,max,over,status){var fault=(status==="fault");
+      var f=Math.max(0,Math.min(1,max>0?val/max:0));
+      var col=(fault||status==="crit"||(over&&!status))?"var(--crit)":(over||status||f>=.85)?"var(--warn)":"var(--data)";
+      box.innerHTML='<div class="top"><span class="lab">'+esc(lab)+'</span><span class="val" style="color:'+col+'">'
+        +(fault?'? — unmeasurable':(pct(val,max)+'% · '+fmt(val)+'/'+fmt(max)+((max>0&&val>max)?" ⚠":"")))+'</span></div>'
         +'<div class="track"><div class="fill"></div><div class="mark" style="left:100%"></div></div>'
-        +'<div class="d">'+(status==="crit"?("Over the ceiling — new shares are held until this index shrinks")
-          :(status?esc(status):(over?"Over budget — prune before adding more":(f>=.85?"Near the budget":"Within budget"))))+'</div>';
+        +'<div class="d">'+(fault?'Exists but could not be read — its size is UNKNOWN, not zero'
+          :(status==="crit"?("Over the ceiling — new shares are held until this index shrinks")
+          :(status?esc(status):(over?"Over budget — prune before adding more":(f>=.85?"Near the budget":"Within budget")))))+'</div>';
       var fill=box.querySelector(".fill");fill.style.background=col;requestAnimationFrame(function(){fill.style.width=(f*100).toFixed(1)+"%";});}
     // render-chain audit: a standing-justified record must NOT read "gate active" — the meter honors
     // remediation.standing_justified (suppressed) as an amber status line, never the crit "active" claim.
@@ -2197,7 +2211,14 @@ var NocturneSections = (function(){
       else status=extra.join(" · ");
     }
     var idxbM=num(g(CUR,"budget.index.budget_tokens"), IDXB);
-    meter(el("m-index"),"Memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),idxbM,overFlag,status);
+    // ⚠ The fault WINS over every other status. An unmeasured index is not over, under, near or
+    // within anything — it is unknown — so `over` is forced false and the status replaced, rather
+    // than letting the ceiling/over/cliff arms below describe a budget comparison that never ran.
+    // Without this the end-user archive draws a full-green "0% · 0/1500" for a store it could not
+    // read, which is the same fabrication the ASCII dashboard was repaired for.
+    var idxFault=truthy(idx.unmeasurable);
+    meter(el("m-index"),"Memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),idxbM,
+          idxFault?false:overFlag,idxFault?"fault":status);
     var hier=g(CUR,"budget.claude_md_hierarchy",null);
     hier=(hier&&typeof hier==="object"&&!Array.isArray(hier))?hier:{};
     var worst=num(hier.worst_path_tokens), nfiles=num(hier.total_files);

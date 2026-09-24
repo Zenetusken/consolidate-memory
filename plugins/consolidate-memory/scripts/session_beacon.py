@@ -321,7 +321,14 @@ def main() -> int:
                        for n, r in _man_rows_b.items()}
         except Exception:
             _bh = None
-        _gf_b = iter_admissible_facts(ctx)
+        # ⚠ `may_rebuild=False` — the whole call path must be read-only, and the `load()` a few
+        # lines above is NOT sufficient on its own. This call reaches `facts_manifest.ensure`
+        # four frames down (`iter_admissible_facts` → `_admissible_records`), which REBUILDS
+        # UNDER LOCK when the manifest is missing or stale: it would take `global.lock` — held
+        # by any concurrent `cm sync` — and write, inside a 2s hook deadline, on the one surface
+        # CLAUDE.md documents as read-only. The loop above is a guard on ONE call; this is a
+        # guard on the PATH.
+        _gf_b = iter_admissible_facts(ctx, may_rebuild=False)
         if _bh is not None:
             _bh = _fill_body_hashes(_bh, _gf_b, ctx.domain_id or "")
         line = beacon_line(
