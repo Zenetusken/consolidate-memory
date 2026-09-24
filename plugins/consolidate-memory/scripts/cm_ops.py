@@ -782,7 +782,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     _pf_env = preflight._paths_from_ctx(ctx)
     _pf_env["project_dir"] = str(_pf_env.get("project_dir") or args.project or ".")
     _pf_res = preflight.run_checks(_pf_env)
-    preflight.run_and_cache(ctx, preflight.verdict_for_cache(_pf_res))
+    # ⚠ v0.4.57: this call used to sit in STATEMENT POSITION, so `run_and_cache`'s reason token —
+    # returned since v0.4.56 — was discarded, and `doctor` became the one decline site that could
+    # not name its own skip. Two review lenses measured it independently: with `global.lock` held
+    # the token is `lock-busy` and stderr is EMPTY at rc 0. The note is `--verbose`-only, matching
+    # the `cm status` site, because the command SUCCEEDS either way and the no-silence rule is
+    # about refusals and faults, not about declining an optional cache write.
+    _pf_skip = preflight.run_and_cache(ctx, preflight.verdict_for_cache(_pf_res))
+    if getattr(args, "verbose", False) and _pf_skip:
+        print(f"preflight: {preflight.cache_skip_note(str(_pf_skip))}", file=sys.stderr)
     if args.json:
         d = doctor_dict(ctx)
         # the preflight key excludes the volatile `at` (twice-run equality must hold)
@@ -1013,6 +1021,15 @@ def cmd_repair_mirror(args: argparse.Namespace) -> int:
 def cmd_canonical(args: argparse.Namespace) -> int:
     from canonical_ingress import forget, generate_catalog, set_canonical_status, upsert
     ctx = _ctx(args.project)
+    # ⚠ v0.4.57: `catalog` is the one canonical_cmd that takes no `stem` — the shared positional
+    # silently swallowed a stray, so `cm canonical catalog <projB>` from projA printed ALPHA's
+    # catalog at rc 0 while the argument named beta (measured by the same sweep). Same guard shape
+    # as `cm data` and `cm local`, because the class is per-parser.
+    if args.canonical_cmd == "catalog" and getattr(args, "stem", None):
+        print(f"canonical catalog: unexpected argument {args.stem!r} — `catalog` takes no stem. "
+              f"To point it at a project, spell it `canonical catalog --project {args.stem}`; "
+              f"without that it acts on the current directory.", file=sys.stderr)
+        return 2
     if args.canonical_cmd == "upsert":
         text = Path(args.file).read_text(encoding="utf-8") if args.file else sys.stdin.read()
         origin = ctx.native_memory_dir / f"{args.stem}.md" if args.origin else None
@@ -1090,6 +1107,20 @@ def cmd_local(args: argparse.Namespace) -> int:
                                local_rebuild_index, local_upsert)
     ctx = _ctx(args.project)
     cmd = args.local_cmd
+    # ⚠ v0.4.57: `stem` is a positional shared by EVERY `local_cmd`, and these two take none — so
+    # `cm local rebuild-index <path> --apply` bound the PATH to `stem`, dropped it, and acted on
+    # `--project`'s "." default. MEASURED by a review lens: from projA, naming projB, it REWROTE
+    # projA's `MEMORY.md` and left projB untouched, at rc 0 — a silent WRONG-PROJECT WRITE, strictly
+    # worse than the cache invalidation the `cm data` guard in this same release fixes.
+    # ⚠ The defect is PER-PARSER (a sibling sweep found 4 parsers / 8 silently-accepted choices, and
+    # `cm project show` is correct because its positional IS meaningful for all its choices), so a
+    # CLI-wide fix is not available — each parser states which of its choices reads the positional.
+    if cmd in ("rebuild-index", "migrate-schema") and getattr(args, "stem", None):
+        print(f"local {cmd}: unexpected argument {args.stem!r} — `{cmd}` is a PROJECT-level "
+              f"operation and takes no stem. To point it at a project, spell it "
+              f"`local {cmd} --project {args.stem}`; without that it acts on the current "
+              f"directory.", file=sys.stderr)
+        return 2
     if cmd == "rebuild-index":
         out = local_rebuild_index(
             ctx, apply=bool(args.apply), skip_invalid=bool(args.skip_invalid),
@@ -1917,6 +1948,21 @@ def _facts_refresh_probe(ctx) -> int:
 
 
 def cmd_data(args: argparse.Namespace) -> int:
+    # ⚠ v0.4.57: `show` is a POSITIONAL that means something for exactly one data_cmd
+    # (`retention show`) and was silently accepted for every other. So `cm data facts-refresh
+    # /some/dir` bound the PATH to `show`, left `--project` at its "." default, and acted on the
+    # CURRENT DIRECTORY — doing the wrong thing to the wrong store while looking like it worked.
+    # MEASURED by a review lens, whose own first measurement it misdirected onto domain `unknown`.
+    # ⚠ A silently-ignored argument is the defect, and the refusal must carry the spelling the
+    # caller needed (`a-refusals-remedy-must-move-its-operand`): naming the stray alone would
+    # leave them to guess that `--project` exists.
+    _stray = getattr(args, "show", None)
+    if _stray and args.data_cmd != "retention":
+        print(f"data {args.data_cmd}: unexpected argument {_stray!r} — 'show' is only meaningful "
+              f"after `retention`. To point this command at a project, spell it "
+              f"`{args.data_cmd} --project {_stray}`; without that it acts on the current "
+              f"directory.", file=sys.stderr)
+        return 2
     from control_plane import connect, connect_if_exists, db_path
     from retention import (compact_jsonl, CYCLE_CAP, EVENT_RETENTION_DAYS, export_ops,
                            inventory, purge_domain, purge_project,
@@ -3003,6 +3049,13 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("project", nargs="?", default=".")
     d.add_argument("--json", action="store_true")
     d.add_argument("--repair-permissions", action="store_true")
+    # ⚠ MODE-NEUTRAL, and deliberately NOT joined to any flag that decides WHAT the command does.
+    # It names an optional write the command DECLINED (a contended preflight-cache write); the
+    # verdict is identical either way, so this changes no behaviour — it only lets the one command
+    # the preflight note sends users to say that its cache was skipped.
+    d.add_argument("--verbose", action="store_true",
+                   help="name optional writes that were SKIPPED (e.g. a contended "
+                        "preflight-cache write); the verdict is unaffected either way")
 
     c = sub.add_parser("conflicts")
     c.add_argument("project", nargs="?", default=".")

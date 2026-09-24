@@ -14247,8 +14247,17 @@ with _Env73() as _e_fm:
         check("facts-manifest: first enumeration builds the manifest and serves rows (text None)",
               len(_recs) == 3 and all(_t is None for _n, _fx, _t, _px in _recs)
               and _mp.is_file())
+        # ⚠ `_mp.is_file()` FIRST, and it is load-bearing rather than tidy: `stat()` on a missing
+        # path RAISES, and this expression sits ~10,500 lines UPSTREAM of the v0.4.56b control.
+        # So under the "never rebuild" mutation — the exact mutation that control names — the
+        # suite died here with a `FileNotFoundError` and NO TOTALS LINE, and the control it was
+        # supposed to redden was never reached. MEASURED by a review lens. A check expression must
+        # be TOTAL: it evaluates to False, it does not raise. (`and` short-circuits, so the stat
+        # and the read now run only once the file is known to exist; the check REDDENS where it
+        # used to ABORT, which is the difference between a failing pin and a lost counter.)
         check("facts-manifest: 0600 + schema_version 1 + row count",
-              _mp.stat().st_mode & 0o777 == 0o600
+              _mp.is_file()
+              and _mp.stat().st_mode & 0o777 == 0o600
               and _json_xp.loads(_mp.read_text(encoding="utf-8")).get("schema_version") == 1)
         # the no-read sentinel: fresh rows are served with ZERO canonical body reads
         _orig_srt = sg._safe_read_text
@@ -24506,6 +24515,312 @@ with _tf43.TemporaryDirectory() as _td_t56:
           "contradicts at rc 0)",
           _rcc56 == 1 and "lock-busy" in _msgc56 and "until this clears" not in _msgc56)
 
+# --- v0.4.57: the open-items PR ----------------------------------------------------------------
+_time57 = __import__("time")
+import os as _os57
+
+# (1) PIN — `ensure`'s OWN reasons are classified, closing what the `_miss`-AST pin cannot see.
+# A review lens measured that the v0.4.45 classification pin reads reasons off `_miss(...)` calls
+# INSIDE `load()`, so a token MINTED in `ensure` had no classifier at all: a fifth consumer could
+# read `lock-busy` as durable with nothing catching it. Its first cut said only that the token is
+# "deliberately in neither tuple" — true, and not enough: not being MIS-classified is not the same
+# as being CLASSIFIED, and nothing forced a new mint to be thought about.
+try:
+    _ast57 = __import__("ast")
+    _ens57 = next(n for n in _ast57.walk(_ast57.parse(
+        (ROOT / "plugins" / "consolidate-memory" / "scripts" / "facts_manifest.py"
+         ).read_text(encoding="utf-8")))
+        if isinstance(n, _ast57.FunctionDef) and n.name == "ensure")
+    # ⚠ Read off `_mint("<reason>")` — the PRODUCER's declaration — exactly as the `load()` sibling
+    # reads `_miss(...)`. The first cut scanned `return` TUPLE constants instead, which is what the
+    # mints USED to look like; the moment they moved through `_mint` the scan saw only the one
+    # remaining literal (`rebuilt`) and the pin reddened against a correct tree. A matcher bound to
+    # the spelling rather than the declaration is the defect, and the pin caught its own author.
+    _minted57 = sorted({
+        str(n.args[0].value) for n in _ast57.walk(_ens57)
+        if isinstance(n, _ast57.Call) and isinstance(n.func, _ast57.Name)
+        and n.func.id == "_mint" and n.args
+        and isinstance(n.args[0], _ast57.Constant) and isinstance(n.args[0].value, str)}
+        | {str(el.value) for n in _ast57.walk(_ens57)
+           if isinstance(n, _ast57.Return) and isinstance(n.value, _ast57.Tuple)
+           for el in n.value.elts[1:2]
+           if isinstance(el, _ast57.Constant) and isinstance(el.value, str)})
+    _declared57 = sorted(getattr(_fm44, "_ENSURE_REASONS", ()))
+except Exception:
+    _minted57, _declared57 = [], []
+# ⚠ RESIDUAL, measured by a review lens and NOT closed: this matcher is bound to a SPELLING. It
+# reads the AST forms `_mint("<literal>")` and `return x, "<literal>"` — so a future author writing
+# `return None, _NEW_TOKEN` where the token is a NAME leaves every check in this file green (verified:
+# all 7 at the time passed) with an unclassified reason in circulation. The control — the same token
+# as a LITERAL — reddens. ⚠ It cannot be closed statically: a `Name` in the return position is
+# AST-INDISTINGUISHABLE from `load()`'s legitimate passthrough (`return None, reason`), which is the
+# whole reason this pin enumerates literals in the first place. What DOES hold is the runtime half:
+# `_mint` raises on an undeclared token, so any mint routed through it fails loudly. The gap is a
+# return that bypasses `_mint` altogether, and the honest closure would be a runtime assertion over
+# `ensure`'s returned reason (it is the producer that can see the value), not a wider AST scan.
+check("v0.4.57 (PIN, structural): every reason `ensure` MINTS is declared in `_ENSURE_REASONS` — "
+      "the second vocabulary, because the `_miss`-AST pin classifies only what `load()` returns "
+      "and a token minted in `ensure` was structurally invisible to it. ⚠ Partial by construction: "
+      "a reason minted as a NAME rather than a literal evades this scan (see the note above)",
+      bool(_minted57) and _minted57 == _declared57)
+# and the producer ENFORCES it, the way `_miss` does for `load()`'s reasons
+_mint_raised57 = False
+try:
+    _fm44._mint("not-a-declared-reason")
+except Exception:
+    _mint_raised57 = True
+check("v0.4.57 (PIN): an UNDECLARED `ensure` reason RAISES at the producer rather than being "
+      "returned — so a new mint cannot reach a consumer before someone declares its transience",
+      _mint_raised57 and callable(getattr(_fm44, "_mint", None)))
+
+# (2) PIN — `release()` NEVER RAISES, so a failing release cannot strand its siblings.
+# Measured by a review lens: `except ImportError` beside `flock` caught only that class, so an
+# OSError out of `LOCK_UN` propagated out of a CLEANUP path and aborted `release_locks`' LIFO walk,
+# leaving a domain lock HELD — a wedge, not a wait.
+with _tf43.TemporaryDirectory() as _td_r57:
+    _lkR57 = Path(_td_r57) / "r.lock"                    # the RAISER
+    _lkS57 = Path(_td_r57) / "s.lock"                    # the SIBLING that must not strand
+    _a57 = _cp56.FileLock(_lkR57); _a57.acquire()
+    _b57 = _cp56.FileLock(_lkS57); _b57.acquire()
+    _orig_un57 = _a57.release
+
+    def _boom_release57() -> None:                      # a release that raises, as LOCK_UN can
+        _orig_un57()
+        raise OSError("stubbed LOCK_UN failure")
+    _a57.release = _boom_release57                       # type: ignore[method-assign]
+    # ⚠ ORDER IS THE ENTIRE FIXTURE. `release_locks` walks `reversed(locks)`, so the RAISER must not
+    # be last in list order — if it is, nothing follows it to strand. A review lens measured the
+    # first cut putting it last: both locks read FREE after the escape, so the pin's stated
+    # mechanism ("strands the rest") was unreachable and its red came from the escaping exception
+    # skipping the pin's OWN probe instead. `[_b57, _a57]` reverses to `[_a57, _b57]`: the raiser
+    # runs FIRST and the sibling FOLLOWS it — which is the only order that can exhibit a strand.
+    _stranded57 = False
+    try:
+        _cp56.release_locks([_b57, _a57])
+    except Exception:
+        pass                                             # pre-fix the ESCAPE is the defect, not a stop
+    import fcntl as _fc57
+    try:
+        _fd57 = open(_lkS57, "a+")
+        try:
+            _fc57.flock(_fd57.fileno(), _fc57.LOCK_EX | _fc57.LOCK_NB)
+            _stranded57 = True                           # the SIBLING is free — the walk continued
+        except OSError:
+            _stranded57 = False                          # the sibling was STRANDED
+        finally:
+            _fd57.close()
+    except OSError:
+        pass
+    _a57.release = _orig_un57                            # type: ignore[method-assign]
+    _b57.release()
+check("v0.4.57 (PIN): `release_locks` frees the lock that FOLLOWS a failing release — the walk is "
+      "the rollback path for a partly-acquired set, so an aborting release strands everything after "
+      "it (pre-fix: `except ImportError` caught only that class, the OSError escaped the walk, and "
+      "the following lock stayed HELD)",
+      _stranded57)
+
+# (2b) PIN — the PRIMITIVE, which (2) above does NOT exercise: it stubs `release` wholesale, so it
+# pins the WALK and would stay GREEN if the `except OSError` inside `FileLock.release` were
+# reverted. A lens measured the gap and named it exactly — a pin that tests its subject's CALLER is
+# not a pin on the subject. This one patches `fcntl.flock` so `LOCK_UN` really fails, then calls
+# `release()` and requires it not to raise.
+with _tf43.TemporaryDirectory() as _td_r57b:
+    _lkP57 = Path(_td_r57b) / "p.lock"
+    _pl57 = _cp56.FileLock(_lkP57)
+    _pl57.acquire()
+    import fcntl as _fc57b
+    _realFlock57 = _fc57b.flock
+    _raised57: "object" = None
+    try:
+        def _flock_un_boom57(fd: int, op: int) -> None:
+            if op == _fc57b.LOCK_UN:
+                raise OSError("stubbed LOCK_UN failure")
+            _realFlock57(fd, op)
+        _fc57b.flock = _flock_un_boom57                    # type: ignore[assignment]
+        _pl57.release()
+    except Exception as _e57b:
+        _raised57 = _e57b
+    finally:
+        _fc57b.flock = _realFlock57
+    _freeP57 = False
+    try:
+        _fdp57 = open(_lkP57, "a+")
+        try:
+            _realFlock57(_fdp57.fileno(), _fc57b.LOCK_EX | _fc57b.LOCK_NB)
+            _freeP57 = True
+        except OSError:
+            _freeP57 = False
+        finally:
+            _fdp57.close()
+    except OSError:
+        pass
+check("v0.4.57 (PIN): `FileLock.release()` ITSELF does not raise when `LOCK_UN` fails, and the "
+      "lock is genuinely FREE afterwards — `close(2)` releases the flock on the same description, "
+      "which a lens measured. ⚠ Its sibling above stubs `release` wholesale and therefore pins the "
+      "WALK; reverting the primitive's own catch leaves that one green",
+      _raised57 is None and _freeP57)
+
+# (3) PIN — the beacon's stdin read is BOUNDED. `json.load(fp)` is `loads(fp.read())`, which reads
+# to EOF, so an OPEN pipe with no writer blocked forever. The shape that isolates it is a pipe
+# passed as `stdin=` — NOT `sleep N | python3 X`, whose pipeline makes the SHELL wait for `sleep`
+# and reports a hang the process does not have (that confound cost this PR one wrong reading).
+with _tf43.TemporaryDirectory() as _td_b57:
+    _hb57 = Path(_td_b57) / "home"; _hb57.mkdir()
+    _r57, _w57 = _os57.pipe()
+    _t0_57 = _time57.time()
+    try:
+        _rcb57 = _sp53.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
+                                                 / "scripts" / "session_beacon.py")],
+                           stdin=_r57, capture_output=True, text=True, timeout=20,
+                           env={**_os53.environ, "HOME": str(_hb57)}).returncode
+    except _sp53.TimeoutExpired:
+        _rcb57 = 124
+    finally:
+        _os57.close(_r57); _os57.close(_w57)
+    _el57 = _time57.time() - _t0_57
+check("v0.4.57 (PIN): `session_beacon.py` returns when stdin is an OPEN PIPE that never closes — "
+      "it must not read to EOF (pre-fix: blocks indefinitely, with NO output, which reads as a "
+      "lock wait on the one release whose theme is locks)",
+      _rcb57 == 0 and _el57 < 10)
+
+# (3b) PIN — the read is not merely BOUNDED, it still DELIVERS a payload that arrives late.
+# A lens measured the gap this closes: mutating `_STDIN_DEADLINE_S` 0.35 -> 0.01 (35x tighter than
+# shipped) left the suite **fully green, 2326 passed / 0 failed** — because (3) asserts only
+# `rc == 0` and a time bound, which a payload-DROPPING regression satisfies perfectly. And a dropped
+# payload is INDISTINGUISHABLE from "no stdin" (`_cwd_from_stdin` silently returns the process cwd),
+# so the regression is invisible by construction rather than by accident.
+_importlib57 = __import__("importlib")
+_beacon57 = _importlib57.import_module("session_beacon")
+_th57 = __import__("threading")
+_rD57, _wD57 = _os57.pipe()
+
+
+def _late_write57() -> None:
+    _time57.sleep(0.45)                                   # well inside the shipped 1.0 s window
+    _os57.write(_wD57, b'{"cwd": "/late/payload"}')
+    _os57.close(_wD57)
+
+
+_th57.Thread(target=_late_write57, daemon=True).start()
+_stdin_orig57 = sys.stdin
+try:
+    _fake57 = _os57.fdopen(_os57.dup(_rD57), "r")
+    sys.stdin = _fake57                                   # `_read_stdin_bounded` reads this fd
+    try:
+        _got57 = _beacon57._read_stdin_bounded(1.0)
+    finally:
+        _fake57.close()
+        sys.stdin = _stdin_orig57
+finally:
+    _os57.close(_rD57)
+check("v0.4.57 (PIN): a payload arriving LATE (0.45 s) is still READ — a dropped payload is "
+      "indistinguishable from 'no stdin', so its fallback is silent. ⚠ The sibling pin above cannot "
+      "see this: it asserts only `rc == 0` and a time bound, which a 35x-tighter deadline satisfies "
+      "while dropping every payload (measured fully green)",
+      b"/late/payload" in _got57)
+
+# (4) PIN — `cm doctor` names the preflight-cache write it SKIPPED. The call sat in statement
+# position for a release, so the token was discarded and `doctor` was the one decline site that
+# could not name its own skip — on the command the preflight note itself points users at.
+with _tf43.TemporaryDirectory() as _td_d57:
+    _hd57 = Path(_td_d57) / "home"; _hd57.mkdir()
+    _pd57 = Path(_td_d57) / "proj"; _pd57.mkdir()
+    _envd57 = {**_os53.environ, "HOME": str(_hd57)}
+    _cmdD57 = [sys.executable, str(ROOT / "plugins" / "consolidate-memory" / "scripts" / "cm_ops.py")]
+    _sp53.run(_cmdD57 + ["doctor", str(_pd57)], capture_output=True, text=True,
+              timeout=120, env=_envd57)
+    _gld57 = _cp56.FileLock(_hd57 / ".claude" / "plugins" / "data" / "consolidate-memory"
+                            / "locks" / "global.lock")
+    _gld57.acquire()
+    try:
+        _vd57 = _sp53.run(_cmdD57 + ["doctor", str(_pd57), "--verbose"],
+                          capture_output=True, text=True, timeout=120, env=_envd57)
+        _nd57 = _sp53.run(_cmdD57 + ["doctor", str(_pd57)],
+                          capture_output=True, text=True, timeout=120, env=_envd57)
+    finally:
+        _gld57.release()
+check("v0.4.57 (PIN): `cm doctor` NAMES a preflight-cache write it skipped — under `--verbose`, "
+      "and ONLY there. Pre-fix the token was discarded in statement position, so the command the "
+      "preflight note sends users to was the one site that could not explain its own cold cache",
+      "cache not written (lock-busy)" in _vd57.stderr
+      and "cache not written" not in _nd57.stderr)
+
+# (5) PIN — `cm data facts-refresh <DIR>` REFUSES and names `--project`. The `show` positional is
+# meaningful for one data_cmd and was silently accepted for every other, so a trailing PATH bound
+# to it, `--project` stayed at ".", and the command acted on the CWD while looking like it worked.
+_ld57 = _sp53.run(_cmdD57 + ["data", "facts-refresh", str(_pd57)],
+                  capture_output=True, text=True, timeout=60, env=_envd57)
+check("v0.4.57 (PIN): `cm data facts-refresh <DIR>` REFUSES a stray positional instead of acting "
+      "on the CWD — and the refusal names the spelling that works (`--project`), because a "
+      "silently-ignored argument is the defect and a refusal must carry its own remedy",
+      _ld57.returncode == 2 and "--project" in _ld57.stderr and "unexpected argument" in _ld57.stderr)
+
+# (6) PIN — `_take` is the ONE policy hook. A lens measured that `try_acquire` bypasses an
+# override of `acquire` (the subclass's POLICY is skipped), and that hole cannot be closed without
+# the `blocking=` keyword whose breakage is why `try_acquire` exists. What CAN be made testable is
+# the convention the docstring states — so it stops being a comment and becomes a contract: a
+# subclass that puts its policy in `_take`, the single flock path, IS consulted on both forms.
+class _Policy57(_cp56.FileLock):
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.seen: list = []
+
+    def acquire(self) -> None:                    # the WRONG hook — kept to show it is the one
+        self.seen.append("acquire")               # `try_acquire` never reaches
+        super().acquire()
+
+    def _take(self, *, wait: bool) -> None:       # the RIGHT hook: the single flock path
+        self.seen.append("take")
+        super()._take(wait=wait)
+
+
+with _tf43.TemporaryDirectory() as _td_p57:
+    _pp57 = _Policy57(Path(_td_p57) / "p.lock")
+    _pp57.acquire()
+    _pp57.release()
+    _saw_a57 = "take" in _pp57.seen and "acquire" in _pp57.seen
+    _pp57.seen = []
+    _pp57.try_acquire()
+    _pp57.release()
+    _saw_t57 = "take" in _pp57.seen
+# ⚠ GUARD, NOT A PIN — and a review lens measured the difference. This is GREEN on the pre-fix
+# tree (both public forms already routed through `_take`; the try path is what v0.4.56 added), so
+# nothing flips and by the rule adopted one round earlier it is a regression guard. ELEVENTH
+# mislabelling on the arc, and the THIRD in a row of the identical shape — a check that reddens
+# nothing on the tree before it, labelled PIN. Its content is nonetheless real and DISCRIMINATING:
+# the lens applied a behaviour-identical rewrite of `try_acquire` that inlines its own flock, and
+# the pin reddened (`_saw_t57` False). ⚠ And its scope is narrower than "the ONE flock path" —
+# that is a census claim, and the census finds raw `flock(` sites OUTSIDE `FileLock` altogether
+# (`preflight.py`), so `_take` is the one flock path WITHIN FileLock, not in the tree.
+check("v0.4.57 (GUARD — green on both trees, and that is the measurement): `_take` is the single "
+      "policy hook WITHIN `FileLock` — a subclass narrowing acquisition there is consulted on both "
+      "`acquire` and `try_acquire`. ⚠ Its sibling finding is NOT fixed and is recorded as such: an "
+      "override of `acquire` alone is still bypassed by the try path, and closing that needs the "
+      "keyword that broke substitutability",
+      _saw_a57 and _saw_t57)
+
+# (7) PIN — the SIBLING parsers, found by a review lens sweeping every `add_subparsers` block.
+# `cm data` was one parser; the class is per-parser, because each shares ONE set of positionals
+# across a flat `choices=[...]`. The worst is a WRONG-PROJECT WRITE, measured: from projA, naming
+# projB, `cm local rebuild-index <projB> --apply` REWROTE projA's MEMORY.md and left projB alone.
+_lsib57 = [
+    ("local rebuild-index", ["local", "rebuild-index", str(_pd57)]),
+    ("local migrate-schema", ["local", "migrate-schema", str(_pd57)]),
+    ("canonical catalog", ["canonical", "catalog", str(_pd57)]),
+]
+_sib_ok57 = []
+for _label57, _argv57 in _lsib57:
+    # ⚠ `_pr57`, not `_r57`: that name is the BEACON pin's pipe fd (an int), and reusing it made
+    # mypy read this assignment as int-typed — the CI typecheck caught it, the suite did not.
+    _pr57 = _sp53.run(_cmdD57 + _argv57, capture_output=True, text=True, timeout=60, env=_envd57)
+    _sib_ok57.append(_pr57.returncode == 2 and "unexpected argument" in _pr57.stderr
+                     and "--project" in _pr57.stderr)
+check("v0.4.57 (PIN): the sibling parsers REFUSE a stray positional too — `cm local rebuild-index` "
+      "/ `migrate-schema` / `cm canonical catalog` each exit 2 naming `--project`, where before "
+      "they silently dropped the argument and acted on the CWD (measured: a WRONG-PROJECT WRITE "
+      "to projA's MEMORY.md while the argument named projB)",
+      all(_sib_ok57) and len(_sib_ok57) == 3)
+
 # --- v0.4.54 (PIN): the CACHED ROW'S TWO-PART WARRANT -------------------------------------------
 # A review lens asked whether `load()` re-derives `secret` and found that it does not — "an identity
 # match is the whole warrant". That is true of `load()` and FALSE OF THE SYSTEM: the warrant is
@@ -25262,6 +25577,28 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     "where is the lock TAKEN?"; the question was "what is
                                        #     REACHABLE from a read command?". A review lens swept 22
                                        #     read commands under a held lock and found it.
+                            + 10       # v0.4.57 — the open-items PR: 2 structural PINs on the SECOND
+                                       #     reason vocabulary (`ensure`'s minted tokens are
+                                       #     declared, and an undeclared one RAISES at the producer)
+                                       #     + 1 PIN that `release_locks` frees every lock even when
+                                       #     one release raises + 1 PIN that the beacon returns on
+                                       #     an open stdin pipe + 1 PIN that `cm doctor --verbose`
+                                       #     names its skipped cache write + 1 PIN that a stray
+                                       #     positional on `cm data` refuses with its remedy
+                                       #     + 1 PIN that the SIBLING parsers refuse a stray too
+                                       #     (`cm local rebuild-index`/`migrate-schema`, `cm
+                                       #     canonical catalog`), where the pre-fix incident was a
+                                       #     measured WRONG-PROJECT WRITE — a review lens swept
+                                       #     every add_subparsers block and found 4 parsers / 8
+                                       #     silently-accepted choices; `cm data` was only one
+                                       #     + 1 PIN on the PRIMITIVE (`release()` itself, not just the
+                                       #     walk its sibling stubs) + 1 PIN that `_take` is the single policy hook
+                                       #     (consulted on both forms), which is the convention
+                                       #     that makes the `acquire`-override hole survivable.
+                                       #     ⚠ The first two exist because the v0.4.45 classifier
+                                       #     reads `_miss(...)` inside `load()` and is structurally
+                                       #     blind to a token minted in `ensure` — "not
+                                       #     mis-classified" is not "classified".
                             + 3        # v0.4.54 — 1 GUARD (the two-part warrant's CONSUMER half:
                                        #     `_consider_fast` compares mtime_ns AND size) + 1 PIN
                                        #     (the pull consumes its own refusal) + 1 PIN below.

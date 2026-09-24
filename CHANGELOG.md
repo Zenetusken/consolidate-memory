@@ -5,6 +5,159 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.57] — 2026-09-24
+
+**Patch — the open-items docket, closed. Every item was VERIFIED against the live tree before it was
+touched, and three of the fourteen turned out to be already fixed — a docket carried across fourteen
+releases is a hypothesis, not a work list.**
+
+The docket came from three sources: the roadmap memory (stamped v0.4.42), the v0.4.56 review round, and
+two items a lens found while re-measuring the beacon. Verification was delegated per cluster and each
+verdict is a measurement, not a reading.
+
+### Already fixed (no change made, and that is the finding)
+
+| Item | Fixed by |
+|---|---|
+| `SECURITY.md` ↔ `release.yml` contradiction on provenance/SBOM/SHA256SUMS | `1412e72` (v0.4.37) + a live pin tying the prose to the upload line |
+| the duplicated `which is why` / stray `...` comment scar in `render_html.py` | `ff94a73` |
+| `AGENTS.md`'s plugin row reading a stale version | fixed during the v0.4.4x line |
+| **`render_html` identity misattribution** — the "quiet arm" | `475af7b` (v0.4.36) |
+
+⚠ **The identity item is the one worth reading.** It is fixed by closing the INPUT, not the guard: the
+shipped Phase-5 invocation now passes `--project "$(pwd)"`, `Path.cwd()` is no longer an identity
+source, and `_resolve_identity` refuses rather than guesses. The recorded lesson — *"a truthiness guard
+that only fires on DEGRADATION is structurally blind to MISATTRIBUTION"* — is **still literally true of
+that guard** and always will be; it simply cannot be reached any more. A future re-opening of the
+identity source re-creates the silent arm behind a guard that still will not fire. Recorded, not built
+against: hardening a display guard for an unreachable input is building ahead of evidence.
+
+### Fixed here
+
+1. **`try_acquire` bypassed an `acquire` override's policy** — `control_plane.py`. ⚠ **Not closed, and
+   cannot be**: closing it needs the `blocking=` keyword whose breakage is the reason `try_acquire`
+   exists at all. What changed is that the convention is now a **pinned contract** rather than a
+   comment: `_take` is the single flock path and the ONE policy hook, so a subclass narrowing
+   acquisition there is consulted on **both** public forms. A reviewer reproduced the hole in both
+   outcomes (free → `True`, busy → `False`, override consulted **zero** times); the subclass census
+   confirms exactly two `class .*FileLock` definitions on the PRE-fix tree (the base and the suite's
+   `_Boom`), none in production, and no dynamic subclassing. ⚠ A lens caught this sentence counting
+   the wrong tree: **this PR adds a third** (`_Policy57`, the `_take` pin below), so the count was
+   false the moment the entry shipped — a self-refuting census inside the item that ships it.
+2. **`release_locks` could strand locks** — `control_plane.py`. `except ImportError` beside `flock`
+   caught only that class, so an `OSError` out of `LOCK_UN` propagated out of a **cleanup path** and
+   aborted the LIFO walk. ⚠ A review lens measured this and found the note here **understated** it:
+   not one lock stranded but **two** — the domain lock *and* the **global** lock, the fleet-wide one
+   every writer blocks on — and the escaping cleanup exception **replaced** the acquire error, so the
+   caller was told the wrong cause. Post-fix all locks free and the caller sees the original error.
+   Fixed at both enforcement sites — the primitive raises for no `flock`/`close` failure, and the
+   walk steps past a failing release — because the invariant is "a rollback frees everything it
+   took", and fixing only the primitive leaves it hostage to any future lock type that can raise.
+   ⚠ The primitive's catch is `ImportError`/`OSError`, which is *every* failure `flock`/`close`
+   produce on a valid fd — **not** a bare "never raises": a `ValueError` out of `fileno()` would
+   still escape, no route in this tree reaches it, and the docstring says so rather than over-claiming.
+3. **`cm doctor` could not name its own skipped cache write** — `cm_ops.py`. Its `run_and_cache` call
+   sat in **statement position**, so the reason token returned since v0.4.56 was discarded: the one
+   decline site that could not explain a cold cache, on the command the preflight note sends users to.
+   Now `--verbose` names it, and the sentence comes from **one constructor**
+   (`preflight.cache_skip_note`) shared with `cm status`, so the two sites cannot drift into
+   disagreeing about what the same cause means.
+4. **An unguarded `_mp.stat()` aborted the suite before a control could redden** — `tests/smoke.py`.
+   The expression sat ~10,500 lines upstream of the v0.4.56b control, so the "never rebuild" mutation
+   — the very mutation that control names — killed the run with `FileNotFoundError` and **no totals
+   line**, taking the self-counting D6 pin with it. A check expression must be **TOTAL**: it evaluates
+   to `False`, it does not raise.
+5. **`warn_unenrolled_share`'s docstring promised more than the code keeps** — `store_context.py`. It
+   said the warning prints "ONCE per store"; since the v0.4.56 try-write it is once per store **once
+   the flag can be written**. Under contention it prints again — the documented safe direction, but a
+   docstring stating a stronger guarantee than the code is the defect.
+6. **`lock-busy` had no classifier** — `facts_manifest.py`. The v0.4.45 pin reads reasons off
+   `_miss(...)` calls **inside `load()`**, so a token **minted in `ensure`** was structurally invisible
+   to it: a fifth consumer could read it as durable with nothing catching that. The first cut of this
+   module's own comment said the token is "deliberately in neither tuple" — true, and not enough. Not
+   being **mis**-classified is not the same as being **classified**. `_ENSURE_REASONS` is the second
+   vocabulary, it names each token's **transience**, and `_mint` enforces membership at the producer
+   exactly as `_miss` does for `load()`.
+7. **`cm data facts-refresh <DIR>` acted on the CWD** — `cm_ops.py`. The `show` positional is
+   meaningful for exactly one `data_cmd` and was **silently accepted** for every other, so a trailing
+   PATH bound to it, `--project` stayed at `.`, and the command did the wrong thing to the wrong store
+   while looking like it worked — it misdirected a reviewer's own first measurement onto domain
+   `unknown`. Now a usage error at **exit 2** naming the spelling that works (`--project`), because a
+   refusal must carry the remedy its caller actually needs.
+8. **`session_beacon.py` read stdin to EOF** — `json.load(fp)` is `loads(fp.read())`, so an OPEN pipe
+   with no writer blocked **indefinitely with no output**, which on a release whose theme is locks
+   reads as a **lock wait** — the wrong diagnosis of the right symptom. Now a bounded read
+   (`select` + `os.read`, stop at a deadline). ⚠ The shape that isolates it is a pipe passed as
+   `stdin=`; `sleep N | python3 X` does **not**, because the pipeline makes the *shell* wait for
+   `sleep` — a confound this patch paid for once.
+   ⚠ **Two corrections the second lens forced, both in this patch's own claims.** (i) The first cut
+   said this "lands on the `cm beacon` debug path" — it does **not**: the `cm` wrapper is
+   byte-identical and already redirects (`exec python3 session_beacon.py </dev/null`), measured at
+   rc=0 / 0.055 s on the **pre-fix** tree. The exposure is a **direct script invocation**. (ii) The
+   bound is a **trade, not a free win**: the first cut's 0.35 s window DROPPED a payload written at
+   t = 0.40–0.60 s (0/3, 1/3, 0/3 across reps) and truncated one straddling the deadline mid-JSON,
+   swallowing the error into `{}` — and a dropped payload is **indistinguishable from "no stdin"**,
+   so it is silent by construction. The window is now **1.0 s**, sized to the hook's own 2 s budget;
+   the residual is stated, not hidden.
+9. **An unbound citation** — `docs/budget-trajectory-early-warning.spec.md`. The beacon's gate cite
+   `session_beacon.py:84-86` was correct at the doc's CREATION revision (`633b2fb`) and was **missed by
+   the `1d20166` sweep** that re-anchored **68 lines of that very file** and contains **zero**
+   `session_beacon` occurrences in its diff — so it mis-aimed under both coordinate systems, for two
+   different reasons. Now a **greppable anchor** (`if not missing and not stale:`), the durable form
+   this repo prescribes, with the history recorded at the reading note. ⚠ The prose analysis in
+   `prose-tied-to-the-tree.spec.md` § Family 4 — *"binding is the entire repair"* — is **not gated**;
+   its resolution check was designed and never shipped, so this cite was fixed by hand.
+10. **A `cwd-invariance` claim that was false, in `render_html.py`** — the comment named TWO fields
+    falling back to the cwd template (`registry_state`, `plugin_data_dir`) and concluded invariance;
+    `store_context_from_registry` falls back on **FOUR** (`project_root`, `session_dir`, `project_id`,
+    `display_name`). Corrected, and the correction names all four **by name** rather than by line
+    number.
+11. **A wrapped anchor in `CLAUDE.md`** — the inline span `` `claude plugin validate
+    ./plugins/consolidate-memory --strict` `` spanned a line break, so a contiguous grep returned
+    **0**. A one-line token move makes it greppable. ⚠ The contiguity gate (`check_contiguity`) exists
+    and is **README-scoped**; extending it to the always-loaded files is a scope decision with a
+    measured population behind it (382–534 wrapped spans across `docs/`, matcher- and scope-dependent),
+    so it is deliberately not widened here.
+
+### ⚠ Found by the review, and fixed here: the positional class has SIBLINGS
+
+The `cm data` fix above was one parser. A lens swept every `add_subparsers` block and found **4
+parsers / 8 silently-accepted choices** — each uses a flat `choices=[...]` sharing ONE set of
+positionals, so a positional is accepted for every choice and read by only some. `cm project show`
+is correct (its positional is meaningful for all its choices), so the defect is **per-parser** and a
+CLI-wide fix is not available.
+
+The worst is strictly worse than what this entry led with — a **wrong-project WRITE**, measured:
+
+```
+cwd=projA(alpha)   cm local rebuild-index <projB> --apply --confirm rebuild-local-index
+  rc=0   projA/MEMORY.md  bba5e93c -> 2d46da45   <-- REWRITTEN (the WRONG project)
+         projB/MEMORY.md  4c3e28a0 -> 4c3e28a0   <-- untouched (the NAMED project)
+```
+
+`cm local rebuild-index|migrate-schema` and `cm canonical catalog` now refuse a stray exactly as
+`cm data` does (exit 2, naming `--project`). The remaining four (`cm journal` ×3, `cm group` ×2)
+cost only an ignored argument — plugin-data is global and `cmd_group` hardcodes its ctx — so they are
+**recorded, not guarded**: a guard there would be noise without a wrong subject to prevent.
+
+⚠ **And a THIRD enforcement site of the `LOCK_UN` class, untouched.** `preflight.py` bypasses
+`FileLock` with raw `flock`, so `_take` never reaches it — and there the failure mode is worse than a
+silent cleanup: it is a **manufactured verdict**. A faulted `LOCK_UN` becomes a false
+*"N HELD lock file(s) — another process holds the plane; wait or investigate"* advisory, and the
+sqlite probe reports a false `fail` with a disk-space remedy. Measured on both trees. This patch
+justified itself by that exact rarity and fixed the two sites where it is silent; these two are
+recorded as open, because a verdict-shaped fault is a different repair from a cleanup-shaped one.
+
+### Measured
+
+⚠ **Every `lock-busy`/`Transient` consumer was censused** by a review lens rather than assumed:
+`cache_skipped` has exactly **one** consumer, `"lock-busy"` has **three** (all now gating on it
+explicitly), and `try_acquire` has exactly **two** call sites. No other site maps a transient cause
+onto a durable verdict.
+
+Suite: **2329 passed, 0 failed** (was 2319). `mypy`, `docs_links`, `manifests` and the accumulation sim
+all green.
+
 ## [0.4.56] — 2026-09-24
 
 **Patch — `cm status` no longer hangs waiting for a writer. This is the defect 0.4.54 claimed to fix

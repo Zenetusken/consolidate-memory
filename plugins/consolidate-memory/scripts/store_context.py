@@ -74,7 +74,16 @@ def warn_unenrolled_share(ctx: "StoreContext", stream: Optional[TextIO] = None,
     `_warned_unenrolled` flag in the native state file gates re-prints. The flag
     write NOOPs when no state file exists (an absent store must never be minted —
     the O1 pin); a write failure degrades to print-again (the safe direction: the
-    warning is never silently swallowed). `cm doctor` stays loud (once=False)."""
+    warning is never silently swallowed). `cm doctor` stays loud (once=False).
+
+    ⚠ v0.4.56 made the flag write TRY rather than wait on `global.lock`, so the guarantee is now
+    "once per store **once the flag can be written**", not unconditionally once. Under contention
+    the write fails and this degrades along the SAME documented path — the warning prints AGAIN —
+    which is the safe direction and not a regression. But the sentence above ("prints ONCE per
+    store") was true only when the lock was free, and a docstring that states a stronger guarantee
+    than the code keeps is the defect, not the behaviour. MEASURED by a review lens: contended —
+    run 1 prints, run 2 prints (the flag is never written); uncontended — run 1 prints, run 2 is
+    silent."""
     if not is_unenrolled_share(ctx):
         return
     if once:
