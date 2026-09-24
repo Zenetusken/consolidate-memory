@@ -1714,16 +1714,38 @@ def _is_archive_index(path: Path) -> bool:
     stem matches the tracker regex) lands in B → "evict" → nuking the archive. Excluding archive docs from
     fact_files prevents that, and lets their link-targets count as reference surfaces. Cheap: the 64-byte head
     short-circuits the common (fact-with-frontmatter) case before reading the whole file; the rule itself
-    lives in _is_archive_index_text (v0.1.67 — shared with snapshot-content tiering)."""
+    lives in _is_archive_index_text (v0.1.67 — shared with snapshot-content tiering).
+
+    ⚠ A PREDICATE CANNOT SAY "COULD NOT TELL", and the `except OSError: return False` this used to
+    carry spent exactly that as "is a fact" — so a store `*.md` that could not be CLASSIFIED (a
+    directory of that name, a mode-000 file, a dangling symlink) was counted among `fact_files`.
+    MEASURED: `MEMORY.md` + one real fact + `adir.md/` gave `fact_files` length 2, which
+    `seed_record` wrote out as `recall_facts.before/after`, and `schema_drift` reported
+    `missing_node_type: 1` — drift manufactured by a directory. Callers that build a FACT LIST
+    must ask `classify_store_doc`, because "not an archive" and "is a fact" are different claims.
+    """
+    return classify_store_doc(path) == "archive"
+
+
+def classify_store_doc(path: Path) -> str:
+    """`"archive"` / `"fact"` / `"unclassifiable"` — the ONE classifier for a store `*.md`.
+
+    ⚠ The third answer is the point. Every earlier spelling of this rule was two-valued, so a doc
+    that could not be read had to be spent as one of the other two, and both directions are wrong
+    in a way that matters: calling it a FACT fabricates the recall count and a drift finding
+    (`_is_archive_index`'s old `except OSError: return False`), while calling it an ARCHIVE would
+    silently evict it from the index. `_archive_doc_paths` was taught the same lesson one layer
+    up; this is the shared rule underneath it.
+    """
     try:
         with path.open(encoding="utf-8", errors="replace") as fh:
             head = fh.read(64)
             if head.lstrip("﻿").lstrip().startswith("---"):   # short-circuit before reading the whole file
-                return False
+                return "fact"
             rest = head + fh.read()
     except OSError:
-        return False
-    return _is_archive_index_text(rest)
+        return "unclassifiable"
+    return "archive" if _is_archive_index_text(rest) else "fact"
 
 
 def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
@@ -2937,10 +2959,15 @@ def claude_md_hierarchy(project_dir: Path) -> dict:
     via .resolve()), never the filesystem root. Pure read; never mutates."""
     root = project_dir.resolve()
     by_dir: dict = {}
+    unreadable: list = []
     for p in _claude_md_files(root):                     # guard the read (Gate-2): a dir-named CLAUDE.md or an
         try:                                             # unreadable/raced file must NOT crash build_context — this
             by_dir[p.parent.resolve()] = est_tokens(p.read_text(encoding="utf-8", errors="replace"))
-        except OSError:                                  # is on the critical path (build_context calls it always)
+        except OSError as _e_cmh:                        # is on the critical path (build_context calls it always)
+            # ⚠ Skipped from the CHAIN — we cannot price what we cannot read — but RECORDED, so the
+            # caller can say the tier is under-priced rather than reporting a confident number. See
+            # the return's note.
+            unreadable.append({"path": str(p), "error": str(_e_cmh)})
             continue
     worst_dir, worst_tokens = root, 0
     for d in by_dir:                                    # 'leaf' = every dir that HAS a CLAUDE.md (Gate-1 #3)
@@ -2961,8 +2988,15 @@ def claude_md_hierarchy(project_dir: Path) -> dict:
 
     files = [{"path": _rel(d / "CLAUDE.md"), "tokens": t}
              for d, t in sorted(by_dir.items(), key=lambda kv: -kv[1])]
+    # ⚠ `unreadable` is RETURNED, never swallowed. `except OSError: continue` dropped the file from
+    # `by_dir` entirely, so its cost vanished from the chain AND from `total_files` — and the
+    # report's row is gated on `total_files > 1 or worst_path_tokens > budget`, so an unreadable
+    # file that was the only one removed the WHOLE ROW. Absent and unreadable are different facts:
+    # the first means there is no CLAUDE.md to pay for, the second means we cannot say what it
+    # costs, and the always-loaded tier is exactly where guessing is most expensive.
     return {"files": files, "worst_path": _rel(worst_dir),
-            "worst_path_tokens": worst_tokens, "total_files": len(by_dir)}
+            "worst_path_tokens": worst_tokens, "total_files": len(by_dir),
+            "unreadable": unreadable, "unreadable_count": len(unreadable)}
 
 
 # v0.1.24: binding-directive markers (RFC-2119 + imperatives). IGNORECASE → MUST≡must; the apostrophe class
@@ -3356,8 +3390,16 @@ def store_local_index(auto_mem: Path) -> dict:
     # indexes are NOT facts — exclude them so the triage never classifies/evicts a relocated archive (MEMORY.md
     # is already excluded by name; this generalizes). archive_docs double as a reference surface.
     _store_md = sorted(f for f in auto_mem.glob("*.md") if f.name != "MEMORY.md") if auto_mem.exists() else []
-    archive_docs = [f for f in _store_md if _is_archive_index(f)]
-    fact_files = [f for f in _store_md if f not in archive_docs]
+    # ⚠ THREE-WAY, through the ONE classifier. `if f not in archive_docs` spent an UNCLASSIFIABLE
+    # doc as a fact — see `classify_store_doc` for the measurement. It is counted as NEITHER, and
+    # named, because "we could not tell" is a fact about the store the operator can act on.
+    _doc_kind = {f: classify_store_doc(f) for f in _store_md}
+    archive_docs = [f for f in _store_md if _doc_kind[f] == "archive"]
+    fact_files = [f for f in _store_md if _doc_kind[f] == "fact"]
+    unclassifiable_docs = [f for f in _store_md if _doc_kind[f] == "unclassifiable"]
+    for _udoc in unclassifiable_docs:
+        print(f"  ⚠ unclassifiable: {_udoc} could not be read as a fact or an archive index — "
+              f"counted as NEITHER, so the recall count is not inflated by it", file=sys.stderr)
     # E (v0.1.18.x): a 0-token index read WHILE facts exist is anomalous (a write-truncate race) and would
     # wrongly clear the over-budget gate — re-read ONCE to settle it. A persistent 0 is a genuine all-unindexed
     # store (schema_drift flags the mismatch), not "under budget / all well".
@@ -3385,6 +3427,9 @@ def store_local_index(auto_mem: Path) -> dict:
         "index_text": index_text,
         "fact_files": fact_files,
         "archive_docs": archive_docs,
+        # additive: store docs that are neither (see `classify_store_doc`), so a caller can tell a
+        # clean store from one holding something the classifier could not read.
+        "unclassifiable_docs": unclassifiable_docs,
         "index_hooks": hook_stats(index_text),
         "index_cliff": cliff_pct(index_lb[1], index_lb[0]),
         # ⚠ additive: the operand EXISTS but could not be measured. Its 0 is NOT "under budget" —
@@ -3900,7 +3945,7 @@ def seed_record(ctx: dict) -> CycleRecord:
                 # ⚠ the operand EXISTS but could not be read: `over` is then not a verdict, and
                 # this is the only way the record can say so — the stderr warning `build_context`
                 # stages is not a rendered surface.
-                "unmeasurable": "CLAUDE.md" in ctx.get("repo_fault_names", set()),
+                "unmeasurable": "CLAUDE.md" in ctx["repo_fault_names"],
             },
             # USER-GLOBAL ~/.claude/CLAUDE.md — read-only / no before↔after (the skill never
             # edits it); a flat per-session cost present in EVERY project. Rendered as its
@@ -3914,7 +3959,7 @@ def seed_record(ctx: dict) -> CycleRecord:
                 # ⚠ WITHOUT this leaf `present: False` is the whole story and it reads as
                 # NOT PRESENT — see GlobalClaudeMd's note. The two facts are different and only
                 # one of them is a reason to skip the row.
-                "unmeasurable": bool(ctx.get("global_claude_md_fault", False)),
+                "unmeasurable": bool(ctx["global_claude_md_fault"]),
             },
             "index": {
                 "before_lines": ctx["index_lb"][0], "after_lines": ctx["index_lb"][0],
@@ -3926,7 +3971,7 @@ def seed_record(ctx: dict) -> CycleRecord:
                 # record asserts `over: False` for an unmeasured index, and every rendered surface
                 # — dashboard, HTML archive — shows a healthy store. The number above is still
                 # the (0,0,0) measurement; this says not to believe it.
-                "unmeasurable": bool(ctx.get("index_fault", False)),
+                "unmeasurable": bool(ctx["index_fault"]),
                 # v0.1.63 (Phase A): hook + cliff telemetry (observe-only; Phase B acts on them)
                 "fat_hooks": ctx["index_hooks"][0], "hook_max_tokens": ctx["index_hooks"][1],
                 "cliff_pct": ctx["index_cliff"],
@@ -5084,7 +5129,7 @@ def print_report(ctx: dict) -> None:
         # ("projected to cross the index budget in ~19 dream(s)") computed from a file it could
         # not open. Neither the gauge NOR the forecast is available for an unmeasured operand —
         # both are replaced, not qualified.
-        if ctx.get("index_fault"):
+        if ctx["index_fault"]:
             add(f"    {_ui.lbl('index', 14)}" + _ui.c(
                 "⚠ UNMEASURABLE — the index exists but could not be read; its size is UNKNOWN, "
                 "not zero, so this is NOT an under-budget reading", "red"))
@@ -5106,7 +5151,7 @@ def print_report(ctx: dict) -> None:
     # report showed no row at all, and the stderr warning staged above ("its budget figure below
     # is UNKNOWN") pointed at a row that was not there. A row that vanishes is indistinguishable
     # from one never warranted.
-    if "CLAUDE.md" in ctx.get("repo_fault_names", set()):
+    if "CLAUDE.md" in ctx["repo_fault_names"]:
         add(f"    {_ui.lbl('CLAUDE.md', 14)}"
             + _ui.c("UNMEASURABLE — exists but could not be read; its cost is UNKNOWN, not zero", "red"))
     elif cl and (cl[0] or cl[1]):
@@ -5129,7 +5174,7 @@ def print_report(ctx: dict) -> None:
     # loads in every session of every project, so an unreadable one would silently stop being
     # reported at all, and the always-loaded total would quietly understate for everyone at once.
     # Absent and unreadable are different facts and only one of them means "no row".
-    _gcm_faulted = bool(ctx.get("global_claude_md_fault", False))
+    _gcm_faulted = bool(ctx["global_claude_md_fault"])
     if _gcm_faulted:
         add(f"    {_ui.lbl('~/.claude/CLAUDE.md', 14)}"
             + _ui.c("UNMEASURABLE — exists but could not be read; its per-session cost is "
@@ -5137,7 +5182,7 @@ def print_report(ctx: dict) -> None:
     elif gl or gb:
         heavy = _ui.c("  ⚠ heavy", "yellow") if gt > GLOBAL_CLAUDE_MD_TOKEN_BUDGET else ""
         add(f"    {_ui.lbl('~/.claude/CLAUDE.md', 14)}" + _ui.c(f"≈{gt} tok · {gl} ln · read-only, every project (never edited here)", "dim") + heavy)
-    _repo_fault_names = ctx.get("repo_fault_names", set())
+    _repo_fault_names = ctx["repo_fault_names"]
     for nm in ("MEMORY.md", "AGENTS.md"):
         r = ctx["repo"].get(nm)
         if r and (r[0] or r[1]):
@@ -5245,7 +5290,7 @@ def print_report(ctx: dict) -> None:
         # the under-budget arm: that arm offers `backfill`, which is the single action the
         # no-net-grow gate forbids, and it would be offered on a store whose budget state is
         # exactly what is unknown. Saying so is the honest third answer; guessing is not.
-        _ix_state, _ = index_reading(ctx["index_lb"][2], bool(ctx.get("index_fault", False)))
+        _ix_state, _ = index_reading(ctx["index_lb"][2], bool(ctx["index_fault"]))
         if _ix_state == "unmeasurable":
             _mismatch = (f"{d['index_mismatch']} index↔file — but the INDEX COULD NOT BE READ, so "
                          f"whether this gap is the intentional mature-store density is UNKNOWN: "
@@ -5534,7 +5579,7 @@ def main() -> int:
         # the v0.4.45 comment names as the pre-fix failure — so a fault falling through to this
         # arm would re-spell the defect on the one surface that decides whether the pass runs
         # HEAVY. Red, not green, and it names the repair rather than a remediation.
-        _rem_state, _ = index_reading(ctx["index_lb"][2], bool(ctx.get("index_fault", False)))
+        _rem_state, _ = index_reading(ctx["index_lb"][2], bool(ctx["index_fault"]))
         if rem:
             body = _remediation_section(rem)
         elif _rem_state == "unmeasurable":
