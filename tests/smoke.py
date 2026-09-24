@@ -25259,14 +25259,22 @@ with _tf43.TemporaryDirectory() as _td_ov52:
         "---\nname: big\ndescription: d\n---\n" + ("filler line\n" * 350000), encoding="utf-8")
     _err_ov52 = _io73.StringIO()
     with _ctx73.redirect_stderr(_err_ov52):
-        _ens59(_fd_ov52, _pd_ov52)
+        # ⚠ BIND THE RETURN — this was the ONE site where the wrapper made things WORSE. It used to
+        # discard it, so a raise inside `ensure` was invisible here: the oversize path PRINTS to
+        # stderr BEFORE returning, so the predicate below was fully satisfied by the print alone.
+        # A review lens measured exactly that — `_ENSURE_REASONS` minus `oversize` made this check
+        # GREEN where the raise belonged, trading the crash it replaced for the OTHER failure mode:
+        # a green where a red belongs. The `is None` conjunct is the real return's value, so this
+        # is unchanged on a correct tree and reddens on a sentinel.
+        _rows_ov52, _why_ov52 = _ens59(_fd_ov52, _pd_ov52)
     _msg_ov52 = _err_ov52.getvalue()
     check("v0.4.52 (GUARD, regression — green on both trees BY CONSTRUCTION: the notice shipped "
       "in v0.4.48; its value is that DELETING the print now reddens): the oversize refusal NAMES "
       "the offending file and the cap on stderr — "
           "the module's only chance to say why the cache went permanently cold, and a coverage "
           "lens measured that removing the print left every check green",
-          "big.md" in _msg_ov52 and str(_fm44._READ_CAP) in _msg_ov52)
+          "big.md" in _msg_ov52 and str(_fm44._READ_CAP) in _msg_ov52
+          and _rows_ov52 is None)   # ⚠ the RETURN, not only the print: see the note above
 
 # --- v0.4.51: THE FAULT'S POSITIVE VERDICTS -----------------------------------------------------
 # The named exception from v0.4.45 ("falsy can only SUPPRESS an alarm, never raise one") covered
