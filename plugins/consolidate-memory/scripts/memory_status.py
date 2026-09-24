@@ -5660,6 +5660,21 @@ def main() -> int:
     # modes — read-only modes (--triage/--sections/--snapshot/--diffs/--audit) stay write-free
     # and keep the audit path's "never the native plane" invariant. The read-only flags ALONE
     # are the gate (a --triage --json combo must not smuggle a write through the --json clause).
+    # ⚠ v0.4.56b: the SIBLING of the preflight note below, and it exists because the ASYMMETRY was
+    # the defect — `_MAN_ROWS_STASH["reason"]` was written by `_admissible_records` and read by
+    # nobody, so a declined manifest rebuild went unmentioned while its sibling was named. Only the
+    # CONTENTION case is printed: `oversize` already names its offending file at its own refusal
+    # site (printing it again here would be the second statement of one fact), and `kill-switch` is
+    # the operator's own instruction, deliberately not restated.
+    if "--verbose" in argv:
+        try:
+            from sync_global import last_manifest_reason as _mf_reason
+            _mf_why = _mf_reason()
+        except Exception:  # noqa: BLE001 — a diagnostic note never breaks the command
+            _mf_why = ""
+        if _mf_why == "lock-busy":
+            print("facts-manifest: not rebuilt (lock-busy) — this read enumerated the domain in "
+                  "full; it rebuilds on the next uncontended read", file=sys.stderr)
     if not any(f in argv for f in ("--triage", "--sections", "--snapshot",
                                    "--diffs", "--audit")):
         try:
@@ -5672,9 +5687,22 @@ def main() -> int:
             # rule this arc enforces is about REFUSALS and FAULTS, not about declining an optional
             # cache. ⚠ `--verbose` is deliberately NOT in the mode list above — that list decides
             # which modes WRITE, and a verbosity flag deciding that would be its own defect.
+            # ⚠ v0.4.56c: the cause is now SPLIT, because one sentence was promising a self-heal
+            # that does not always come. `cache_skipped` carries `"lock-busy"` for a contended lock
+            # AND the exception class name for a genuine write failure — and the old message told
+            # BOTH "it will be cached on a later run". Measured by a review lens with a corrupt
+            # marker (`{not json`): `WriteRefused`, and the marker was still corrupt on the next
+            # run. A promise the code cannot keep is worse than no note: only the contention case
+            # is transient, so only that one is told to retry.
             if "--verbose" in argv and _pf_res.get("cache_skipped"):
-                print(f"preflight: cache not written ({_pf_res['cache_skipped']}) — the verdict is "
-                      f"unaffected; it will be cached on a later run", file=sys.stderr)
+                _skip = str(_pf_res["cache_skipped"])
+                if _skip == "lock-busy":
+                    print(f"preflight: cache not written (lock-busy) — the verdict is unaffected; "
+                          f"it will be cached on a later run", file=sys.stderr)
+                else:
+                    print(f"preflight: cache NOT written ({_skip}) — the verdict for THIS run is "
+                          f"unaffected, but the cache stays cold until that is repaired",
+                          file=sys.stderr)
         except Exception:  # noqa: BLE001 — the pre-flight can never break a dream
             pass
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)

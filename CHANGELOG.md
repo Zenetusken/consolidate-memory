@@ -105,6 +105,68 @@ The last row is the one that separates this repair from 0.4.54's: `may_rebuild=F
 the hang, by **never rebuilding at all** — which is what cost ~100× on every read. This declines the
 *wait*, not the *write*.
 
+### ⚠⚠ And a THIRD taker — found by a census of the wrong set
+
+**After fixing the second site I enumerated every `.acquire()` in the tree, classified all six, and
+declared the read path clean. That was the wrong instrument.** A review lens instrumented
+`FileLock._take`/`try_acquire` and swept **22 read commands** under a held `global.lock`; it found
+one more, and — usefully — the boundary of the set: **zero** blocking takes anywhere else.
+
+```
+store_context.py:98  warn_unenrolled_share -> update_project_state(blocking=True, the default)
+  <- control_plane.py:270 -> acquire_mutation_locks -> glob.acquire() -> flock(LOCK_EX)
+  reached by render_html.py:803 (`cm report`) and sync_global.py:1934 (`cm sync --list`)
+```
+
+`store_context.py:98` contains **no `.acquire()` at all** — it calls `update_project_state(...)` and
+the blocking happens four frames down. A grep of the primitive answers *"where is the lock **taken**?"*;
+the question was *"what is **reachable** from a read command?"*. Precondition: an **unenrolled**
+project whose native marker exists — which a plain `cm status` mints — plus a concurrent writer.
+Measured by that lens: `cm report` rc 124 and `cm sync --list` rc 124 at 10 s. Re-measured here
+after the fix, each against its own uncontended control rather than against a constant:
+**`cm sync --list` rc 0 / 0.08 s** (was rc 124), and **`cm report`'s rc is UNCHANGED by the lock**
+(contended 0.06 s / uncontended 0.08 s, both rc 1 — this fixture's report genuinely returns 1, so
+"it did not time out" would have been satisfied by a command that had started failing).
+
+The fix is one keyword: the write records the *once* flag — a cache of a decision
+`is_unenrolled_share` has already made — so it takes `blocking=False`, and the `except Exception`
+already there routes `LockBusy` to the documented safe direction (*print the warning again*; a lost
+once-flag costs a repeated line, a wait costs the command).
+
+⚠ **The miss, not the site, is the lesson.** Two successive sole-claims — "the only lock on a read
+command", then "all six sites, read path clean" — were both answered by an instrument that could not
+see the complement they asserted about.
+
+### ⚠ What the review round corrected in this release's own work
+
+Two independent lenses reviewed the committed revision. Three findings fixed above; these are the
+corrections to **this patch's own instruments**, which is where the arc keeps finding its real
+defects:
+
+- **A PIN of ours was a GUARD wearing the wrong name.** The LEAK check (does a give-up on the
+  *global* lock release the *domain* lock already taken?) reddened pre-fix — but because its **probe
+  called `try_acquire()`**, which does not exist on the revision before this one. It failed for its
+  instrument's absence *while naming the property*. Re-probed with a version-agnostic raw `flock`,
+  the domain lock **is free** on that tree: the rollback already worked, so the check is green on
+  both and is a GUARD by definition. NINTH mislabelling on the arc; the probe is now
+  version-agnostic and the label is honest.
+- **`try_acquire` is NOT a full substitute for an `acquire` override**, and the first cut of its
+  docstring said it was. It reaches `_take` directly, so a subclass that overrides `acquire` — this
+  repo's own `_Boom` is one — has its **policy silently skipped** for the try path:
+  `Boom.acquire()` raises on `global.lock`, `Boom.try_acquire()` returns `True` for the same lock.
+  The TypeError half of substitutability is genuinely fixed (no caller hands a subclass a keyword it
+  does not declare); the policy half is not, and cannot be without re-introducing the keyword. It is
+  now **stated** in `_take`'s docstring as a hole rather than claimed away.
+- **A control's named mutation cannot be observed through the suite.** The `v0.4.56b` control is
+  hand-discriminated (manifest 0→1 normally, 0→0 under a never-rebuild mutation), but that mutation
+  aborts the run ~10,500 lines upstream at an unguarded `_mp.stat()`, so the suite never reaches the
+  control to show it. The abort site predates this patch; it is flagged, not fixed here.
+
+Confirmed sound by the same lenses: **no fd leak** on any `try_acquire` path (200 consecutive busy
+tries → fd delta 0; the no-`fcntl` path raises rather than returning `False`), and the rollback
+across six lock combinations — with one **pre-existing** residual they labelled as not this patch's
+(`release_locks`' LIFO walk can strand locks if `LOCK_UN` raises).
+
 ### Deliberately unchanged
 
 The three other `update_project_state` callers in `memory_status` (`:2327`, `:2560`, `:2664` —

@@ -1414,8 +1414,18 @@ class FileLock:
         substitutability: ANY subclass overriding `acquire(self)` — this repo has one in its own
         fixture set — raises `TypeError` the moment a caller passes the keyword, which is a
         breakage at the CALL SITE, arbitrarily far from the override that caused it. `try_acquire`
-        is ADDITIVE: a subclass that never heard of it inherits correct behaviour, and one that
-        overrides `acquire` keeps its exact original signature.
+        is ADDITIVE: a subclass that overrides `acquire` keeps its exact original signature and is
+        never handed a keyword it does not declare.
+        ⚠ BUT THE ADDITIVE FORM IS NOT FULLY SUBSTITUTABLE EITHER, and the first cut of this
+        docstring claimed it was. Measured by a review lens with the smoke suite's own `_Boom`
+        shape: `Boom.acquire()` raises (its refusal of `global.lock`) while `Boom.try_acquire()`
+        returns True for the SAME lock — the subclass's POLICY is silently skipped, because
+        `try_acquire` reaches `_take` directly and never calls `acquire`. So the honest contract is
+        narrower: the TypeError half of substitutability is fixed; the policy half is not, and
+        cannot be without re-introducing the keyword. A subclass that narrows acquisition must
+        override `try_acquire` (or `_take`, where the policy belongs) as well as `acquire`.
+        Latent in-tree — the only patch window drives blocking acquisition — but it is a real
+        hole in the primitive, so it is stated here rather than left to be rediscovered.
         ⚠ The no-`fcntl` path is IDENTICAL in both forms, and that is load-bearing: a non-waiting
         acquire on a platform without `fcntl` would be a no-op lock, so it refuses via
         `require_interprocess_lock` rather than silently succeeding because waiting was not needed.

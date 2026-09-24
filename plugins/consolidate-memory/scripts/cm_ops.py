@@ -1895,6 +1895,22 @@ def _facts_refresh_probe(ctx) -> int:
     if rows is not None:
         print(f"facts-manifest: {ctx.domain_id} rebuilt — {len(rows)} row(s)")
         return 0
+    # ⚠ v0.4.56c: `lock-busy` is a DIFFERENT cause from every other token here, and rendering it
+    # with the same sentence inverted the distinction `LockBusy` exists to carry — "try later" vs
+    # "never". Measured by a review lens: with another process holding `global.lock`, this printed
+    # "did NOT rebuild (lock-busy) — every read will re-enumerate in full until this clears" and
+    # exited 1, which reads as a durable broken cache; the very next uncontended run printed
+    # "rebuilt — 0 row(s)", rc 0. The exit code stays 1 — this command DID fail to do the one
+    # thing it exists to do, and reporting success would be the worse error — but the CAUSE is
+    # named as transient, and the remedy it prints is the one that actually clears it.
+    if why == "lock-busy":
+        # ⚠ The TOKEN is printed, in parens, exactly as its preflight sibling does — a message and
+        # a pin that disagree about what identifies this cause would be the defect this whole
+        # branch is about. (`lock-busy` is also the string a user greps for after seeing it once.)
+        print(f"facts-manifest: {ctx.domain_id} NOT rebuilt (lock-busy) — another process holds "
+              f"the lock; nothing is wrong with the cache. Re-run once that writer finishes, or "
+              f"let the next uncontended read rebuild it.", file=sys.stderr)
+        return 1
     print(f"facts-manifest: ⚠ {ctx.domain_id} did NOT rebuild ({why}) — every read will "
           f"re-enumerate in full until this clears", file=sys.stderr)
     return 1
