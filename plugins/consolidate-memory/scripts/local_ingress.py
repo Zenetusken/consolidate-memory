@@ -484,6 +484,18 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
     ptr = _pointer_or_stored(_prev_idx, _prev_text, stem, _desc)
     # v0.4.44 (item 3): an archived placement is not re-added as a side effect of a body edit.
     _archived_placement, _placement_unreadable = _placement_decline(ctx, stem, _prev_idx)
+    # ⚠ LOUD, not a nested field in a success result. A review lens measured the failure mode this
+    # closes: with ONE unreadable store-root doc, `local_upsert` wrote the fact, returned
+    # `ok: True` at exit 0, and left it UNINDEXED — a store the operator believes is consistent.
+    # The refusal is correct (an unclassifiable doc might be the archive that owns this stem) but a
+    # silent success is not, so it is named on stderr WITH the remedy that actually clears it.
+    if _placement_unreadable:
+        print("cm local upsert: " + ", ".join(f"{u['doc']} ({u['error']})"
+                                              for u in _placement_unreadable)
+              + f" could not be READ — {stem}'s pointer is WITHHELD because one of these might be "
+              + "the archive that owns it. Repair the named file, or run `cm local rebuild-index "
+              + "--apply --confirm rebuild-local-index --skip-invalid` to re-index it.",
+              file=sys.stderr)
     _warn_fat_hook(ptr, stem, source_path=str(dest))
     expected = {}
     expected.update(_expected_from_snap(dest_snap))

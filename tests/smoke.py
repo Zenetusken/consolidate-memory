@@ -23769,6 +23769,36 @@ with _Env73() as _e_sib:
           "sits in the same visual register as a real one",
           _rl_sib[3] == "UNMEAS.")
 
+# --- v0.4.45 adversarial round: THE REPORT, WHICH RUNS EVERY TIME ------------------------------
+# Three independent lenses measured the same hole. `--triage`, the dashboard, the archive and
+# `cm log` were each given the third state; the Phase-0 ASCII report — the surface every single
+# invocation prints — was not, and drew `[░░░░░░░░░░] 0% ≈0/1500 tok [ALWAYS-LOADED]` for an index
+# it could not read, then handed the same 0 to `budget_trajectory_advisory`, which turned it into a
+# confident forecast ("cross the index budget in ~19 dream(s)") from an unopened file. Its project
+# CLAUDE.md row ALSO vanished, while the record carried `unmeasurable: True` — the vanishing-row
+# harm this very patch headlines, missed on its own sibling.
+with _Env73() as _e_rep:
+    (_e_rep.store / "MEMORY.md").write_text("# Memory Index\n\n", encoding="utf-8")
+    (_e_rep.store / "a-fact.md").write_text("---\nname: a\ndescription: d\n---\nb\n", encoding="utf-8")
+    (_e_rep.proj / "CLAUDE.md").mkdir()                 # the project doc cannot be read
+    (_e_rep.store / "MEMORY.md").unlink()
+    (_e_rep.store / "MEMORY.md").mkdir()                # …nor can the index
+    _out_rep = _sp53.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
+                                               / "scripts" / "memory_status.py"), str(_e_rep.proj)],
+                         capture_output=True, text=True, timeout=60,
+                         env={**_os53.environ, "HOME": str(_e_rep.store.parents[3])}).stdout
+    check("v0.4.45 adversarial (PIN): the Phase-0 REPORT names the unreadable index rather than "
+          "drawing a full-green `0%` gauge — the surface that runs on EVERY invocation, and the "
+          "one the first cut of this patch left on a different code path from `--triage`",
+          "UNMEASURABLE" in _out_rep and "≈0/1500 tok" not in _out_rep)
+    # ⚠ `>= 2`: the index AND the project CLAUDE.md. One occurrence would pass an arm that only
+    # fixed the index, which is exactly the miss — the CLAUDE.md row's fault was in the SAME
+    # `repo_fault_names` set `seed_record` already read, and the report still dropped the row.
+    check("v0.4.45 adversarial (PIN): …and the project CLAUDE.md row does not VANISH — both red "
+          "rows are printed, so a record saying `unmeasurable: True` is no longer contradicted by "
+          "a report with no row at all",
+          _out_rep.count("UNMEASURABLE") >= 2)
+
 # --- v0.4.45 review: the PULL's index seed, where the same unknown costs a WRITE ----------------
 # `_safe_read_text` collapses ABSENT and UNREADABLE into None (right for the scan it was factored
 # from, wrong here). Seeding 0 for an unreadable index does not read as unknown — it reads as
@@ -24139,6 +24169,14 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 2        # v0.4.45 ADVERSARIAL round — the Phase-0 REPORT, the surface
+                                       #     that runs on every invocation: 1 PIN (it names the
+                                       #     unreadable index instead of drawing `0%` and
+                                       #     forecasting from a file it never opened) + 1 PIN that
+                                       #     the project CLAUDE.md row does not VANISH. ⚠ Found by
+                                       #     three independent lenses, and the second is the
+                                       #     vanishing-row harm this very patch headlines, missed
+                                       #     on its own sibling.
                             + 7        # v0.4.45 review — the fault's SIBLING operands and the pull
                                        #     seed, where the same unknown costs a WRITE: 2 sibling
                                        #     PINs (both gauge operands carry the fault; `present` is

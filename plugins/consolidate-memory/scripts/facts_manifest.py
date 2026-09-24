@@ -160,9 +160,18 @@ def secret_pred() -> str:
             # which is FALSE in the case that matters: on a PERSISTENTLY frozen install the marker
             # is a pure function of module and qualname, so a CONSTANT-only body repair of either
             # function yields the same identity and cached rows keep serving the old verdict —
-            # running the dangerous way, on the path that skips the admit-side re-scan. What
-            # actually covers that case is `co_code` above; this marker covers only the
-            # source ↔ no-source TRANSITION, and says so rather than borrowing the other's credit.
+            # running the dangerous way, on the path that skips the admit-side re-scan.
+            # ⚠ And `co_code` above does NOT cover it either — an earlier cut of this comment said
+            # it did, and a review lens measured otherwise: a CONSTANT-only body edit (e.g. adding
+            # a character to `_entropy_blob`'s split set) leaves `co_code` byte-identical while the
+            # verdict genuinely flips. So on a persistently source-less install the two signals'
+            # blind spots COINCIDE exactly in the case this sentence names, and no constant-only
+            # repair of either function invalidates. What the pair buys is: `co_code` catches
+            # SHAPE changes without source, `getsource` catches CONSTANT changes with source.
+            # Neither covers constant-only-without-source; that case is open and stated here
+            # rather than fixed, because closing it needs the constants hashed from the code
+            # object, and `co_consts` contains nested code objects whose repr is address-bearing
+            # and therefore unstable across runs.
             _bodies.append(f"<source-unavailable:{_fn.__module__}.{_fn.__qualname__}>")
     # the memo is keyed on the VECTOR, so two calls in one process with the same predicate cost
     # one hash and a changed predicate still produces a different identity — see `_secret_pred_keyed`
@@ -217,7 +226,12 @@ def build(facts_dir: Path) -> "tuple[list, str]":
     # `linecache` fill of `memory_status` (and, on a process that has not otherwise imported
     # `inspect`, ~20 ms of deferred import), and the two reaches that discard it are ordinary: a
     # domain with no facts dir, and a dir with no admissible facts. Both stamp no row, so both
-    # paid in full for nothing. Cached by `_secret_pred_keyed`, so this is once per process.
+    # paid in full for nothing. ⚠ `_secret_pred_keyed` memoises only the SHA256, NOT this
+    # function — an earlier cut of this comment said "so this is once per process", and a review
+    # lens measured the `inspect.getsource` still running on every call (5 calls: 22.8 / 0.41 /
+    # 0.40 / 0.39 / 0.39 ms, against 0.004 ms for the memoised digest alone). So laziness saves
+    # the ZERO-ROW reaches, which is what it was added for; a process that reads rows pays the
+    # `getsource` per call, and only the hash is shared.
     _PRED = ""
     rows: list = []
     domain = Path(facts_dir).parent.name

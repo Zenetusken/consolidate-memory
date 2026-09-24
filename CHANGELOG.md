@@ -15,7 +15,17 @@ measurement.** `store_local_index` returned `(0, 0, 0)` both for an empty store 
 `MEMORY.md` could not be opened, and every consumer compared the bare number to a budget — so an
 unreadable store answered "under budget" at every site that renders, decides, or gates.
 
-1. **The fault reaches the DECISION layer, not just the record.** `--triage` printed its green
+1. **The fault reaches the DECISION layer, not just the record.** ⚠ Corrected after an adversarial
+   review lens measured the shipped claim as false: `index_reading` carries the three states at its
+   two call sites, both of them DISPLAY (`--triage` and the schema-drift advisory), and the report's
+   index row and project-`CLAUDE.md` row — which the first cut of this entry did not count — now
+   carry it too. The three gate sites (`prune_pressure`'s index arm, `remediation.required`,
+   `over_ceiling`) deliberately do **not**: all three are falsy on a fault, which can only SUPPRESS
+   an alarm and never raise one, and `prune_pressure`'s remedy ("you MUST prune") is the wrong
+   answer for a file that cannot be read. They are now NAMED exceptions in the code rather than
+   bare comparisons, and the fault reaches the operator through `--triage` instead. Detailed
+   because the earlier sentence here — "no consumer can reach a default that spells UNKNOWN as
+   healthy" — was stronger than the payload. `--triage` printed its green
    `✓ index under budget (0/1500 tok) — nothing to remediate` — verbatim the string the previous
    patch's own comment named as the defect it was fixing — on the very surface SKILL Phase 5 reads
    to decide whether a pass runs HEAVY; `remediation.required` never fired, so the mandatory
@@ -31,15 +41,26 @@ unreadable store answered "under budget" at every site that renders, decides, or
    `if r.get("secret"): return` therefore did **not** return — so the fact was admitted
    cross-project into context. A file past the cap now **fails open** to full enumeration, which is
    the module's own stated posture ("can slow you down but never serves wrong facts").
+   ⚠ Two honest limits, both from the adversarial round. (a) The committed fixture is **4,200,094**
+   bytes; the 4,800,090 in the first cut of this entry was an uncommitted draft fixture, i.e. a
+   re-derivable-by-hand number stated as measured. The mechanism was re-verified at the committed
+   size. (b) The fail-open closes the **writer** side only. `load()` serves any row whose stored
+   `secret_pred` matches, with no independent check of `secret`, so a pre-existing truncated row
+   would still be admitted — what prevents that today is that every pre-fix writer has a DIFFERENT
+   identity, which is incidental and untested rather than designed.
 
 3. **The fault's sibling operands, and a row that VANISHED.** The project and user-global
    `CLAUDE.md` gauges had no fault field, and the global one's only unreadable signal was a stderr
    line: its `present` is `bytes > 0`, which a *failed* read reports as `False`, so every renderer
    **skipped the row** — the one operand that loads in every session of every project simply
    stopped being reported, which is worse than a wrong number because a missing row is
-   indistinguishable from a row never warranted. Both budget blocks carry `unmeasurable` now, the
-   Phase-0 report prints a red row instead of dropping one, and the HTML archive, the dashboard and
-   the `cm log` table all say so rather than drawing a full-green `0% · 0/1500`.
+   indistinguishable from a row never warranted. Both budget blocks carry `unmeasurable` now; the
+   Phase-0 report prints a red row instead of dropping one (for the project `CLAUDE.md` too, which
+   the first cut of this patch missed while correcting its siblings); and the dashboard and the
+   `cm log` table say so rather than drawing a full-green `0% · 0/1500`. ⚠ The HTML archive is
+   wired for the **index** only — its project-`CLAUDE.md` meter and the global row's
+   `present`-gated visibility still read the fault as a value. That is carried forward, not
+   claimed, and an adversarial lens measured the earlier sentence here as false.
 
 4. **The SessionStart beacon's read-only contract held one call deep.** `session_beacon` chose
    `load()` over `ensure()` deliberately, with a comment saying why — and was still defeated four
