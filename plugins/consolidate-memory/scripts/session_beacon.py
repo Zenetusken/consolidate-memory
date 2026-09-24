@@ -343,8 +343,10 @@ def main() -> int:
             _bh = None
         # ⚠ `may_rebuild=False` — the whole call path must be read-only, and the `load()` a few
         # lines above is NOT sufficient on its own. This call reaches `facts_manifest.ensure`
-        # four frames down (`iter_admissible_facts` → `_admissible_records`), which REBUILDS
-        # UNDER LOCK when the manifest is missing or stale: it would take `global.lock` — held
+        # THREE frames down (`main` → `iter_admissible_facts` → `_admissible_records` → `ensure`),
+        # and the write one frame below THAT is `_rebuild_locked` — counted, not estimated; an
+        # earlier cut of this sentence said "four frames down" while naming `ensure`, which is
+        # frame 3. It REBUILDS UNDER LOCK when the manifest is missing or stale: it would take `global.lock` — held
         # by any concurrent `cm sync` — and write, inside a 2s hook deadline, on the one surface
         # CLAUDE.md documents as read-only. The loop above is a guard on ONE call; this is a
         # guard on the PATH.

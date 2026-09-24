@@ -1136,21 +1136,29 @@ def _canonical_path(ctx, name: str) -> Path:
     return p
 
 
-def facts_for_context(ctx, *, all_domains: bool = False) -> list:
-    """Ordinary fleet readers: current-domain Canonicals only (ADR 015)."""
+def facts_for_context(ctx, *, all_domains: bool = False, may_rebuild: bool = True) -> list:
+    """Ordinary fleet readers: current-domain Canonicals only (ADR 015).
+
+    `may_rebuild=False` makes the whole chain read-only — see `facts_manifest.ensure`'s
+    `may_write`, which this threads to. Phase 0 passes it; see the note at that call site.
+    """
     if all_domains:
         return [(s, fm, t) for s, fm, t, _p in _all_domain_records()]
     if getattr(ctx, "cross_project_allowed", False):
-        return iter_admissible_facts(ctx)
+        return iter_admissible_facts(ctx, may_rebuild=may_rebuild)
     return []
 
 
-def iter_canonicals(ctx, *, all_domains: bool = False) -> list:
-    """Typed enumerator (ADR 008/015). Bare stems are not a trust boundary."""
+def iter_canonicals(ctx, *, all_domains: bool = False, may_rebuild: bool = True) -> list:
+    """Typed enumerator (ADR 008/015). Bare stems are not a trust boundary.
+
+    `may_rebuild=False` keeps the chain read-only; see `facts_for_context`'s note.
+    """
     from identity import ref_from_path
     refs: list = []
     seen: set = set()
-    recs = _all_domain_records() if all_domains else _admissible_records(ctx)
+    recs = (_all_domain_records() if all_domains
+            else _admissible_records(ctx, may_rebuild=may_rebuild))
     for stem, fm, _text, path in recs:
         # P3: manifest-served recs carry the path STRING (built on fallback only);
         # the full-read path still carries a Path. Normalize here — off the hot path.
@@ -2494,6 +2502,17 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                                       sem_by_name=_sem_map)
         except _CrashPull:
             print("pull: crash-after journal step (pending op left for recover)", file=sys.stderr)
+            return _done(1)
+        # ⚠ READ the refusal, or the refusal is not one. `_execute_pull_writes` returns an `error`
+        # key when it declines to write — no revision precondition is available (`index-unreadable`)
+        # — and an earlier cut of that guard left this caller reading only `pulled`/`refreshed`/
+        # `fat`. So the pull reported `pulled 0 · refreshed 0` and exited 0: a SWALLOWED refusal,
+        # indistinguishable to a script from "nothing to do", on the very remedy
+        # (`--allow-net-grow`) the ceiling hold's own message prints. The stderr line named the
+        # repair; nothing carried it to the exit code. Found by the review this arc was opened for.
+        _werr = str(_w.get("error") or "")
+        if _werr:
+            print(f"pull: refused — {_werr}", file=sys.stderr)
             return _done(1)
         pulled = int(_w.get("pulled") or 0)
         refreshed = int(_w.get("refreshed") or 0)

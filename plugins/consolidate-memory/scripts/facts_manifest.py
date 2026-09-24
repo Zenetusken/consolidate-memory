@@ -327,7 +327,27 @@ def _miss(reason: str) -> "tuple[None, str]":
 
 
 def load(facts_dir: Path, plugin_data_dir: Path):
-    """(rows_by_stem | None, reason). None = fail open (full enumeration)."""
+    """(rows_by_stem | None, reason). None = fail open (full enumeration).
+
+    ⚠ WHAT A SERVED ROW WARRANTS — stated because a review lens asked the right question and the
+    answer was nowhere written down. A row is served only under a TWO-PART warrant, and this
+    function enforces exactly ONE half of it:
+
+      * the PREDICATE is unchanged — `secret_pred` matches, enforced HERE (:370); a foreign
+        identity fails open to a rebuild, so a row can never be judged by a firewall other than
+        the running one; and
+      * the FILE is unchanged — `st_mtime_ns` AND `st_size` match the row, enforced at the
+        CONSUMER (`sync_global._consider_fast`), because only the consumer has the `DirEntry`
+        stat that makes the warm path warm.
+
+    ⚠ This is deliberately NOT an independent re-derivation of `secret` (or of `class`, `sem`,
+    `fm`). Every field in the row comes from the SAME read, so re-checking one of them would mean
+    re-reading the file — which is the cache. What the lens named as "an identity match is the
+    whole warrant" is true OF THIS FUNCTION, and false of the system: the stats half lives one
+    frame out. ⚠ The split is the risk — a second consumer that reads `load()` directly and skips
+    the stats check would trust a stale row for a file that changed underneath it, and nothing in
+    THIS function would notice. `_consider_fast` is pinned for exactly that reason.
+    """
     if os.environ.get(KILL_SWITCH) == "0":
         return _miss("kill-switch")
     domain = Path(facts_dir).parent.name

@@ -1864,6 +1864,33 @@ def cmd_migrate(args: argparse.Namespace) -> int:
     return 2
 
 
+def _facts_refresh_probe(ctx) -> int:
+    """Rebuild the domain's manifest after an invalidation and REPORT THE OUTCOME. 0 or 1.
+
+    ⚠ The promise is PROBED, never printed. "Rebuilds lazily on next read" is a claim about a
+    FUTURE rebuild, and `facts_manifest.ensure` fails open for a fact past `_READ_CAP` — so a domain
+    holding one oversize fact never rebuilds at all: every read re-enumerates in full (MEASURED
+    ~1.4 s against ~1.3 ms on a 300-fact store), and `cm data facts-refresh`, the DOCUMENTED REPAIR,
+    was the one place that could have said so while instead restating the promise.
+
+    ⚠ Factored so the EXIT CODE is pinnable without enrolling a project: the caller's ctx needs a
+    registry-resolved domain, which is the fixture cost that kept this arm unpinned. A coverage lens
+    measured that deleting the `return 1` left both suites green — the command printed its warning
+    and still exited 0, reporting success on a cache that can never rebuild.
+    """
+    from facts_manifest import ensure as _fm_ens
+    try:
+        rows, why = _fm_ens(ctx.canonical_domain_dir, ctx.plugin_data_dir)
+    except Exception as e:                                     # noqa: BLE001 — report, never raise
+        rows, why = None, f"{type(e).__name__}: {e}"
+    if rows:
+        print(f"facts-manifest: {ctx.domain_id} rebuilt — {len(rows)} row(s)")
+        return 0
+    print(f"facts-manifest: ⚠ {ctx.domain_id} did NOT rebuild ({why}) — every read will "
+          f"re-enumerate in full until this clears", file=sys.stderr)
+    return 1
+
+
 def cmd_data(args: argparse.Namespace) -> int:
     from control_plane import connect, connect_if_exists, db_path
     from retention import (compact_jsonl, CYCLE_CAP, EVENT_RETENTION_DAYS, export_ops,
@@ -1909,22 +1936,7 @@ def cmd_data(args: argparse.Namespace) -> int:
                 return 1
             print(f"facts-manifest: {ctx.domain_id} "
                   f"{'invalidated' if existed else 'was already absent'} ({mp})")
-            # ⚠ The promise is PROBED, not printed. "Rebuilds lazily on next read" is a claim
-            # about a future rebuild, and `ensure` fails open for a fact past `_READ_CAP` — so a
-            # domain holding one oversize fact never rebuilds at all, every read re-enumerates in
-            # full (measured ~1.4 s against ~1.3 ms on a 300-fact store), and THIS command, the
-            # documented repair, was the one place that could have said so. Report the OUTCOME.
-            from facts_manifest import ensure as _fm_ens
-            try:
-                _rows_probe, _why_probe = _fm_ens(ctx.canonical_domain_dir, ctx.plugin_data_dir)
-            except Exception as _e_probe:                      # noqa: BLE001 — report, never raise
-                _rows_probe, _why_probe = None, f"{type(_e_probe).__name__}: {_e_probe}"
-            if _rows_probe:
-                print(f"facts-manifest: {ctx.domain_id} rebuilt — {len(_rows_probe)} row(s)")
-            else:
-                print(f"facts-manifest: ⚠ {ctx.domain_id} did NOT rebuild ({_why_probe}) — every "
-                      f"read will re-enumerate in full until this clears", file=sys.stderr)
-                return 1
+            return _facts_refresh_probe(ctx)
         return 0
     if args.data_cmd == "compact":
         from retention import (cycle_log_write_path, fleet_ledger_write_path,

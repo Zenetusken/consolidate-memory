@@ -3674,16 +3674,25 @@ def build_context(project_dir: Path) -> dict:
     # REUSES the dual-axis suppression result (`remediation.required`), NOT a fresh budget compare — so a
     # standing-justified store reads False (no perpetual pivot). `remediation` is {} on the healthy path,
     # hence `.get`, not subscript (would KeyError). No `stale_since_marker` (it re-fires every run).
+    # ⚠ READ-ONLY, and this is the MEASURED half of a call I had previously left as a judgment.
+    # Phase 0 is read-only BY CONTRACT (SKILL: "Phases 0, 2, and 3 are read-only investigation"),
+    # and the concrete hazard the review named is not the write but the WAIT: `ensure` rebuilds
+    # under `global.lock`, so a plain `memory_status`/`cm status` could BLOCK on a concurrent
+    # `cm sync`. `may_rebuild=False` removes the lock from the path entirely.
+    # ⚠ What I measured rather than assumed: Phase 0 already writes — a bare `--json` run creates
+    # `locks/{global,domain-*,project-*}.lock` and `.consolidation-state.json`. So this is not a
+    # claim that the phase is otherwise write-free; it is that the MANIFEST is the one write that
+    # can be avoided, and that avoiding it costs only a full enumeration while the cache is cold.
     from sync_global import facts_for_context as _ffacts, iter_canonicals as _ic_dangle
     _gdirs = []
     try:
-        for _ref in _ic_dangle(_ctx):
+        for _ref in _ic_dangle(_ctx, may_rebuild=False):
             _gdirs.append(_ref.canonical_path.parent)
     except Exception:
         _gdirs = []
     _gdirs = list(dict.fromkeys(_gdirs))
     _dangling = dangling_links(auto_mem, global_dirs=_gdirs)
-    _global_fact_count = len(_ffacts(_ctx))
+    _global_fact_count = len(_ffacts(_ctx, may_rebuild=False))
     _obnj = bool((remediation or {}).get("required"))
     # ⚠ A FAULT IS WORK, and this leaf said otherwise. `over_budget_not_justified` is
     # `remediation.required`, which is ABSENT on a fault — so a store whose index nobody could read
