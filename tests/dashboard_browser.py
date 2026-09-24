@@ -260,6 +260,12 @@ def main(out,capture=False):
         _ft = json.loads(json.dumps(record))
         for _b in ("index", "claude_md", "global_claude_md"):
             _ft["budget"][_b]["unmeasurable"] = True
+        # ⚠ A NON-ZERO `index_mismatch` is REQUIRED for the store-checks assertion below to
+        # discriminate: `sections.js` gates the entry on `num(...) > 0`, so a zero count would make
+        # the check pass whether or not the exemption exists. A coverage lens measured that
+        # dropping the exemption left BOTH suites green — the fixture had no drift to exempt.
+        _ft["health"] = {"schema_drift": {"missing_node_type": 0, "malformed_scope": 0,
+                                          "malformed_origin": 0, "index_mismatch": 3}}
         fixture('faulted-gauges', _ft, cycles=[_ft])
         check('an UNMEASURABLE index is never drawn as a confident number — not on the KPI strip '
               '(the first thing a reader scans) and not on the meter',
@@ -267,6 +273,25 @@ def main(out,capture=False):
                             "var kt=k?k.textContent:'';var mt=m?m.textContent:'';"
                             "return kt.indexOf('UNMEASURABLE')>=0 && mt.indexOf('%')<0 "
                             "&& mt.toLowerCase().indexOf('unmeasurable')>=0;}"))
+        # ⚠ THE OBSERVABLE IS THE STATE CHIP, not the text. Two measured attempts got this wrong
+        # before it: `document.body.textContent` reads the bundles INLINED AS JS, so the first cut
+        # found the phrase in THE COMMENT EXPLAINING IT (this repo's own "a text check reads prose
+        # about its subject" trap), and `#store-evidence` never carries it at all — measured, the
+        # phrase exists only inside the `<script>` tag. `#store-checks`'s `.health-status` is what
+        # the reader actually sees, and it moves on exactly this finding.
+        _state52 = ("()=>{var e=document.getElementById('store-checks');if(!e)return '?';"
+                    "var s=e.querySelector('.health-status');return s?s.textContent.trim():'?';}")
+        check('an UNMEASURABLE index does NOT raise the archive\'s store-check — an index nobody '
+              'could open names NOTHING, so every fact reads as un-indexed and the `index↔file` '
+              'count is manufactured by the read failure, not observed in the store',
+              page.evaluate(_state52) != 'Needs attention')
+        _hd = json.loads(json.dumps(record))
+        _hd["health"] = {"schema_drift": {"missing_node_type": 0, "malformed_scope": 0,
+                                          "malformed_origin": 0, "index_mismatch": 3}}
+        fixture('measured-drift', _hd, cycles=[_hd])
+        check('…and a MEASURED index with the SAME drift count DOES raise it — the exemption is a '
+              'branch on the fault, not the removal of a finding',
+              page.evaluate(_state52) == 'Needs attention')
         # ⚠ `fixture()` NAVIGATES the shared page, and every check after this one assumes the
         # default `#sel=7` view — measured: without this restore, the very next check ("opening the
         # current dream reveals and focuses its summary", which asserts `#sel=7`) failed, because
