@@ -362,8 +362,15 @@ def stale_lock_note(lock_dir: Optional[Path], importer: Callable = importlib.imp
             continue
         try:
             fcntl_mod.flock(fd, fcntl_mod.LOCK_EX | fcntl_mod.LOCK_NB)
-        except (OSError, BlockingIOError):
-            held += 1
+        except BlockingIOError:
+            held += 1                     # ONLY contention: the lock really is held elsewhere
+        except OSError:
+            # ⚠ NOT a held lock. `except (OSError, BlockingIOError)` conflated EWOULDBLOCK with
+            # EVERY other errno, so a faulted ACQUIRE — EBADF on a bad fd, say — produced the very
+            # "another process holds the plane" verdict this function's docstring reserves for a
+            # genuinely held lock. Measured by a review lens: same manufactured-verdict class as
+            # the unlock fix beside it, one call away, and uncovered by any check.
+            pass
         else:
             # ⚠ The UNLOCK is CLEANUP, and its failure must not become a FINDING. Both calls shared
             # one `try`, so a faulted `LOCK_UN` was scored as a held lock. MEASURED by a review

@@ -24991,10 +24991,31 @@ with _tf43.TemporaryDirectory() as _td_f59:
     _honest59 = _pf59.stale_lock_note(_lkD59, importer=_import59)
     _probeD59 = Path(_td_f59) / "pdata"
     _honest_rc59 = _pf59.probe_sqlite_roundtrip(_probeD59, _sq59, _cp59, _fc59)["status"]
+    # ⚠ F2 — THE POSITIVE ARM, and without it this pin is ONE-SIDED. A review lens measured that
+    # removing `held += 1` (so the acquire no longer decides), or making `stale_lock_note` never
+    # report, BOTH left the suite green at 2331/0: nothing anywhere asserted that a GENUINELY HELD
+    # lock still yields the advisory. A pin asserting only "no false verdict" cannot tell the fix
+    # from a function that never reports at all. Held here across a SEPARATE fd — flock conflicts
+    # across descriptions in one process, which is what makes this a real hold, not a stub.
+    _hold59 = _cp56.FileLock(_lkD59 / "genuinely-held.lock")
+    _hold59.acquire()
+    try:
+        _positive59 = _pf59.stale_lock_note(_lkD59, importer=_import59)
+    finally:
+        _hold59.release()
     _fc59.flock = _unlock_boom59                        # type: ignore[assignment]
     try:
-        _faulted59 = _pf59.stale_lock_note(_lkD59, importer=_import59)
-        _faulted_rc59 = _pf59.probe_sqlite_roundtrip(_probeD59, _sq59, _cp59, _fc59)["status"]
+        # ⚠⚠ THE INNER try IS NOT DEFENSIVE PADDING — a review lens measured that without it an
+        # exception raised INSIDE this stub window (which a mutation of the code under test
+        # produces) propagates out of MODULE SCOPE: the run ends with NO TOTALS LINE, D6 is never
+        # reached, and every later check is lost. That is a CRASH, not a red — the third time this
+        # failure class has appeared on this project, and the first time it was introduced by a pin
+        # written to CLOSE one. A pin must redden; it must never take the counter with it.
+        try:
+            _faulted59 = _pf59.stale_lock_note(_lkD59, importer=_import59)
+            _faulted_rc59 = _pf59.probe_sqlite_roundtrip(_probeD59, _sq59, _cp59, _fc59)["status"]
+        except Exception as _eWin59:
+            _faulted59, _faulted_rc59 = f"RAISED {_eWin59!r}", "RAISED"
     finally:
         _fc59.flock = _realFlock59
 check("v0.4.59 (PIN): a faulted `LOCK_UN` manufactures NO verdict — the held-lock advisory still "
@@ -25003,7 +25024,10 @@ check("v0.4.59 (PIN): a faulted `LOCK_UN` manufactures NO verdict — the held-l
       "the UNLOCK moved; the ACQUIRE still decides, or the fix would trade one manufactured "
       "verdict for another",
       _honest59 is None and _faulted59 is None
-      and _honest_rc59 == "pass" and _faulted_rc59 == "pass")
+      and _honest_rc59 == "pass" and _faulted_rc59 == "pass"
+      # ⚠ F2's positive arm: a GENUINELY HELD lock still reports, so the fix cannot be satisfied by
+      # a function that never reports at all (measured green without this conjunct).
+      and _positive59 is not None and "HELD" in _positive59)
 
 # --- v0.4.54 (PIN): the CACHED ROW'S TWO-PART WARRANT -------------------------------------------
 # A review lens asked whether `load()` re-derives `secret` and found that it does not — "an identity
