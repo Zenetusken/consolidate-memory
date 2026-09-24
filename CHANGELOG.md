@@ -5,6 +5,86 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.54] — 2026-09-24
+
+**Patch — six open items closed: three measured, two derived, one defect the review found in my own
+earlier guard.**
+
+1. **Phase 0 stops reaching the manifest rebuild.** `build_context`'s two enumerators now pass
+   `may_rebuild=False`, threaded through `facts_for_context` and `iter_canonicals`. SKILL declares
+   *"Phases 0, 2, and 3 are read-only investigation"*, and the hazard the review named is not the
+   write but the **wait**: `ensure` rebuilds under `global.lock`, so a plain `memory_status` /
+   `cm status` could block on a concurrent `cm sync`. The lock is off the path entirely now.
+   ⚠ **Measured, not judged** — which is what this item lacked. Phase 0 already writes: a bare
+   `--json` run creates `locks/{global,domain-*,project-*}.lock` and `.consolidation-state.json`.
+   So the claim is not that the phase is otherwise write-free; it is that the manifest is the one
+   write that *can* be avoided, at the cost of a full enumeration while the cache is cold.
+   Verified after the change: **no manifest written**, warm Phase-0 wall time **0.15 s**.
+
+2. **`cm data facts-refresh` now has its EXIT CODE pinned** — the last of the six coverage holes.
+   Factored as `_facts_refresh_probe` so the code is reachable without enrolling a project. A
+   coverage lens measured that deleting the `return 1` left both suites green: the documented repair
+   printing "did NOT rebuild" and exiting **0**, reporting success on a cache that can never
+   rebuild. ⚠ The healthy arm was first written with a REAL fact because of a BUG the review then
+   found and this same patch fixed: `ensure` read a successful empty rebuild (`files: []`) as
+   falsy → `rebuild-failed`, so a zero-fact domain exited 1 for the wrong reason. **Stated in the
+   past tense deliberately** — the review fixed the mechanism, and a present-tense sentence here
+   would assert a property the code no longer has. A PIN now covers the empty case directly.
+
+3. **The cached row's TWO-PART warrant is now stated, and its other half pinned.** A review lens
+   asked whether `load()` re-derives `secret`; it does not, and *"an identity match is the whole
+   warrant"* is true of **`load()`** and false of the **system**: the warrant is *(predicate
+   unchanged)* ∧ *(file unchanged)* — the first enforced in `load`, the second in
+   `sync_global._consider_fast`, because only the consumer holds the `DirEntry` stat that makes the
+   warm path warm. ⚠ Re-deriving `secret` is **not** the repair: every row field comes from the
+   same read, so checking one means re-reading, which is the cache. What was missing is the
+   statement (now `load`'s docstring) and a pin on the half that is easy to lose.
+
+4. **A defect the review found in my own earlier guard.** `_execute_pull_writes` returns an `error`
+   key when it declines to write without a revision precondition — and the caller read only
+   `pulled`/`refreshed`/`fat`. So `cm sync --pull --allow-net-grow`, **one of the two remedies the
+   ceiling hold's own message prints**, reported `pulled 0 · refreshed 0` and exited **0**: a
+   swallowed refusal, indistinguishable to a script from "nothing to do". The stderr line named the
+   repair; nothing carried it to the exit code. This is the item I listed as *"never drove it
+   end-to-end"* — driving it is what found it.
+
+5. **`v0.4.45`'s CHANGELOG attributed a comment to the wrong release.** It cited *"the previous
+   patch's own comment"*; `git log -S` plus `git tag --contains` put the comment in `e868ecd`, which
+   ships in **v0.4.45** itself. DERIVED, not adopted from the lens.
+
+**Review round (two lenses returned before merge; both found real defects, most in code THIS
+patch added):**
+
+- **A permanent FALSE RED in `_facts_refresh_probe`** — the helper this patch introduced. `ensure`'s
+  `if rows:` read a *successful empty* rebuild as failure (`build()` returns `[]`, the manifest is
+  written as `{"files": []}`, and `{}` is falsy), so `cm data facts-refresh` reported permanent,
+  **unclearable** failure with a **blank cause** on the state every project is in right after
+  `cm project enroll`. Found independently by two lenses. Fixed at the root and in the probe;
+  `rebuild-failed` removed from `_NONREBUILDABLE` as now genuinely dead.
+- **`cross_project_allowed` conflated a FAULT with a VERDICT at three sites.** An unenrolled
+  project is supported; an unhealthy registry is a fault, and both make the same predicate false.
+  The pull printed one message for both and returned **0** (measured: a corrupt `control.sqlite`
+  → `('corrupt', 'file is not a database')`, rc 0); `--harvest` was the twin; `gc` went further and
+  asserted *"present but empty (no canonical facts)"* — a definite claim about the store's
+  **contents** the code never established. All three name the cause now; the fault exits 2.
+- **A crash spelled as an entitlement verdict, driving a DELETE.** `_classify_frozen`'s
+  `except Exception: admitted = False` fell through to `("not-entitled", …)`, which `gc()` prints
+  as *"member removed / not admitted"* and **deletes** under `--gc --apply`. "Could not tell" is
+  not a licence to delete: it leaves the mirror alone and names the fault.
+- **A fabricated dangling count.** `_gdirs`'s swallow published a number the instrument could not
+  compute — measured, a resolvable `[[sharedfact]]` link went 0 → 1 dangling and `maintenance.work`
+  False → True. The fault is now recorded and carried through the TypedDict and the seed, because
+  `dangling: 0` alone cannot be told from a clean store.
+
+6. **"four frames down" was off by one in two of four sites.** Counted: `main`(0) →
+   `iter_admissible_facts`(1) → `_admissible_records`(2) → **`ensure`(3)** → `_rebuild_locked`(4).
+   ⚠ **Corrected:** the first pass claimed `facts_manifest.py`'s copy "names the *write* and is
+   correct" — it does not. Its own parenthetical terminates at `ensure` (frame 3) while the
+   sentence says four, so **all three** named sites were off by one, and the site declared correct
+   was the one not re-read. Its line number was also stale (`:387` → the sentence had moved). Both
+   fixed, and the citations now use greppable phrases instead of line numbers, because a citation
+   inside the file it cites goes stale on the next edit to that file. Both now say three and name the fourth explicitly.
+
 ## [0.4.53] — 2026-09-24
 
 **Patch — the beacon's fault path gets the behavioural arm 0.4.52 shipped without.**
@@ -51,7 +131,8 @@ were real:
    reads. The helper was pinned; **neither call site was**.
 3. **The oversize refusal's stderr notice** — removing the `print` passed. It is the sole place the
    offending file can be named, and without it the operator gets a permanently cold cache
-   (measured 1.3 ms → ~1.4 s per call) with no lead.
+   (measured 1.3 ms → ~1.4 s per call on a 300-fact store **holding one 5 MiB fact** — the file
+   whose full read is the cost; the same store without it enumerates in ~40 ms) with no lead.
 
 Plus the archive's `sections.js` exemption, which had **no test at all** — and the check written to
 provide one failed twice, for two different reasons worth recording:
@@ -311,8 +392,8 @@ unreadable store answered "under budget" at every site that renders, decides, or
    bare comparisons, and the fault reaches the operator through `--triage` instead. Detailed
    because the earlier sentence here — "no consumer can reach a default that spells UNKNOWN as
    healthy" — was stronger than the payload. `--triage` printed its green
-   `✓ index under budget (0/1500 tok) — nothing to remediate` — verbatim the string the previous
-   patch's own comment named as the defect it was fixing — on the very surface SKILL Phase 5 reads
+   `✓ index under budget (0/1500 tok) — nothing to remediate` — verbatim the string THIS cycle's
+   own comment named as the defect it was fixing — on the very surface SKILL Phase 5 reads
    to decide whether a pass runs HEAVY; `remediation.required` never fired, so the mandatory
    hard-stop went quiet; and the schema-drift advisory offered `backfill`, **the one action the
    no-net-grow gate forbids**, keyed on a budget comparison that read `0 > 1500` from a file it

@@ -733,6 +733,10 @@ re-ensure after iter_admissible_facts and parse the 10k-row JSON a second time).
 
 _PROJECT_MEMBERSHIPS_CACHE: dict = {}
 
+# `_classify_frozen`'s admit-raise is systematic (a broken registry hits every mirror in the
+# sweep), so its fault note prints ONCE per process rather than once per mirror.
+_CF_ADMIT_FAULT_NOTE = False
+
 
 def _project_memberships(ctx, *, refresh: bool = False) -> set:
     """The group slugs ctx.project_id belongs to (group-scopes spec §5-C).
@@ -1136,21 +1140,29 @@ def _canonical_path(ctx, name: str) -> Path:
     return p
 
 
-def facts_for_context(ctx, *, all_domains: bool = False) -> list:
-    """Ordinary fleet readers: current-domain Canonicals only (ADR 015)."""
+def facts_for_context(ctx, *, all_domains: bool = False, may_rebuild: bool = True) -> list:
+    """Ordinary fleet readers: current-domain Canonicals only (ADR 015).
+
+    `may_rebuild=False` makes the whole chain read-only — see `facts_manifest.ensure`'s
+    `may_write`, which this threads to. Phase 0 passes it; see the note at that call site.
+    """
     if all_domains:
         return [(s, fm, t) for s, fm, t, _p in _all_domain_records()]
     if getattr(ctx, "cross_project_allowed", False):
-        return iter_admissible_facts(ctx)
+        return iter_admissible_facts(ctx, may_rebuild=may_rebuild)
     return []
 
 
-def iter_canonicals(ctx, *, all_domains: bool = False) -> list:
-    """Typed enumerator (ADR 008/015). Bare stems are not a trust boundary."""
+def iter_canonicals(ctx, *, all_domains: bool = False, may_rebuild: bool = True) -> list:
+    """Typed enumerator (ADR 008/015). Bare stems are not a trust boundary.
+
+    `may_rebuild=False` keeps the chain read-only; see `facts_for_context`'s note.
+    """
     from identity import ref_from_path
     refs: list = []
     seen: set = set()
-    recs = _all_domain_records() if all_domains else _admissible_records(ctx)
+    recs = (_all_domain_records() if all_domains
+            else _admissible_records(ctx, may_rebuild=may_rebuild))
     for stem, fm, _text, path in recs:
         # P3: manifest-served recs carry the path STRING (built on fallback only);
         # the full-read path still carries a Path. Normalize here — off the hot path.
@@ -1928,8 +1940,23 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                   % (ctx.domain_id, life), file=sys.stderr)
             return 2
     if pull and not getattr(ctx, "cross_project_allowed", False):
-        print("pull: local-only (unenrolled or unhealthy registry) — skipping",
-              file=sys.stderr)
+        # ⚠ TWO CAUSES, ONE MESSAGE, ONE EXIT CODE — and only ONE of them is benign. An UNENROLLED
+        # project is a supported state, where skipping at 0 is right. An UNHEALTHY REGISTRY is a
+        # FAULT: a corrupt `control.sqlite` makes the SAME predicate False, and this returned 0
+        # with a message byte-identical to the benign arm — so a script saw success on a store
+        # whose registry could not be READ, and the operator was told "unenrolled or unhealthy",
+        # which names the fault and the verdict in one string and separates neither. MEASURED by a
+        # review lens: `classify_registry` → `('corrupt', 'file is not a database')`, rc 0. The
+        # cause is carried on the context (`registry_error`) and was dropped; it is named now, and
+        # the fault exits 2 exactly like its three siblings above. ⚠ This is 575 lines from the
+        # refusal this PR fixed, and it is NOT on the `_done(rc)` ladder — a sweep scoped to that
+        # ladder structurally cannot see it, which is why the first pass missed it.
+        _reg_err_p = str(getattr(ctx, "registry_error", "") or "")
+        if _reg_err_p:
+            print(f"pull: REFUSED — the registry could not be read ({_reg_err_p}); this is a "
+                  f"FAULT, not an unenrolled store. Repair it and re-run.", file=sys.stderr)
+            return 2
+        print("pull: local-only (unenrolled) — skipping", file=sys.stderr)
         return 0
     if pull and not ctx.auto_memory_enabled:
         print("pull: auto-memory is disabled — refusing writes (absence is not drift)", file=sys.stderr)
@@ -2494,6 +2521,17 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                                       sem_by_name=_sem_map)
         except _CrashPull:
             print("pull: crash-after journal step (pending op left for recover)", file=sys.stderr)
+            return _done(1)
+        # ⚠ READ the refusal, or the refusal is not one. `_execute_pull_writes` returns an `error`
+        # key when it declines to write — no revision precondition is available (`index-unreadable`)
+        # — and an earlier cut of that guard left this caller reading only `pulled`/`refreshed`/
+        # `fat`. So the pull reported `pulled 0 · refreshed 0` and exited 0: a SWALLOWED refusal,
+        # indistinguishable to a script from "nothing to do", on the very remedy
+        # (`--allow-net-grow`) the ceiling hold's own message prints. The stderr line named the
+        # repair; nothing carried it to the exit code. Found by the review this arc was opened for.
+        _werr = str(_w.get("error") or "")
+        if _werr:
+            print(f"pull: refused — {_werr}", file=sys.stderr)
             return _done(1)
         pulled = int(_w.get("pulled") or 0)
         refreshed = int(_w.get("refreshed") or 0)
@@ -3072,8 +3110,25 @@ def _classify_frozen(ctx, name: str, *, stacks: set, memberships: set,
                 ctx.domain_id, adm, migration_mode=_mode_cf,
                 looks_secret=_looks_secret, memberships=memberships,
                 group_recips=set(_pfl_cf(str(c_fm.get("recipients") or ""))))
-    except Exception:
-        admitted = False
+    except Exception as _e_cf:
+        # ⚠ A RAISED ADMIT CHECK IS NOT A VERDICT, and this arm used to spell it as one: setting
+        # `admitted = False` made a registry/group lookup FAILURE fall through to
+        # `("not-entitled", canon_p)` — which `gc()` prints as *"this project is not entitled
+        # (member removed / not admitted)"* and **DELETES** under `--gc --apply`. MEASURED by a
+        # review lens: healthy admission → `None` ("nothing to reclaim"); with
+        # `admit_cross_project` raising → `('not-entitled', <canon>)`, so the mirror is reclaimed
+        # and the FROZEN tally is inflated by FAULT rather than by policy.
+        # ⚠ "Could not tell" is not a licence to DELETE. Not-frozen is the conservative answer —
+        # the mirror is left alone — and the fault is NAMED rather than silently skipped. Printed
+        # once per process: the raise is systematic (a broken registry hits every mirror), so per
+        # -mirror output would be noise around a single cause.
+        global _CF_ADMIT_FAULT_NOTE
+        if not _CF_ADMIT_FAULT_NOTE:
+            _CF_ADMIT_FAULT_NOTE = True
+            print(f"gc: could not classify mirrors for frozen reclamation — the admission check "
+                  f"raised ({type(_e_cf).__name__}: {_e_cf}); leaving them ALONE rather than "
+                  f"reclaiming on a fact never established", file=sys.stderr)
+        return None
     if admitted:
         if _recipients_stale_for(c_fm, memberships, g_created):
             return ("guard-stale", canon_p)
@@ -3165,6 +3220,19 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                 else:
                     print("gc: no live canonicals and no leftover mirrors — nothing to reclaim")
                 return 0
+            # ⚠ The third surface of the same conflation, and the only one whose output is a
+            # DIAGNOSIS rather than an exit code. `cross_project_allowed` is False for an
+            # unhealthy registry too, so a corrupt `control.sqlite` made this branch assert
+            # "present but empty (no canonical facts)" — a definite statement about the store's
+            # CONTENTS, which the code never established and which is false. A fabricated
+            # diagnosis is worse than a false green here: it sends the operator to look for a
+            # missing fact instead of a broken registry.
+            _reg_err_g = str(getattr(_ctx_gc, "registry_error", "") or "")
+            if _reg_err_g:
+                print(f"gc: REFUSED — the registry could not be read ({_reg_err_g}); this is a "
+                      f"FAULT, not an empty store, so the canonicals cannot be counted. "
+                      f"Repair it and re-run.", file=sys.stderr)
+                return 2
             why = ("no admissible canonicals" if getattr(_ctx_gc, "cross_project_allowed", False)
                    else ("absent" if not global_store().exists()
                          else "present but empty (no canonical facts)"))
@@ -5025,8 +5093,15 @@ def harvest(project_dir: Path) -> int:
     from store_context import resolve_store as _rs_h
     _hctx = _rs_h(project_dir)
     if not getattr(_hctx, "cross_project_allowed", False):
-        print("harvest: local-only (unenrolled or unhealthy registry) — skipping",
-              file=sys.stderr)
+        # ⚠ The SAME conflation as the pull's, at the second of three sites: an unhealthy registry
+        # and an unenrolled project share this predicate, the message and the exit code, so a
+        # `--harvest` fleet capture silently no-opped at 0 on a registry that could not be READ.
+        _reg_err_h = str(getattr(_hctx, "registry_error", "") or "")
+        if _reg_err_h:
+            print(f"harvest: REFUSED — the registry could not be read ({_reg_err_h}); this is a "
+                  f"FAULT, not an unenrolled store. Repair it and re-run.", file=sys.stderr)
+            return 2
+        print("harvest: local-only (unenrolled) — skipping", file=sys.stderr)
         return 0
     if _global_is_fixture():
         stores = _network_nodes()

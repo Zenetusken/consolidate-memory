@@ -24094,6 +24094,104 @@ check("v0.4.50 (PIN, structural): no consumer reads a fault key through `.get(..
       "silently reading as 'no fault' (pre-fix: nine such defaults, all defaulting to healthy)",
       _defaulted_fk == [])
 
+# --- v0.4.54 (PIN): the CACHED ROW'S TWO-PART WARRANT -------------------------------------------
+# A review lens asked whether `load()` re-derives `secret` and found that it does not — "an identity
+# match is the whole warrant". That is true of `load()` and FALSE OF THE SYSTEM: the warrant is
+# (predicate unchanged) ∧ (file unchanged), the first enforced in `load` and the second in the
+# consumer, because only the consumer holds the `DirEntry` stat that makes the warm path warm.
+# ⚠ Re-deriving `secret` is not the repair — every row field comes from the same read, so checking
+# one means re-reading, which is the cache. What needed to exist is the STATEMENT (now in `load`'s
+# docstring) and a pin on the half that is easy to lose: the stats check, one frame out.
+_sg54_src = " ".join((ROOT / "plugins" / "consolidate-memory" / "scripts" / "sync_global.py"
+                      ).read_text(encoding="utf-8").split())
+check("v0.4.54 (GUARD, structural regression — green on both trees BY CONSTRUCTION: the stats check "
+      "shipped with the manifest itself, so this cannot redden pre-fix; its value is that LOSING "
+      "the check now reddens): the consumer's half of the two-part warrant is ENFORCED — "
+      "`_consider_fast` compares BOTH `st_mtime_ns` and `st_size` against the cached row before "
+      "serving it, so an edited fact falls back to the full read rather than being trusted on the "
+      "predicate match alone",
+      'st_mtime_ns == int(r.get("mtime_ns") or -1)' in _sg54_src
+      and 'st.st_size == int(r.get("size") or -1)' in _sg54_src)
+
+# --- v0.4.54 (PIN): the pull CONSUMES `_execute_pull_writes`'s refusal --------------------------
+# The guard that declines to write without a revision precondition returns an `error` key, and the
+# caller read only `pulled`/`refreshed`/`fat` — so the pull reported `pulled 0 · refreshed 0` at
+# exit 0: a SWALLOWED refusal, indistinguishable to a script from "nothing to do", on the very
+# remedy (`--allow-net-grow`) the ceiling hold's message prints. Found by the review this arc was
+# opened for, in the guard I had added two patches earlier.
+check("v0.4.54 (PIN, structural): the pull READS its own refusal and exits non-zero — a key in a "
+      "returned dict that no caller consumes is a silent swallow, not a refusal",
+      # ⚠ ONE CONTIGUOUS SPAN, not three loose substrings. `return _done(1)` occurs all over this
+      # file, so asserting it separately would pass even if the refusal block printed and FELL
+      # THROUGH without returning — the third conjunct would discriminate nothing while looking
+      # like it did. The whitespace-normalized source is checked as a single phrase so the read,
+      # the branch and the return must be ADJACENT to satisfy it.
+      'if _werr: print(f"pull: refused — {_werr}", file=sys.stderr) return _done(1)'
+      in _sg54_src)
+
+# --- v0.4.54 (PIN): `cm data facts-refresh`'s EXIT CODE -----------------------------------------
+# Its MESSAGE was covered; its EXIT CODE was not, and a coverage lens measured that deleting the
+# `return 1` left both suites green — the documented repair printing "did NOT rebuild" and still
+# exiting 0, which is a command reporting success on a cache that can never rebuild.
+# ⚠ The healthy arm needed a real fact because of a BUG in `ensure`, since fixed: `build()` returns
+# `[]` for an empty dir, `_rebuild_locked` writes `files: []`, and `ensure`'s `if rows:` read that
+# `{}` as falsy → `(None, "rebuild-failed")`. Two review lenses measured the consequence — this
+# probe returned **1, permanently and unclearly, for every freshly-enrolled domain**, with a BLANK
+# cause. The EMPTY arm below now pins the repair directly; the one-fact arm is kept because it is
+# the case the exit code was originally added for.
+_co54 = __import__("cm_ops")
+import types as _types54
+with _tf43.TemporaryDirectory() as _td_fr54:
+    _pd_fr54 = Path(_td_fr54) / "pdata"; _pd_fr54.mkdir()
+    _dd_fr54 = Path(_td_fr54) / "domains" / "dfr" / "facts"; _dd_fr54.mkdir(parents=True)
+    (_dd_fr54 / "one.md").write_text("---\nname: one\ndescription: d\n---\nb\n", encoding="utf-8")
+    _ctx_fr54 = _types54.SimpleNamespace(canonical_domain_dir=_dd_fr54,
+                                         plugin_data_dir=_pd_fr54, domain_id="dfr")
+    # ⚠ `getattr`: the helper is NEW, and a bare attribute access raises AttributeError AT MODULE
+    # SCOPE on the pre-fix tree — truncating every check after it. THIRTEENTH occurrence of this
+    # trap on the arc; guarded BEFORE the pre-fix measurement, not found by it.
+    _fr54 = getattr(_co54, "_facts_refresh_probe", None)
+    _rc_fr54_ok = _rc_fr54_bad = None
+    _err_fr54 = _io73.StringIO()
+    if _fr54 is not None:
+        with _ctx73.redirect_stderr(_err_fr54):
+            _rc_fr54_ok = _fr54(_ctx_fr54)
+    # ⚠ The invalidation is part of the command, so the arm must perform it: the healthy probe
+    # above WROTE a manifest, and a second probe against a fresh manifest returns it without ever
+    # rebuilding — measured, that returned rc 0 and "rebuilt 1 row(s)" for a domain holding an
+    # oversize fact, i.e. the fixture would have asserted nothing.
+    (_dd_fr54 / "big.md").write_text(
+        "---\nname: big\ndescription: d\n---\n" + ("filler line\n" * 350000), encoding="utf-8")
+    _fm44.invalidate_all(_pd_fr54)
+    _err_fr54b = _io73.StringIO()
+    if _fr54 is not None:
+        with _ctx73.redirect_stderr(_err_fr54b):
+            _rc_fr54_bad = _fr54(_ctx_fr54)
+    check("v0.4.54 (PIN): `cm data facts-refresh` EXITS NON-ZERO when the domain cannot rebuild — "
+          "the documented repair must not report success on a permanently-cold cache (pre-fix: "
+          "the message printed and rc stayed 0; measured by a coverage lens, both suites green)",
+          _rc_fr54_ok == 0 and _rc_fr54_bad == 1
+          and "did NOT rebuild" in _err_fr54b.getvalue())
+    # ⚠ AND THE INVERSE: a zero-fact domain is a SUCCESSFUL empty rebuild, not a failure. This is
+    # the arm that catches the false red two review lenses found in the probe above — `ensure`
+    # returns `({}, "rebuilt")` and a truthiness test read it as failure, so `cm data facts-refresh`
+    # reported permanent, unclearable failure on the state EVERY project is in immediately after
+    # `cm project enroll`, with a blank cause.
+    _dd_fr54e = Path(_td_fr54) / "domains" / "dempty" / "facts"; _dd_fr54e.mkdir(parents=True)
+    _ctx_fr54e = _types54.SimpleNamespace(canonical_domain_dir=_dd_fr54e,
+                                          plugin_data_dir=_pd_fr54, domain_id="dempty")
+    _err_fr54e = _io73.StringIO()
+    if _fr54 is not None:
+        with _ctx73.redirect_stderr(_err_fr54e):
+            _rc_fr54_empty = _fr54(_ctx_fr54e)
+    else:
+        _rc_fr54_empty = None
+    check("v0.4.54 (PIN): a ZERO-FACT domain rebuilds SUCCESSFULLY — `ensure` returns `({}, "
+          "\"rebuilt\")` and a truthiness test read that empty success as failure, so the "
+          "documented repair reported a permanent, unclearable refusal on the state every project "
+          "is in right after `cm project enroll` (two lenses, independently)",
+          _rc_fr54_empty == 0 and "did NOT rebuild" not in _err_fr54e.getvalue())
+
 # --- v0.4.52: THE COVERAGE HOLES A MUTATION LENS FOUND ------------------------------------------
 # The beacon's `_pull_index_seed` ROUTING was unpinned: reverting `_idx_seed` to
 # `est_tokens(idx_text)` left the whole suite green (measured), because every existing beacon pin
@@ -24165,7 +24263,9 @@ check("v0.4.52 (GUARD, structural regression — green on both trees BY CONSTRUC
 
 # ⚠ The OVERSIZE refusal's stderr notice — the sole place the offending file can be named, and a
 # coverage lens measured that DROPPING the print leaves the suite green. Without it the operator
-# gets a silently and permanently cold cache (measured 1.3 ms → ~1.4 s per call) with no lead.
+# gets a silently and permanently cold cache (measured 1.3 ms → ~1.4 s per call on a 300-fact
+# store HOLDING ONE 5 MiB fact — the file whose full read is the cost; ~40 ms without it) with no
+# lead. ⚠ The condition is part of the number: quoted without it, 1.4 s reads as "300 facts".
 with _tf43.TemporaryDirectory() as _td_ov52:
     _pd_ov52 = Path(_td_ov52) / "pdata"; _pd_ov52.mkdir()
     _fd_ov52 = Path(_td_ov52) / "domains" / "dov" / "facts"; _fd_ov52.mkdir(parents=True)
@@ -24680,6 +24780,26 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 3        # v0.4.54 — 1 GUARD (the two-part warrant's CONSUMER half:
+                                       #     `_consider_fast` compares mtime_ns AND size) + 1 PIN
+                                       #     (the pull consumes its own refusal) + 1 PIN below.
+                                       #     ⚠ The first closes the lens's "an identity match is
+                                       #     the whole warrant" by PINNING THE OTHER HALF rather
+                                       #     than abolishing the cache — and it is a GUARD, not a
+                                       #     pin: the stats check shipped WITH the manifest, so it
+                                       #     is green on both trees. The second IS a true pin (it
+                                       #     reddens pre-fix, measured) and is a defect the review
+                                       #     found in the guard I added two patches earlier.
+                                       #     + 1 PIN on the INVERSE case, added when two review
+                                       #     lenses independently found the probe returning a
+                                       #     PERMANENT FALSE RED for a zero-fact domain.
+                            + 1        # v0.4.54 — `cm data facts-refresh`'s EXIT CODE: the last of
+                                       #     the coverage holes a mutation lens found. Its message
+                                       #     was covered; deleting the `return 1` left both suites
+                                       #     green, so the documented repair reported success on a
+                                       #     cache that can never rebuild. Factored as
+                                       #     `_facts_refresh_probe` so the code is pinnable without
+                                       #     enrolling a project.
                             + 4        # v0.4.52 — the coverage holes from the adversarial round: 4
                                        #     GUARDs, NOT pins. ⚠ Every one is green on EVERY SHIPPED
                                        #     tree by construction — the behaviours shipped in

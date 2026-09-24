@@ -455,7 +455,12 @@ class Maintenance(TypedDict, total=False):
     # Phase-0 no-op stop. Signal-driven: the pivot cue is DATA, not prose (missing prose is what failed).
     dangling: int                    # dangling [[wikilinks]] (len(dangling_links()) — the single-source helper)
     over_budget_not_justified: bool  # = remediation.required (the dual-axis suppression result; NOT a fresh budget compare)
-    work: bool                       # any(dangling>0, over_budget_not_justified) — the magnitude-0 pivot trigger
+    work: bool                       # any(dangling>0, over_budget_not_justified, the index FAULT, a dangling FAULT)
+    # v0.4.54: non-empty when the dangling count could NOT be computed (the resolution set raised).
+    # ⚠ `dangling: 0` beside this is NOT "nothing dangling" — it is the fabricated zero the fault
+    # produces, and a record that carried only the zero would publish a number for an instrument
+    # that never ran. Named so the reader can tell the two apart.
+    dangling_unresolved: str
     pivoted: bool                    # Phase 5: the model RAN a maintenance pass (drives the MAINTENANCE outcome banner)
 
 
@@ -3674,16 +3679,40 @@ def build_context(project_dir: Path) -> dict:
     # REUSES the dual-axis suppression result (`remediation.required`), NOT a fresh budget compare — so a
     # standing-justified store reads False (no perpetual pivot). `remediation` is {} on the healthy path,
     # hence `.get`, not subscript (would KeyError). No `stale_since_marker` (it re-fires every run).
+    # ⚠ READ-ONLY, and this is the MEASURED half of a call I had previously left as a judgment.
+    # Phase 0 is read-only BY CONTRACT (SKILL: "Phases 0, 2, and 3 are read-only investigation"),
+    # and the concrete hazard the review named is not the write but the WAIT: `ensure` rebuilds
+    # under `global.lock`, so a plain `memory_status`/`cm status` could BLOCK on a concurrent
+    # `cm sync`. `may_rebuild=False` removes the lock from the path entirely.
+    # ⚠ What I measured rather than assumed: Phase 0 already writes — a bare `--json` run creates
+    # `locks/{global,domain-*,project-*}.lock` and `.consolidation-state.json`. So this is not a
+    # claim that the phase is otherwise write-free; it is that the MANIFEST is the one write that
+    # can be avoided, and that avoiding it costs only a full enumeration while the cache is cold.
     from sync_global import facts_for_context as _ffacts, iter_canonicals as _ic_dangle
     _gdirs = []
     try:
-        for _ref in _ic_dangle(_ctx):
+        for _ref in _ic_dangle(_ctx, may_rebuild=False):
             _gdirs.append(_ref.canonical_path.parent)
-    except Exception:
+    except Exception as _e_dangle:
+        # ⚠ AN EMPTY LIST IS A NUMBER, and this arm published one the instrument could not compute.
+        # `_gdirs` is the set of global dirs `dangling_links` resolves against, so swallowing here
+        # made every up-link read as DANGLING: MEASURED by a review lens, with a `[[sharedfact]]`
+        # link resolving to a real canonical, the count went **0 → 1** and `maintenance.work`
+        # **False → True** — a fault fabricating maintenance work, in the direction the docstring
+        # at :1116 explicitly rules out ("a pending-pull up-link is NOT dangling").
+        # ⚠ The fault is RECORDED, so the caller can say the count is unknown rather than publish a
+        # definite wrong one; the resolution list stays empty because there is nothing better to
+        # pass, and `_dangling_unresolved` carries that fact forward.
+        _dangling_unresolved = f"{type(_e_dangle).__name__}: {_e_dangle}"
         _gdirs = []
+    else:
+        _dangling_unresolved = ""
     _gdirs = list(dict.fromkeys(_gdirs))
+    # ⚠ When the resolution set could not be BUILT, the count is UNKNOWN — not `len(...)`. With
+    # `_gdirs` empty every up-link resolves to nothing, so the count is the FABRICATION (measured:
+    # 0 → 1). Reported as an unresolved state instead, and the fault rides `maintenance.work`.
     _dangling = dangling_links(auto_mem, global_dirs=_gdirs)
-    _global_fact_count = len(_ffacts(_ctx))
+    _global_fact_count = len(_ffacts(_ctx, may_rebuild=False))
     _obnj = bool((remediation or {}).get("required"))
     # ⚠ A FAULT IS WORK, and this leaf said otherwise. `over_budget_not_justified` is
     # `remediation.required`, which is ABSENT on a fault — so a store whose index nobody could read
@@ -3692,7 +3721,12 @@ def build_context(project_dir: Path) -> dict:
     # `prune_pressure` — "falsy can only SUPPRESS an alarm, never raise one" — does not reach it,
     # because `work: False` is not a suppressed alarm, it is an affirmative "nothing to do".
     maintenance: dict = {"dangling": len(_dangling), "over_budget_not_justified": _obnj,
-                         "work": bool(_dangling) or _obnj or bool(_local["index_fault"])}
+                         # ⚠ `_dangling_unresolved` is WORK too: a count the instrument could not
+                         # compute is a thing to fix, and leaving it out would make the fabricated
+                         # zero read as "nothing dangling" on the machine-readable surface.
+                         "dangling_unresolved": _dangling_unresolved,
+                         "work": (bool(_dangling) or _obnj or bool(_local["index_fault"])
+                                  or bool(_dangling_unresolved))}
 
     # v0.1.67 (Phase C): the demotion-triage seed — longitudinal usage aggregation + the per-fact
     # evidence-gated rank. Cheap on the always-run Phase-0 path: one tail-capped log read + one store
@@ -4007,6 +4041,10 @@ def seed_record(ctx: dict) -> CycleRecord:
                    "schema_drift": ctx["schema_drift"]},
         "maintenance": {"dangling": ctx["maintenance"]["dangling"],
                         "over_budget_not_justified": ctx["maintenance"]["over_budget_not_justified"],
+                        # ⚠ carried, not computed-and-dropped: the fault is the only thing that
+                        # distinguishes this record's `dangling: 0` from a store with no dangling
+                        # links. A key that reaches no consumer is a silent swallow.
+                        "dangling_unresolved": ctx["maintenance"]["dangling_unresolved"],
                         "work": ctx["maintenance"]["work"]},
         "cross_project": {
             "global_store_facts": int(ctx.get("global_store_facts") or 0),
