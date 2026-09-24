@@ -23681,10 +23681,100 @@ check("v0.4.45 review (PIN, structural): EVERY reason `load()` returns is classi
       # directly raised AttributeError AT MODULE SCOPE and took every later check with it — the
       # EIGHTH occurrence of the RED-BY-ABSENCE trap on this arc, this time introduced by the very
       # pin written to close a coverage hole. Guarded before the pre-fix measurement, which is
-      # what caught it. `_NONREBUILDABLE` needs no guard: it exists on both trees.
+      # what caught it.
+      # ⚠ AND `_NONREBUILDABLE` NEEDS THE GUARD TOO — an earlier cut of this comment said "it
+      # exists on both trees", which is FALSE: `git log -S` puts it in `e868ecd`, AFTER `8db50a6`,
+      # the PR's own base and the revision three comments in this batch name as their measurement.
+      # Measured: against `8db50a6` the unguarded name raised `AttributeError` AT MODULE SCOPE and
+      # the run died at check #2251 — 23 of the 28 new checks never executed, INCLUDING the D6
+      # surface pin, whose entire purpose is that an orphaned section cannot print green and which
+      # cannot help when the crash precedes it. So the three `8db50a6` citations above cannot have
+      # come from a suite run at that revision. A review lens found this by running it.
       len(_reasons_rb) >= 8
-      and all((r in _fm44._NONREBUILDABLE) != (r in getattr(_fm44, "_REBUILDABLE", ()))
-              for r in _reasons_rb))
+      and all((r in getattr(_fm44, "_NONREBUILDABLE", ()))
+              != (r in getattr(_fm44, "_REBUILDABLE", ())) for r in _reasons_rb))
+
+# --- v0.4.45 adversarial (adv-coverage): the totality pin checks XOR, not DIRECTION -------------
+# Measured by a coverage lens: moving `kill-switch` from `_NONREBUILDABLE` into `_REBUILDABLE`
+# leaves the structural pin GREEN — every reason is still in exactly one tuple — while defeating
+# the operator's kill switch outright (the cache rebuilds and WRITES the manifest it was told to
+# stand aside for). Set membership cannot see direction; only behaviour can.
+with _tf43.TemporaryDirectory() as _td_ks:
+    _pd_ks = Path(_td_ks) / "pdata"; _pd_ks.mkdir()
+    _fd_ks = Path(_td_ks) / "domains" / "dks" / "facts"; _fd_ks.mkdir(parents=True)
+    (_fd_ks / "one.md").write_text("---\nname: one\ndescription: d\n---\nb\n", encoding="utf-8")
+    _prev_ks = _os53.environ.get(_fm44.KILL_SWITCH)
+    _os53.environ[_fm44.KILL_SWITCH] = "0"
+    try:
+        _rows_ks, _why_ks = _fm44.ensure(_fd_ks, _pd_ks)
+    finally:
+        if _prev_ks is None:
+            _os53.environ.pop(_fm44.KILL_SWITCH, None)
+        else:
+            _os53.environ[_fm44.KILL_SWITCH] = _prev_ks
+    check("v0.4.45 adversarial (GUARD, regression — green on both trees BY CONSTRUCTION: the "
+          "kill-switch arm shipped in 0.4.45, so this cannot redden pre-fix. Labelled honestly: "
+          "an earlier cut called it a PIN, which the pre-fix run falsified): the kill switch is "
+          "HONOURED, not merely CLASSIFIED — with "
+          "`CM_FACTS_MANIFEST=0` nothing is rebuilt, no manifest is written, and the reason is "
+          "`kill-switch`. ⚠ The structural totality pin above cannot see this, which is why both "
+          "exist: it asserts each reason sits in exactly ONE tuple, so moving `kill-switch` into "
+          "`_REBUILDABLE` keeps it green while the cache does the one thing the operator forbade",
+          _rows_ks is None and _why_ks == "kill-switch"
+          and not _fm44.manifest_path(_pd_ks, "dks").exists())
+
+# --- v0.4.45 adversarial (adv-coverage): the WIRING, not just the helper ------------------------
+# `_pull_index_seed`'s own three-state GUARD passes whatever `run()` does, and a coverage lens
+# measured that reverting the call site — back to `est_tokens(idx_text)` — keeps the ENTIRE suite
+# green while the seed goes 3841 -> 4 against a ceiling of 3840, i.e. the M1 net-grow hold flips
+# ON -> OFF and a pull can grow an index nobody could measure. A correct helper nobody calls is
+# the defect this whole family keeps producing, so the caller is asserted structurally.
+try:
+    import ast as _ast_run
+    _run_fn = next(n for n in _ast_run.walk(_ast_run.parse(
+        (ROOT / "plugins" / "consolidate-memory" / "scripts" / "sync_global.py"
+         ).read_text(encoding="utf-8")))
+        if isinstance(n, _ast_run.FunctionDef) and n.name == "run")
+    _run_calls = {n.func.id for n in _ast_run.walk(_run_fn)
+                  if isinstance(n, _ast_run.Call) and isinstance(n.func, _ast_run.Name)}
+except Exception:
+    _run_calls = set()
+check("v0.4.45 adversarial (GUARD, structural regression — green on both trees BY CONSTRUCTION: "
+      "`run()` was routed when the helper was introduced, so this cannot redden pre-fix; its "
+      "value is that REVERTING the call site now reddens): `run()` seeds its pull from "
+      "`_pull_index_seed` — "
+      "the helper's own pin cannot catch a reverted CALL SITE, and reverting it re-opens the "
+      "net-grow hold for an unmeasurable index with every check still green",
+      "_pull_index_seed" in _run_calls)
+
+# --- v0.4.47 (PIN — RED on the released 0.4.46): the guard `measure_or_fault` documents and this
+# call site did not inherit. `Path.exists()` re-raises anything outside ENOENT/ENOTDIR/EBADF/ELOOP
+# — EACCES among them — while `_safe_read_text` SWALLOWS OSError. So an index that cannot be read
+# but whose `exists()` re-raises reached `raw is None and idxp.exists()` and raised OUT of
+# `cm sync`: the call sits outside every `try` and outside the enrollment gate, so a plain LIST
+# hit it. MEASURED on the released 0.4.46 — `PermissionError` on 3.8 and 3.12.
+# ⚠ The chmod is skipped under root, which bypasses the permission barrier entirely: the arm then
+# cannot be staged, and it says so rather than passing vacuously. Run as an ordinary user in CI.
+with _tf43.TemporaryDirectory() as _td_eac:
+    _tgt_eac = Path(_td_eac) / "locked"; _tgt_eac.mkdir()
+    (_tgt_eac / "x.md").write_text("# Memory Index\n\n", encoding="utf-8")
+    _lnk_eac = Path(_td_eac) / "MEMORY.md"
+    _lnk_eac.symlink_to(_tgt_eac / "x.md")
+    _os53.chmod(_tgt_eac, 0o000)
+    # the sentinel is deliberately HETEROGENEOUS (a raise is not a seed), so the local is widened
+    # rather than the sentinel narrowed — mypy caught the assignment, which is the gate working
+    _eac_res: "tuple[object, object, object]"
+    try:
+        _eac_res = sg._pull_index_seed(_lnk_eac)
+    except OSError as _eac_exc:
+        _eac_res = ("RAISED", type(_eac_exc).__name__, None)
+    finally:
+        _os53.chmod(_tgt_eac, 0o755)          # restore, so TemporaryDirectory can clean up
+    check("v0.4.47 (PIN): an index whose `exists()` ITSELF raises is spent as the FAULT and the "
+          "hold engages — never as a traceback out of `cm sync` (pre-fix on the released 0.4.46: "
+          "`PermissionError`, reachable with no enrollment, on a plain LIST)",
+          isinstance(_eac_res[0], int) and _eac_res[0] > ms.INDEX_CEILING_TOKENS
+          and _eac_res[2] is True)
 
 # --- v0.4.45 review: THE READ CAP WAS A FIREWALL BYPASS, not a truncation --------------------
 # `build()` read `os.read(fd, 4 MiB)` and classified the PREFIX, while the fallback reads the whole
@@ -23868,14 +23958,25 @@ with _tf43.TemporaryDirectory() as _td_seed:
         _read_seed = _pull_seed(_ok_seed)
         with _ctx73.redirect_stderr(_err_seed):
             _fault_seed = _pull_seed(_bad_seed)
-    check("v0.4.45 review (PIN): the pull's index seed separates ABSENT from UNREADABLE — absent "
-          "seeds the truth (an empty index), unreadable seeds PAST the ceiling so the M1 hold "
-          "engages rather than switching off (pre-fix: both seeded 0 and the hold went quiet)",
+    # ⚠ BOTH ARMS REDDEN FOR KEY-ABSENCE, NOT FOR BEHAVIOUR — and an earlier cut labelled them
+    # PIN and CONTROL, which is the mislabelling this same block corrects three times elsewhere.
+    # `_pull_index_seed` does not exist before this cycle, so every arm that calls it reddens the
+    # same way; no pin on a NEWLY-INTRODUCED symbol can do otherwise. Relabelled with the
+    # disclosure rather than left carrying a claim its redness does not support. What the arms DO
+    # still establish, and what makes them worth keeping, is the SHAPE the repair must have: three
+    # distinct answers where the pre-fix code had two.
+    check("v0.4.45 review (GUARD, necessarily — reddens for KEY-ABSENCE, the helper is new): the "
+          "pull's index seed separates ABSENT from UNREADABLE — absent seeds the truth (an empty "
+          "index), unreadable seeds PAST the ceiling so the M1 hold engages rather than switching "
+          "off (pre-fix: both seeded 0 and the hold went quiet)",
           _absent_seed[0] == ms.est_tokens("# Memory Index\n\n") and _absent_seed[2] is False
           and _fault_seed[0] > ms.INDEX_CEILING_TOKENS and _fault_seed[2] is True
           and "UNMEASURABLE" in _err_seed.getvalue())
-    check("v0.4.45 review (CONTROL): …and a READABLE index seeds its real measurement, so the "
-          "hold is not engaged for a store that is genuinely under budget",
+    check("v0.4.45 review (GUARD, necessarily — same key-absence disclosure): …and a READABLE "
+          "index seeds its real measurement, so the hold is not engaged for a store that is "
+          "genuinely under budget. ⚠ This is the arm that was labelled CONTROL and reddened "
+          "pre-fix: the sentinel's `None` failed `is False`, i.e. it failed for the helper's "
+          "ABSENCE while its name claimed to test the readable case",
           _read_seed[2] is False and _read_seed[0] == ms.est_tokens(_ok_seed.read_text(encoding="utf-8")))
 
 # --- v0.4.45 review: the SEED RELAY, which nothing pinned ------------------------------------
@@ -24045,7 +24146,12 @@ check("v0.4.45 review (CONTROL): …and a record with NO `unmeasurable` key at a
 # The display surfaces were wired first. These are the consumers that ACT, and they were still
 # reading the bare `index_lb[2]`, where an unreadable index is indistinguishable from an empty one.
 # MEASURED at `99c42f0` on a store whose `MEMORY.md` is a DIRECTORY — it EXISTS, so `is_file()` is
-# true and the refresh guard does not skip, while `measure_or_fault` returns (0,0,0) with the fault:
+# statable at all — the guard tests `is_file()`, which is FALSE for a directory, yet the arm still
+# reaches the splice, while `measure_or_fault` returns (0,0,0) with the fault. ⚠ An earlier cut of
+# this sentence read "it EXISTS, so `is_file()` is true and the refresh guard does not skip", which
+# is false twice over: `is_file()` does not follow from `exists()`, and it is FALSE for a directory
+# — as this batch's OWN comment a hundred lines above says ("its `if not p.is_file()` arm catches
+# the directory"). The fixture does reach the path; the prose describing the mechanism did not.
 #   `--triage`  → `✓ index under budget (0/1500 tok) — nothing to remediate`, in GREEN
 #   the report  → `1 index↔file — offer backfill, confirm first`
 # The first is VERBATIM the string the v0.4.45 comment names as the pre-fix defect, printed on the
@@ -24214,6 +24320,22 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     prose: the prose says what the DEFAULT is, this says
                                        #     which reasons were DECIDED, and only the second can
                                        #     redden when `load()` grows an arm.
+                            + 1        # v0.4.47 — the ONLY true PIN in this batch: an index whose
+                                       #     `exists()` itself raises is spent as the fault, not as
+                                       #     a traceback out of `cm sync`. ⚠ RED on the released
+                                       #     0.4.46. Counted alone because the two arms above it
+                                       #     were relabelled GUARD — they shipped in 0.4.45 and
+                                       #     cannot redden pre-fix, which the measurement showed.
+                            + 2        # v0.4.45 ADVERSARIAL coverage round — two HOLES a mutation
+                                       #     lens found: 1 PIN that the kill switch is HONOURED not
+                                       #     merely classified (the structural totality pin checks
+                                       #     XOR, so moving `kill-switch` between the tuples kept it
+                                       #     green while defeating the switch) + 1 PIN on
+                                       #     `_pull_index_seed`'s WIRING (reverting the call site
+                                       #     left the whole suite green). ⚠ Both are second pins on
+                                       #     a subject that already had one — the first checks
+                                       #     SET MEMBERSHIP, the second checks the CALL — which is
+                                       #     exactly the blind spot each mutation walked through.
                             + 2        # v0.4.45 ADVERSARIAL, carried-forward surfaces: 1 structural
                                        #     PIN (the beacon reads its index through
                                        #     `_pull_index_seed`, not `_safe_read_text`) + 1 PIN on

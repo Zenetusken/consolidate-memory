@@ -290,7 +290,20 @@ def _pull_index_seed(idxp: Path) -> "tuple[int, str, bool]":
     only one available.
     """
     raw = _safe_read_text(idxp)
-    unreadable = raw is None and idxp.exists()
+    # ⚠ `.exists()` MUST be guarded here, and this is not hypothetical. `Path.exists()` re-raises
+    # anything outside ENOENT/ENOTDIR/EBADF/ELOOP — EACCES among them — while `_safe_read_text`
+    # SWALLOWS OSError. So an index that is unreadable but whose `exists()` re-raises (a symlink
+    # into a non-traversable directory) arrives here with `raw is None` and then raises OUT of
+    # `cm sync` — and the call sits outside every `try` and outside the enrollment gate, so a
+    # plain LIST hits it with no enrollment. A review lens measured the traceback on 3.8 and 3.12.
+    # ⚠ `measure_or_fault` documents this exact escape in its docstring and guards it; this call
+    # site — written by the same hand, in the same cycle — did not inherit the guard. Cannot-tell
+    # is spent as the FAULT, which is the safe direction this function takes everywhere else.
+    try:
+        _exists = idxp.exists()
+    except OSError:
+        _exists = True
+    unreadable = raw is None and _exists
     if unreadable:
         print(f"sync_global: {idxp} exists but could not be read — the index is UNMEASURABLE, so "
               f"the pull ceiling is treated as EXCEEDED (net-grow held) rather than as headroom",
