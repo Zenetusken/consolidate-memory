@@ -178,6 +178,16 @@ locks at all and reads the cache read-only, so it is untouched.
 through, the preflight cache stays cold and the checks re-run each time (the verdict is unaffected;
 only the cache misses). `--verbose` makes that visible; it is not silent-by-accident.
 
+⚠ **One decline site still cannot name its own skip, and it is deliberately left that way for now.**
+`cm_ops.py`'s `cm doctor` call discards `run_and_cache`'s token, and `doctor` has no `--verbose`
+(measured on this revision: with the lock held the token is `lock-busy` and `doctor`'s stderr is
+empty at rc 0). This is a **silence, not a wrong verdict** — nothing false reaches the operator, and
+the preflight verdict itself is unaffected — which is why it is recorded rather than fixed here.
+Adding a verbosity flag to `doctor` is a new CLI surface with its own review; smuggling it into this
+patch would be the larger error. ⚠ What makes it worth naming anyway: `doctor` is the command the
+preflight note itself points users at, so the one place a user is sent to diagnose a cold cache is
+the one place that cannot say the cache was skipped.
+
 Measured both ways: against this release's **first cut** (the tree that fixed only the preflight
 cache) — **2312 passed / 3 failed**, the three failures being *exactly* the new PINs below and
 nothing else; here **2315 / 0**. The suite's pre-fix corpus needs a real `.git`: an archived tree
