@@ -1,7 +1,11 @@
 # Group lifecycle completion (v0.4.11 spec)
 
 **Design-of-record for the three open items the 0.4.10 fleet dogfood named.**
-Status: draft for advisor pass → adversarial review-to-zero → implementation.
+Status: **SHIPPED (v0.4.11, 2026-09-05)** — all three of §1's gaps have shipped code
+(`cm group delete`, the `--repoint` re-confirm affordance, the per-recipient pull-side
+recreation guard, the re-sourced frozen GC). ⚠ The drafting-era status line survived this long
+because NOTHING reads a spec's status: the version statements live in the LIVE_DOCS set and a
+spec's own header is not in it.
 
 ## 1. Context (measured, 2026-09-04; amend-5 — + R-N1a) final)
 

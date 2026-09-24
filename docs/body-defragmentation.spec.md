@@ -1,6 +1,9 @@
 # Spec — body-defragmentation (curate bloated ACTIVE files) · Cycle 2
 
-Status: DRAFT (gate-1 review pending) · target: cm vNEXT (PATCH) · follows Cycle 1 (completion-driven archiving)
+Status: **SHIPPED (v0.4.23)** — `--justify-defrag` is in `memory_status.py` and covered; verified
+against the live tree 2026-09-24. ⚠ The drafting-era status survived because **nothing reads a
+spec's own header**: the version statements live in docs_links' LIVE_DOCS set, which a spec header
+is not in. Drafting-era tail: `gate-1 review pending · target: cm vNEXT (PATCH)`, following Cycle 1 (completion-driven archiving).
 
 ## The measured problem
 
