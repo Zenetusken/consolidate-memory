@@ -65,6 +65,36 @@ def _v3_canon(stem: str, domain: str = "personal", body: str = "body\n",
     )
 
 
+def _ens59(*a: Any, **k: Any) -> "tuple[Any, Any]":
+    """`facts_manifest.ensure` with a RAISE turned into a VALUE.
+
+    ⚠ Defined HERE, near the other shared helpers, and not beside `_fm44` — its first call site
+    is ~9,000 lines ABOVE where `_fm44` is imported, and Python executes top-to-bottom, so a helper
+    defined there raised `NameError` at the first call. (Measured: the whole suite died at
+    `smoke.py:14297` the moment the first call site was routed through it.) The import is therefore
+    LAZY and inside, so the helper depends on no module-level name's position either.
+
+    ⚠ A mutation of the code under test can legitimately make `ensure` raise — the runtime guard
+    rejects a reason outside its vocabulary, which is exactly what the v0.4.59 pin's motivating
+    mutation produces. An UNGUARDED call then escapes MODULE SCOPE: the run ends with NO TOTALS
+    LINE, D6 is never reached, and every later check is lost. A CRASH where a red belongs.
+    MEASURED by a review lens — and there were FIVE such sites, so fixing the one it named would
+    have left the class standing (sibling-parity). This failure class has now appeared four times
+    on this project, twice in code written to close it.
+    ⚠ The raise is RETURNED, never swallowed: callers destructure and assert on it like any other
+    value, so a mutation still REDDENS instead of silently passing.
+    ⚠ The `TypeError` arm preserves the pre-kwarg shape a local helper already established
+    (`_ens45`, now DELETED and collapsed in here), so the may-write-less trees read the same way.
+    """
+    import facts_manifest as _fm59
+    try:
+        return _fm59.ensure(*a, **k)
+    except TypeError:
+        return ("<no-may_write-kwarg>", "")
+    except Exception as _e59:                       # noqa: BLE001 — a raise is a RESULT here
+        return ("<raised %s>" % type(_e59).__name__, "%s: %s" % (type(_e59).__name__, _e59))
+
+
 def _enroll_personal(project_dir: Path) -> None:
     """ADR 008: --pull/--promote require enrollment. Tests that exercise pull must enroll."""
     import store_context as _sc_e
@@ -14294,7 +14324,9 @@ with _Env73() as _e_fm:
         _wdir = _ctx_fm.config_root / "consolidate-memory" / "domains" / "work" / "facts"
         _wdir.mkdir(parents=True, exist_ok=True)
         (_wdir / "w0.md").write_text(_v3_canon("w0", domain="work"), encoding="utf-8")
-        _rows_w, _ = _fmx.ensure(_wdir, _ctx_fm.plugin_data_dir)
+        # ⚠ through the safe wrapper: a mutation that makes `ensure` raise must REDDEN here, not
+        # abort the run (this was one of five unguarded sites; see `_ens59`).
+        _rows_w, _ = _ens59(_wdir, _ctx_fm.plugin_data_dir)
         check("facts-manifest: per-domain isolation (personal rows never serve work stems)",
               _rows_w is not None and "w0" in _rows_w and "m0" not in _rows_w)
         # canonical upsert invalidates through the transact choke point
@@ -23617,6 +23649,8 @@ check("v0.4.44 item 5 (CONTROL): `_measure` still returns the VALUE ALONE and ne
 # never change) kept their verdict forever. The identity is DERIVED from the predicate's own
 # source, so editing the firewall moves it with nothing to remember.
 _fm44 = __import__("facts_manifest")
+
+
 # ⚠ RED-BY-ABSENCE, guarded — the THIRD occurrence of this trap in one block, and the pre-fix
 # measurement caught all three. Pre-fix `secret_pred` does not exist; a bare call raises at MODULE
 # scope and kills every check after it, which a runner cannot tell from an interrupted run.
@@ -23744,7 +23778,10 @@ with _tf43.TemporaryDirectory() as _td_ks:
     _prev_ks = _os53.environ.get(_fm44.KILL_SWITCH)
     _os53.environ[_fm44.KILL_SWITCH] = "0"
     try:
-        _rows_ks, _why_ks = _fm44.ensure(_fd_ks, _pd_ks)
+        # ⚠ THE SITE A REVIEW LENS MEASURED: unguarded, inside `try/finally` with no `except`, so
+        # a mutation that makes `ensure` raise escaped MODULE SCOPE here and killed the run at
+        # this line with no totals line and no D6 — before the v0.4.59 pin could redden.
+        _rows_ks, _why_ks = _ens59(_fd_ks, _pd_ks)
     finally:
         if _prev_ks is None:
             _os53.environ.pop(_fm44.KILL_SWITCH, None)
@@ -23835,7 +23872,7 @@ with _tf43.TemporaryDirectory() as _td45d:
         "---\nname: big\ndescription: d\n---\n" + ("filler line\n" * 350000)
         + "\napi_key = 'Xq7v2Kd9Lm4Np8Rt3Ws6Yz1Bc5Ef0Gh2Jk4Mn6Pq7Rv9Tw1'\n", encoding="utf-8")
     _big45d = (_fd45d / "big.md").stat().st_size
-    _rows45d, _why45d = _fm44.ensure(_fd45d, _pd45d)
+    _rows45d, _why45d = _ens59(_fd45d, _pd45d)
     check("v0.4.45 review (PIN): a fact file past the read cap FAILS OPEN — no row is cached from "
           "its PREFIX, so the warm pull cannot be handed a `secret: False` for a credential the "
           "read never reached",
@@ -25222,7 +25259,7 @@ with _tf43.TemporaryDirectory() as _td_ov52:
         "---\nname: big\ndescription: d\n---\n" + ("filler line\n" * 350000), encoding="utf-8")
     _err_ov52 = _io73.StringIO()
     with _ctx73.redirect_stderr(_err_ov52):
-        _fm44.ensure(_fd_ov52, _pd_ov52)
+        _ens59(_fd_ov52, _pd_ov52)
     _msg_ov52 = _err_ov52.getvalue()
     check("v0.4.52 (GUARD, regression — green on both trees BY CONSTRUCTION: the notice shipped "
       "in v0.4.48; its value is that DELETING the print now reddens): the oversize refusal NAMES "
@@ -25626,19 +25663,19 @@ with _tf43.TemporaryDirectory() as _td45c:
     (_fd45c / "one.md").write_text("---\nname: one\ndescription: d\n---\nbody\n", encoding="utf-8")
     _mp45c = _fm44.manifest_path(_pd45c, "d45")
 
-    def _ens45(*a: object, **k: object) -> "tuple[object, object]":
-        try:
-            return _fm44.ensure(*a, **k)
-        except TypeError:
-            return ("<no-may_write-kwarg>", "")
+    # ⚠ DELETED, not kept as a local variant. It caught ONLY `TypeError`, so a mutation that makes
+    # `ensure` raise for any other reason escaped MODULE SCOPE right here — MEASURED: the F3 run
+    # still died at this line with no totals and no D6 AFTER every other site had been routed. A
+    # local copy of a shared helper that catches a SUBSET of what the shared one catches is the
+    # divergence class this repo keeps closing; `_ens59` preserves the same `TypeError` arm.
 
-    _ro45 = _ens45(_fd45c, _pd45c, may_write=False)
+    _ro45 = _ens59(_fd45c, _pd45c, may_write=False)
     _wrote_ro45 = _mp45c.exists()
     # ⚠ NO kwarg on the control arm. Passed `may_write=True` it reddened PRE-FIX for KEY-ABSENCE
     # (the kwarg did not exist), which is what a PIN does and precisely what a CONTROL must not —
     # the point of this arm is that the DEFAULT is unchanged on both trees. Measured: with the
     # kwarg it was one of the two "controls" in the 12-red pre-fix run.
-    _rw45 = _fm44.ensure(_fd45c, _pd45c)
+    _rw45 = _ens59(_fd45c, _pd45c)
     _wrote_rw45 = _mp45c.exists()
     # ⚠ The label NAMES THE DISCRIMINATING CONJUNCT, which the first cut did not. It presented
     # "writes NO manifest" as evidence, and a review lens measured that half is TRUE BY

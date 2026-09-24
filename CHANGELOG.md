@@ -5,6 +5,58 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.60] — 2026-09-24
+
+**Patch — F3, the last residual the v0.4.59 review left open: a mutation of the suite's subject could
+CRASH the run where a red belongs, and the pin that was supposed to catch it could never be reached.**
+
+### The defect, root-caused
+
+The v0.4.59 pin asserts that the reason guard **accepts both vocabularies**. Its motivating mutation —
+narrow `_KNOWN_REASONS` — should redden it. Instead the run **died at `smoke.py:23747`** with **no
+totals line and D6 never reached**: `ensure` raises, and that raise escaped **module scope** from an
+*unrelated* check (the v0.4.45 kill-switch guard, whose `ensure` call sat in a `try/finally` with no
+`except`). The pin's claim was not weak — it was **unreachable**, and the thing blocking it was nine
+thousand lines away.
+
+### ⚠ The sweep mattered more than the line
+
+The reviewer named one site. There were **six `ensure` calls in the suite and FIVE were unguarded** —
+so fixing the named line would have left the class standing. That is the sibling-parity failure this
+repo has a standing lesson about, and v0.4.59 had *just* shipped a fix for its other half in
+`preflight.py`.
+
+All five now route through one shared **`_ens59`** wrapper that turns a raise into a **value** the
+callers assert on. ⚠ Not swallowed: the raise is **returned**, so a mutation still **reddens**. The
+two failure modes this rules out are opposite and both silent-in-the-wrong-direction — a **crash**
+where a red belongs (the shipped defect) and a **green** where a red belongs (what a swallow would
+have bought).
+
+### Two defects inside this fix, both found by running the mutation rather than reading it
+
+1. **`NameError`.** The wrapper was first placed beside `_fm44` — at line 23619, while its first call
+   site is at 14297, in a 26,000-line script that executes top-to-bottom. The clean run died
+   instantly. It now sits with the shared helpers and imports lazily, so it depends on **no**
+   module-level name's position.
+2. ⚠ **A local variant that caught a SUBSET.** A pre-existing local helper (`_ens45`) caught only
+   `TypeError`, and was left in place as "already handled" — so the F3 run **still died at that
+   line**, after every other site was routed. A local copy of a shared helper that catches less than
+   the shared one is the divergence class this repo keeps closing; it is **deleted**, collapsed into
+   `_ens59`, whose `TypeError` arm preserves its shape.
+
+### Measured
+
+| | |
+|---|---|
+| clean run | **2332 passed, 0 failed** |
+| the F3 mutation | was: **crash**, no totals, D6 absent → now: **2329 passed, 3 failed**, totals present, **D6 reached** |
+| the three reds | the kill-switch guard, the v0.4.59 reason pin (F3's goal), and the read-only-caller pin — no collateral |
+
+⚠ This failure class — a mutation that CRASHES the suite instead of reddening it — has now appeared
+**four times** on this project, twice in code written to close it. Each instance was found by
+executing a mutation; none was visible to a passing suite, because a suite that never crashes looks
+exactly like a suite whose subject never breaks.
+
 ## [0.4.59] — 2026-09-24
 
 **Patch — the remaining open items, each with the measurement that named its repair.** Two were
