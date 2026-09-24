@@ -24548,9 +24548,20 @@ try:
     _declared57 = sorted(getattr(_fm44, "_ENSURE_REASONS", ()))
 except Exception:
     _minted57, _declared57 = [], []
+# ⚠ RESIDUAL, measured by a review lens and NOT closed: this matcher is bound to a SPELLING. It
+# reads the AST forms `_mint("<literal>")` and `return x, "<literal>"` — so a future author writing
+# `return None, _NEW_TOKEN` where the token is a NAME leaves every check in this file green (verified:
+# all 7 at the time passed) with an unclassified reason in circulation. The control — the same token
+# as a LITERAL — reddens. ⚠ It cannot be closed statically: a `Name` in the return position is
+# AST-INDISTINGUISHABLE from `load()`'s legitimate passthrough (`return None, reason`), which is the
+# whole reason this pin enumerates literals in the first place. What DOES hold is the runtime half:
+# `_mint` raises on an undeclared token, so any mint routed through it fails loudly. The gap is a
+# return that bypasses `_mint` altogether, and the honest closure would be a runtime assertion over
+# `ensure`'s returned reason (it is the producer that can see the value), not a wider AST scan.
 check("v0.4.57 (PIN, structural): every reason `ensure` MINTS is declared in `_ENSURE_REASONS` — "
       "the second vocabulary, because the `_miss`-AST pin classifies only what `load()` returns "
-      "and a token minted in `ensure` was structurally invisible to it",
+      "and a token minted in `ensure` was structurally invisible to it. ⚠ Partial by construction: "
+      "a reason minted as a NAME rather than a literal evades this scan (see the note above)",
       bool(_minted57) and _minted57 == _declared57)
 # and the producer ENFORCES it, the way `_miss` does for `load()`'s reasons
 _mint_raised57 = False
