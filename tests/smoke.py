@@ -24107,11 +24107,15 @@ _sg54_src = " ".join((ROOT / "plugins" / "consolidate-memory" / "scripts" / "syn
 check("v0.4.54 (GUARD, structural regression — green on both trees BY CONSTRUCTION: the stats check "
       "shipped with the manifest itself, so this cannot redden pre-fix; its value is that LOSING "
       "the check now reddens): the consumer's half of the two-part warrant is ENFORCED — "
-      "`_consider_fast` compares BOTH `st_mtime_ns` and `st_size` against the cached row before "
-      "serving it, so an edited fact falls back to the full read rather than being trusted on the "
-      "predicate match alone",
+      "`_consider_fast` compares ALL THREE of `st_mtime_ns`, `st_size` and `st_ctime_ns` against "
+      "the cached row before serving it, so an edited fact falls back to the full read rather "
+      "than being trusted on the predicate match alone",
+      # ⚠ THREE conjuncts, not two. The first cut named `mtime` and `size` only; a review lens
+      # measured that the code also compares `ctime`, which is the one that catches a
+      # restored-mtime edit — the arm was pinning a subset while its label claimed the warrant.
       'st_mtime_ns == int(r.get("mtime_ns") or -1)' in _sg54_src
-      and 'st.st_size == int(r.get("size") or -1)' in _sg54_src)
+      and 'st.st_size == int(r.get("size") or -1)' in _sg54_src
+      and 'st.st_ctime_ns == int(r.get("ctime_ns") or -1)' in _sg54_src)
 
 # --- v0.4.54 (PIN): the pull CONSUMES `_execute_pull_writes`'s refusal --------------------------
 # The guard that declines to write without a revision precondition returns an `error` key, and the
@@ -24126,7 +24130,13 @@ check("v0.4.54 (PIN, structural): the pull READS its own refusal and exits non-z
       # THROUGH without returning — the third conjunct would discriminate nothing while looking
       # like it did. The whitespace-normalized source is checked as a single phrase so the read,
       # the branch and the return must be ADJACENT to satisfy it.
-      'if _werr: print(f"pull: refused — {_werr}", file=sys.stderr) return _done(1)'
+      # ⚠ AND THE SPAN MUST START AT THE **READ**. A review lens neutered the ASSIGNMENT
+      # (`_werr = ""`, so a refusal is never detected) and the first version of this span stayed
+      # GREEN, because it began at `if _werr:` — the return half was covered and the read half was
+      # not. The assertion is named for BOTH ("READS its own refusal AND exits non-zero"), so both
+      # must be inside it. Mutation-verified: neutering the assignment reddens it now.
+      '_werr = str(_w.get("error") or "")' in _sg54_src
+      and 'if _werr: print(f"pull: refused — {_werr}", file=sys.stderr) return _done(1)'
       in _sg54_src)
 
 # --- v0.4.54 (PIN): `cm data facts-refresh`'s EXIT CODE -----------------------------------------
@@ -24167,9 +24177,13 @@ with _tf43.TemporaryDirectory() as _td_fr54:
     if _fr54 is not None:
         with _ctx73.redirect_stderr(_err_fr54b):
             _rc_fr54_bad = _fr54(_ctx_fr54)
-    check("v0.4.54 (PIN): `cm data facts-refresh` EXITS NON-ZERO when the domain cannot rebuild — "
-          "the documented repair must not report success on a permanently-cold cache (pre-fix: "
-          "the message printed and rc stayed 0; measured by a coverage lens, both suites green)",
+    check("v0.4.54 (PIN, necessarily — RED pre-fix for KEY-ABSENCE: `_facts_refresh_probe` is new, "
+          "so the `getattr` sentinel's `None` fails the comparison rather than the behaviour): "
+          "`cm data facts-refresh` EXITS NON-ZERO when the domain cannot rebuild — the documented "
+          "repair must not report success on a permanently-cold cache. ⚠ An earlier cut of this "
+          "label claimed \"pre-fix: the message printed and rc stayed 0\", which a review lens "
+          "MEASURED as false — `main`'s `cm_ops` already returned 1 on that branch; what the "
+          "coverage lens actually found green was the absence of a check, not a wrong exit code",
           _rc_fr54_ok == 0 and _rc_fr54_bad == 1
           and "did NOT rebuild" in _err_fr54b.getvalue())
     # ⚠ AND THE INVERSE: a zero-fact domain is a SUCCESSFUL empty rebuild, not a failure. This is
