@@ -23836,39 +23836,54 @@ with _Env73() as _e_a45b:
 # `prune_pressure`, `remediation_triage`, `over_ceiling` and the record's `over`, so an unreadable
 # index read as "under budget, nothing to remediate" — and SKILL makes the HEAVY remediation
 # hard-stop mandatory on the flag that had just gone quiet.
-_g45 = Path(_tf44.mkdtemp())
-(_g45 / "MEMORY.md").mkdir()
-(_g45 / "some-fact.md").write_text("---\nname: x\ndescription: y\n---\nbody\n", encoding="utf-8")
-_e45 = Path(_tf44.mkdtemp())
-# ⚠ RED-BY-ABSENCE, and the guard here is UNNECESSARY — kept, but the justification it used to
-# carry was FALSE and is corrected. An earlier cut of this comment claimed "pre-fix
-# `store_local_index` RAISES `IsADirectoryError` on this fixture — that raise IS the defect".
-# MEASURED at `8db50a6` (the revision this block names), on this exact fixture: NO RAISE — it
-# returns `index_lb=(0,0,0)` with `index_fault` ABSENT, because `measure_or_fault` already existed
-# there and its `if not p.is_file()` arm catches the directory. So the `except OSError` cannot fire
-# at that revision, and the claim had smuggled in the raise class of the revision BEFORE it
-# (`783cbde`) — two revisions' defects collapsed into one sentence. What this check therefore does
-# is redden for KEY-ABSENCE, not for behaviour, which is the SAME class as the check labelled a
-# GUARD below and which no pin on a newly-introduced field can escape: pre-fix there is no fault
-# CONCEPT to assert on, so every arm reddens the same way. Labelled accordingly.
-try:
-    _g45_fault = ms.store_local_index(_g45).get("index_fault")
-except OSError:
-    _g45_fault = None
-try:
-    _e45_fault = ms.store_local_index(_e45).get("index_fault")
-except OSError:
-    _e45_fault = None
-check("v0.4.45 (GUARD, necessarily — the fault is a NEW field, so pre-fix this reddens for "
-      "KEY-ABSENCE and no arm could redden for behaviour): an index that EXISTS but cannot be "
-      "measured carries a FAULT — the value stays (0,0,0) but the record must not read it as "
-      "'under budget'",
-      _g45_fault is True)
-check("v0.4.45 (GUARD): an ABSENT index is not a fault — absent and unreadable must not share "
-      "an answer in this direction either. Note it is a GUARD, not a control: pre-fix it reddens "
-      "for KEY-ABSENCE (the key did not exist), not for behaviour, and a check that is not green "
-      "on both trees is a guard on the repair's shape",
-      _e45_fault is False)
+def _fault_of45(_p: Path):
+    """`store_local_index(p)["index_fault"]`, or None pre-fix.
+
+    ⚠ ONE helper rather than the same `try/except` twice — the fourth-occurrence copy-paste family
+    the suite keeps finding. ⚠ The `except OSError` is belt-and-braces, NOT load-bearing: MEASURED
+    at `8db50a6`, `store_local_index` does not raise on either fixture below. It is kept because
+    this is the block that documents the RED-BY-ABSENCE trap and a future revision could put the
+    raise back — but the comment above says as much, so a reader is not misled into thinking it
+    was ever doing work here.
+    """
+    try:
+        return ms.store_local_index(_p).get("index_fault")
+    except OSError:
+        return None
+
+
+# ⚠ `with _tfNN.TemporaryDirectory()` — the suite's convention (180 uses against 9 `mkdtemp`s), and
+# the `mkdtemp` form leaked both fixtures. ⚠ The helper stays at column 0 ABOVE the block: a `def`
+# placed at column 0 inside an indented block closes the block early and traps every statement
+# after it, which this file has been bitten by before.
+with _tf43.TemporaryDirectory() as _td45g:
+    _g45 = Path(_td45g) / "g"; _g45.mkdir()
+    (_g45 / "MEMORY.md").mkdir()
+    (_g45 / "some-fact.md").write_text("---\nname: x\ndescription: y\n---\nbody\n", encoding="utf-8")
+    _e45 = Path(_td45g) / "e"; _e45.mkdir()
+    # ⚠ RED-BY-ABSENCE, and the guard here is UNNECESSARY — kept, but the justification it used to
+    # carry was FALSE and is corrected. An earlier cut of this comment claimed "pre-fix
+    # `store_local_index` RAISES `IsADirectoryError` on this fixture — that raise IS the defect".
+    # MEASURED at `8db50a6` (the revision this block names), on this exact fixture: NO RAISE — it
+    # returns `index_lb=(0,0,0)` with `index_fault` ABSENT, because `measure_or_fault` already
+    # existed there and its `if not p.is_file()` arm catches the directory. So the `except OSError`
+    # cannot fire at that revision, and the claim had smuggled in the raise class of the revision
+    # BEFORE it (`783cbde`) — two revisions' defects collapsed into one sentence. What this check
+    # therefore does is redden for KEY-ABSENCE, not for behaviour, which is the SAME class as the
+    # check labelled a GUARD below and which no pin on a newly-introduced field can escape:
+    # pre-fix there is no fault CONCEPT to assert on, so every arm reddens the same way.
+    _g45_fault = _fault_of45(_g45)
+    _e45_fault = _fault_of45(_e45)
+    check("v0.4.45 (GUARD, necessarily — the fault is a NEW field, so pre-fix this reddens for "
+          "KEY-ABSENCE and no arm could redden for behaviour): an index that EXISTS but cannot be "
+          "measured carries a FAULT — the value stays (0,0,0) but the record must not read it as "
+          "'under budget'",
+          _g45_fault is True)
+    check("v0.4.45 (GUARD): an ABSENT index is not a fault — absent and unreadable must not share "
+          "an answer in this direction either. Note it is a GUARD, not a control: pre-fix it "
+          "reddens for KEY-ABSENCE (the key did not exist), not for behaviour, and a check that is "
+          "not green on both trees is a guard on the repair's shape",
+          _e45_fault is False)
 
 # --- v0.4.45 review round: THE FAULT HAD NO CONSUMER. `unmeasurable` was written into the record
 # and read by NOTHING — a `grep -rn unmeasurable plugins/` returned exactly three sites: the
