@@ -25,9 +25,11 @@ earlier guard.**
    Factored as `_facts_refresh_probe` so the code is reachable without enrolling a project. A
    coverage lens measured that deleting the `return 1` left both suites green: the documented repair
    printing "did NOT rebuild" and exiting **0**, reporting success on a cache that can never
-   rebuild. ⚠ The healthy arm needed a REAL fact — an empty dir rebuilds to `files: []`, which
-   `ensure` reads as `{}` → falsy → `rebuild-failed`, so the first cut's "control" exited 1 for the
-   wrong reason.
+   rebuild. ⚠ The healthy arm was first written with a REAL fact because of a BUG the review then
+   found and this same patch fixed: `ensure` read a successful empty rebuild (`files: []`) as
+   falsy → `rebuild-failed`, so a zero-fact domain exited 1 for the wrong reason. **Stated in the
+   past tense deliberately** — the review fixed the mechanism, and a present-tense sentence here
+   would assert a property the code no longer has. A PIN now covers the empty case directly.
 
 3. **The cached row's TWO-PART warrant is now stated, and its other half pinned.** A review lens
    asked whether `load()` re-derives `secret`; it does not, and *"an identity match is the whole
