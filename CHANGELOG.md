@@ -50,6 +50,30 @@ earlier guard.**
    patch's own comment"*; `git log -S` plus `git tag --contains` put the comment in `e868ecd`, which
    ships in **v0.4.45** itself. DERIVED, not adopted from the lens.
 
+**Review round (two lenses returned before merge; both found real defects, most in code THIS
+patch added):**
+
+- **A permanent FALSE RED in `_facts_refresh_probe`** — the helper this patch introduced. `ensure`'s
+  `if rows:` read a *successful empty* rebuild as failure (`build()` returns `[]`, the manifest is
+  written as `{"files": []}`, and `{}` is falsy), so `cm data facts-refresh` reported permanent,
+  **unclearable** failure with a **blank cause** on the state every project is in right after
+  `cm project enroll`. Found independently by two lenses. Fixed at the root and in the probe;
+  `rebuild-failed` removed from `_NONREBUILDABLE` as now genuinely dead.
+- **`cross_project_allowed` conflated a FAULT with a VERDICT at three sites.** An unenrolled
+  project is supported; an unhealthy registry is a fault, and both make the same predicate false.
+  The pull printed one message for both and returned **0** (measured: a corrupt `control.sqlite`
+  → `('corrupt', 'file is not a database')`, rc 0); `--harvest` was the twin; `gc` went further and
+  asserted *"present but empty (no canonical facts)"* — a definite claim about the store's
+  **contents** the code never established. All three name the cause now; the fault exits 2.
+- **A crash spelled as an entitlement verdict, driving a DELETE.** `_classify_frozen`'s
+  `except Exception: admitted = False` fell through to `("not-entitled", …)`, which `gc()` prints
+  as *"member removed / not admitted"* and **deletes** under `--gc --apply`. "Could not tell" is
+  not a licence to delete: it leaves the mirror alone and names the fault.
+- **A fabricated dangling count.** `_gdirs`'s swallow published a number the instrument could not
+  compute — measured, a resolvable `[[sharedfact]]` link went 0 → 1 dangling and `maintenance.work`
+  False → True. The fault is now recorded and carried through the TypedDict and the seed, because
+  `dangling: 0` alone cannot be told from a clean store.
+
 6. **"four frames down" was off by one in two of four sites.** Counted: `main`(0) →
    `iter_admissible_facts`(1) → `_admissible_records`(2) → **`ensure`(3)** → `_rebuild_locked`(4).
    ⚠ **Corrected:** the first pass claimed `facts_manifest.py`'s copy "names the *write* and is
