@@ -24696,28 +24696,47 @@ _rD57, _wD57 = _os57.pipe()
 
 
 def _late_write57() -> None:
-    _time57.sleep(0.45)                                   # well inside the shipped 1.0 s window
-    _os57.write(_wD57, b'{"cwd": "/late/payload"}')
-    _os57.close(_wD57)
+    _time57.sleep(0.45)                                   # well inside the shipped window
+    try:
+        _os57.write(_wD57, b'{"cwd": "/late/payload"}')
+        _os57.close(_wD57)
+    except OSError:
+        pass          # the read side may already be closed on the failure path — a FAULT must not
+                      # travel on the verdict's channel as a stray traceback (reviewer's note)
+                      # (the fd is closed below regardless; nothing here is load-bearing)
 
 
 _th57.Thread(target=_late_write57, daemon=True).start()
 _stdin_orig57 = sys.stdin
+# ⚠⚠ `getattr` — and this is the SECOND time in two commits. The method does not exist on the
+# pre-fix tree, and an unguarded call raises AttributeError AT MODULE SCOPE: measured, the pre-fix
+# suite printed 2292 check lines, rc=1, NO TOTALS LINE, D6 never ran, 37 checks lost. That is the
+# exact defect the sibling walk-pin had, fixed one commit earlier with `except Exception: pass`,
+# and REINTRODUCED here. A pin that CRASHES a pre-fix run is not a pin; it is a lost counter.
+_readfn57 = getattr(_beacon57, "_read_stdin_bounded", None)
 try:
     _fake57 = _os57.fdopen(_os57.dup(_rD57), "r")
     sys.stdin = _fake57                                   # `_read_stdin_bounded` reads this fd
     try:
-        _got57 = _beacon57._read_stdin_bounded(1.0)
+        # ⚠ THE SHIPPED WINDOW, never a literal. The first cut passed a hard-coded `1.0` while
+        # production reads `_STDIN_DEADLINE_S`, so the very mutation this check exists to catch —
+        # `_STDIN_DEADLINE_S: 1.0 -> 0.01` — left ALL TEN v0.4.57 checks GREEN. A literal standing
+        # in for a declaration is `hunt item #1`'s shape, recorded as a residual in the same commit
+        # that shipped this. Reading the constant is what makes the window the SUBJECT.
+        _got57 = _readfn57(getattr(_beacon57, "_STDIN_DEADLINE_S", 1.0)) if _readfn57 else b""
     finally:
         _fake57.close()
         sys.stdin = _stdin_orig57
 finally:
     _os57.close(_rD57)
-check("v0.4.57 (PIN): a payload arriving LATE (0.45 s) is still READ — a dropped payload is "
-      "indistinguishable from 'no stdin', so its fallback is silent. ⚠ The sibling pin above cannot "
-      "see this: it asserts only `rc == 0` and a time bound, which a 35x-tighter deadline satisfies "
-      "while dropping every payload (measured fully green)",
-      b"/late/payload" in _got57)
+# ⚠ GUARD, not a PIN: with the `getattr` guard above this reddens pre-fix by KEY-ABSENCE — the
+# function does not exist on the tree before it — which by the v0.4.45 precedent makes it a guard
+# on the repair's shape rather than a behavioural pin. Its real discriminating power is against the
+# DEADLINE mutation, which is what it now reads.
+check("v0.4.57 (GUARD — red pre-fix by KEY-ABSENCE, corrected from PIN in v0.4.58): a payload "
+      "arriving LATE (0.45 s) is still READ through the SHIPPED window — a dropped payload is "
+      "indistinguishable from 'no stdin', so its fallback is silent",
+      bool(_readfn57) and b"/late/payload" in _got57)
 
 # (4) PIN — `cm doctor` names the preflight-cache write it SKIPPED. The call sat in statement
 # position for a release, so the token was discarded and `doctor` was the one decline site that

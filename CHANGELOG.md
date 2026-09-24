@@ -5,6 +5,36 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.58] — 2026-09-24
+
+**Patch — two defects in v0.4.57's own final check, both found by the review round that was still
+reporting when 0.4.57 merged. Shipped as a correction rather than folded into that tag.**
+
+The check was added *specifically* to close a coverage gap — v0.4.57's beacon pin asserted only
+`rc == 0` and a time bound, which a payload-**dropping** regression satisfies perfectly. It shipped
+with two defects of its own, both the class it was written to close:
+
+1. **It crashed the pre-fix suite at module scope.** No `guard` around `_read_stdin_bounded`, which
+   does not exist on the pre-fix tree — so instead of reddening, the run died with `AttributeError`:
+   **2292 check lines, rc=1, NO TOTALS LINE, D6 never ran, 37 checks lost.** ⚠ That is the *exact*
+   defect the sibling walk-pin had, **fixed one commit earlier and reintroduced here**. A pin that
+   crashes a pre-fix run is not a pin; it is a lost counter. Now `getattr`-guarded, so a pre-fix tree
+   yields a clean **red** — which by the v0.4.45 precedent makes it a **GUARD**, not the PIN it was
+   labelled, and the label is corrected.
+2. **It was blind to the constant it claimed to guard.** The call passed a **hard-coded `1.0`** while
+   production reads `_STDIN_DEADLINE_S` — so the mutation its own comment names as its reason to
+   exist (`1.0 → 0.01`, a 35× tighter window) left **all ten v0.4.57 checks green**. The gap was
+   still open. ⚠ A literal standing in for a declaration is the same shape as the residual recorded
+   in that very commit; the check now reads the module constant, so the window is its **subject**.
+
+**Verified by that mutation**, not by reading the code: with the shipped window the 0.45 s payload is
+read; with `0.01` it is dropped — so the check finally discriminates the thing it is named for.
+
+Minor, same site: the late-writer thread's write is now `OSError`-guarded, so a failure path cannot
+emit a stray traceback onto the verdict's channel.
+
+Suite: **2329 passed, 0 failed**; `mypy`, `docs_links`, `manifests` green.
+
 ## [0.4.57] — 2026-09-24
 
 **Patch — the open-items docket, closed. Every item was VERIFIED against the live tree before it was
