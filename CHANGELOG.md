@@ -101,7 +101,8 @@ were real:
    reads. The helper was pinned; **neither call site was**.
 3. **The oversize refusal's stderr notice** — removing the `print` passed. It is the sole place the
    offending file can be named, and without it the operator gets a permanently cold cache
-   (measured 1.3 ms → ~1.4 s per call) with no lead.
+   (measured 1.3 ms → ~1.4 s per call on a 300-fact store **holding one 5 MiB fact** — the file
+   whose full read is the cost; the same store without it enumerates in ~40 ms) with no lead.
 
 Plus the archive's `sections.js` exemption, which had **no test at all** — and the check written to
 provide one failed twice, for two different reasons worth recording:

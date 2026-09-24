@@ -1869,8 +1869,11 @@ def _facts_refresh_probe(ctx) -> int:
 
     ⚠ The promise is PROBED, never printed. "Rebuilds lazily on next read" is a claim about a
     FUTURE rebuild, and `facts_manifest.ensure` fails open for a fact past `_READ_CAP` — so a domain
-    holding one oversize fact never rebuilds at all: every read re-enumerates in full (MEASURED
-    ~1.4 s against ~1.3 ms on a 300-fact store), and `cm data facts-refresh`, the DOCUMENTED REPAIR,
+    holding one oversize fact never rebuilds at all: every read re-enumerates in full — MEASURED
+    ~1.4 s against ~1.3 ms on a 300-fact store **holding ONE 5 MiB fact**, the file whose full read
+    is the cost; the same store without it enumerates in ~40 ms (also measured), so the number
+    belongs to that condition and not to "300 facts" — and `cm data facts-refresh`, the
+    DOCUMENTED REPAIR,
     was the one place that could have said so while instead restating the promise.
 
     ⚠ Factored so the EXIT CODE is pinnable without enrolling a project: the caller's ctx needs a

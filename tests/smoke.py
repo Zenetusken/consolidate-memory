@@ -24239,7 +24239,9 @@ check("v0.4.52 (GUARD, structural regression — green on both trees BY CONSTRUC
 
 # ⚠ The OVERSIZE refusal's stderr notice — the sole place the offending file can be named, and a
 # coverage lens measured that DROPPING the print leaves the suite green. Without it the operator
-# gets a silently and permanently cold cache (measured 1.3 ms → ~1.4 s per call) with no lead.
+# gets a silently and permanently cold cache (measured 1.3 ms → ~1.4 s per call on a 300-fact
+# store HOLDING ONE 5 MiB fact — the file whose full read is the cost; ~40 ms without it) with no
+# lead. ⚠ The condition is part of the number: quoted without it, 1.4 s reads as "300 facts".
 with _tf43.TemporaryDirectory() as _td_ov52:
     _pd_ov52 = Path(_td_ov52) / "pdata"; _pd_ov52.mkdir()
     _fd_ov52 = Path(_td_ov52) / "domains" / "dov" / "facts"; _fd_ov52.mkdir(parents=True)
