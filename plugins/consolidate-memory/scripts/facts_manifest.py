@@ -21,7 +21,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 SCHEMA_VERSION = 1
 KILL_SWITCH = "CM_FACTS_MANIFEST"
@@ -255,6 +255,34 @@ def _mint(reason: str) -> "tuple[None, str]":
     return None, reason
 
 
+# ⚠ Every reason `ensure` may return, from BOTH vocabularies, and the union is the point: `ensure`
+# passes `load()`'s reasons straight through as well as minting its own, so a guard keyed on
+# `_ENSURE_REASONS` alone would redden on a perfectly correct tree. `""` is the success sentinel
+# (rows were served from a healthy cache) — not a reason to rebuild, the ABSENCE of a refusal.
+_KNOWN_REASONS = (frozenset(_ENSURE_REASONS) | frozenset(_REBUILDABLE)
+                  | frozenset(_NONREBUILDABLE) | {""})
+
+
+def _served(rows: Any, reason: str) -> "tuple[Any, str]":
+    """`ensure`'s return, with the reason CLASSIFIED — the RUNTIME half of the classification.
+
+    ⚠ This exists because the pin's half is a SCAN, and a scan cannot see value. `tests/smoke.py`
+    enumerates the AST spellings `_mint("<literal>")` and `return x, "<literal>"`, so a reason
+    minted through a NAME — `return None, _NEW_TOKEN` — passed every check while circulating an
+    unclassified reason (MEASURED: all ten v0.4.57 checks green, while the literal-form control
+    reddened). ⚠ No wider scan can close that: a `Name` in the return position is
+    AST-INDISTINGUISHABLE from `load()`'s legitimate passthrough (`return None, reason`), which is
+    why the pin enumerates literals at all. The PRODUCER can see the value, the scanner cannot —
+    so the assertion lives here, where the decision that produced it is made.
+    """
+    if reason not in _KNOWN_REASONS:
+        raise AssertionError(
+            f"unclassified reason {reason!r} returned by ensure — mint it through `_mint` (and "
+            f"declare it in `_ENSURE_REASONS`, saying whether it is transient), or it is not a "
+            f"reason this cache may serve")
+    return rows, reason
+
+
 def build(facts_dir: Path) -> "tuple[list, str]":
     """Enumerate + classify the facts dir once. Returns (rows, domain).
 
@@ -435,70 +463,106 @@ def ensure(facts_dir: Path, plugin_data_dir: Path, *, may_write: bool = True):
     ⚠ The rebuild NEVER WAITS for `global.lock`; a held lock returns `(None, "lock-busy")` and the
     caller falls back to a full read. See `_rebuild_locked`.
 
-    `may_write=False` is the READ-ONLY form: a caller whose own contract forbids writing gets
-    `(None, reason)` instead of a rebuild, so it degrades to its full-read fallback rather than
-    taking `global.lock` and writing a manifest. The SessionStart beacon needs exactly this —
-    CLAUDE.md documents it as read-only, its hook budget is 2s, and a concurrent `cm sync`
-    holding `global.lock` would otherwise block it into that deadline.
-
-    ⚠ The flag lives HERE, beside the decision it qualifies, and NOT in the callers. The beacon
-    had already chosen `load()` — the read-only form — deliberately, with a comment saying so,
-    and was still defeated, because the write came from a helper THREE frames down
-    (`main` → `iter_admissible_facts` → `_admissible_records` → here) — and the WRITE one frame
-    below that (`_rebuild_locked`, frame 4). ⚠ Counted, not estimated: this sentence said "four"
-    while its own parenthetical terminated at `ensure`, which is frame 3, and an earlier pass
-    fixed the two sibling sites and declared THIS one correct without re-reading it. A guard one
-    call deep is not a
-    guard on the call path; that is this repo's weakest-enforcement-site rule, and the v0.4.45
-    inversion WIDENED the set of reasons that reach the rebuild (`predicate-changed` and
-    `row-fields` were already read-only), which is what made a latent hole a live one.
+    ⚠ THE REASON IS VALIDATED AT THE SINGLE EXIT, and that is why this is a WRAPPER rather than a
+    helper called from each return. The first cut put `_served(...)` on the four returns that
+    happened to need it — totality by CONVENTION — and a review lens measured the consequence: a
+    NEW return added to `ensure`, or an existing one edited to drop the call, still escapes, with
+    the suite green at 2331/0 while `(None, 'totally-undeclared')` reached the caller. Wrapping
+    makes it total by CONSTRUCTION: every path out of the inner function, including one nobody has
+    written yet, passes the one check. That is the only shape that survives a future edit.
+    ⚠ AND THE INNER IS A CLOSURE, not a module-level function. The first cut named it `_ensure_inner`
+    at module level, which left an importable, obviously-named bypass — a review lens measured that
+    calling it directly returns an unvalidated reason and that NOTHING in the suite notices (the
+    structural pin inspects this function's returns, never call sites).
+    ⚠ NO NAME TO IMPORT — and that is the exact claim, no stronger. The first cut of this sentence
+    said the bypass was "INEXPRESSIBLE", which a review lens measured FALSE: the CODE is still
+    reachable two ways. `types.FunctionType(code, ..., closure=...)` over `ensure.__code__.co_consts`
+    (deliberate introspection, not a realistic edit), and — the one that matters — ATTACHING the
+    inner as an attribute (`ensure.inner = _inner`), which is a one-line edit in this repo's OWN
+    idiom: the suite already reaches into this module that way (`setattr(_fm44, "_READ_CAP", …)`).
+    So: no name to import, and the v0.4.59 pin additionally asserts the inner is not attached.
+    ⚠ Its side benefit, also measured: the mint literals stay inside THIS function's AST subtree, so
+    the v0.4.57 scan reads them without being pointed at an inner name. That matcher had already
+    broken twice on refactors of this function; the closure removes the target it had to track.
     """
-    rows, reason = load(facts_dir, plugin_data_dir)
-    if rows is not None:
-        return rows, reason
-    if not may_write:
-        return None, reason
-    if reason not in _NONREBUILDABLE:
-        try:
-            rows, domain = _rebuild_locked(facts_dir, plugin_data_dir)
-        except _Oversize as _e:
-            # ⚠ FAIL OPEN, and never write. Nothing was written (the raise precedes the atomic
-            # write), so every later call re-enumerates rather than serving the truncated verdict
-            # — the safe direction, and the only one available: a row for this file cannot be
-            # built correctly WITHOUT reading all of it, and reading all of it is what the cap
-            # exists to avoid on the hook path.
-            # ⚠ AND IT IS NOT SILENT. A refusal that names nothing leaves the operator with a
-            # permanently-cold cache and no lead: measured, a 300-fact domain with ONE 5 MiB fact
-            # went from 1.3 ms to ~1.4 s EVERY call, forever, with `cm data facts-refresh` — the
-            # documented repair — cheerfully reporting that it "rebuilds lazily on next read".
-            # This is the one place the offending file can be named, so it is named here.
-            print(f"facts_manifest: refusing to cache {facts_dir} — {_e}; every read will "
-                  f"re-enumerate in full until this file is shrunk below {_READ_CAP} bytes",
-                  file=sys.stderr)
-            return _mint("oversize")
-        if rows is None:
-            # DECLINED, not failed: another process holds `global.lock` (see `_rebuild_locked`).
-            # Terminal — `ensure` does not retry, and every caller already has the full-read
-            # fallback this cache exists to skip.
-            # ⚠ `"lock-busy"` is deliberately in NEITHER `_REBUILDABLE` nor `_NONREBUILDABLE` —
-            # those classify the reasons `load()` returns, and filing this among them would repeat
-            # the defect that removed `"rebuild-failed"` (a member whose producer is elsewhere).
-            # ⚠ But "not mis-filed" is not "classified": it is minted HERE, so it belongs to the
-            # OTHER vocabulary, `_ENSURE_REASONS`, which names its TRANSIENCE — the property three
-            # separate consumers each had to get right by hand before this existed.
-            return _mint("lock-busy")
-        # ⚠ `rows, "rebuilt"` UNCONDITIONALLY — never `if rows:`. `_rebuild_locked` returns a dict
-        # on SUCCESS, and that dict is legitimately EMPTY for a domain with no facts: `build()`
-        # returns `[]`, the manifest is written as `{"files": []}`, and the rebuild SUCCEEDED.
-        # Reading `{}` as failure made `ensure` return `(None, "rebuild-failed")` for a successful
-        # empty rebuild — so `cm data facts-refresh`, the DOCUMENTED REPAIR, reported permanent
-        # failure with a BLANK cause on every freshly-enrolled domain, and no action could clear
-        # it because a zero-fact domain can never produce rows. MEASURED by two review lenses,
-        # independently, on this PR's own new helper.
-        return rows, "rebuilt"
-    return None, reason
+    # ⚠ A NESTED function, not a module-level one, and that is the whole point. The first cut
+    # made the inner a module-level `_ensure_inner`, which left an importable, obviously-named
+    # bypass: calling it directly returns an unvalidated reason and NOTHING in the suite notices
+    # (measured by a review lens — the structural pin inspects `ensure`'s returns, never call
+    # sites). A closure has no name to import, so the bypass is not merely undetected but
+    # INEXPRESSIBLE. ⚠ It also keeps the mint literals inside `ensure`'s own AST subtree, so the
+    # v0.4.57 scan reads them without being pointed at an inner name — the spelling-bound matcher
+    # had already broken twice on refactors of this function, and this removes its target to track.
+    def _inner():
+        """Load, or rebuild-under-lock when the cache needs it. (rows_by_stem | None, reason).
 
+        ⚠ The rebuild NEVER WAITS for `global.lock`; a held lock returns `(None, "lock-busy")` and the
+        caller falls back to a full read. See `_rebuild_locked`.
 
+        `may_write=False` is the READ-ONLY form: a caller whose own contract forbids writing gets
+        `(None, reason)` instead of a rebuild, so it degrades to its full-read fallback rather than
+        taking `global.lock` and writing a manifest. The SessionStart beacon needs exactly this —
+        CLAUDE.md documents it as read-only, its hook budget is 2s, and a concurrent `cm sync`
+        holding `global.lock` would otherwise block it into that deadline.
+
+        ⚠ The flag lives HERE, beside the decision it qualifies, and NOT in the callers. The beacon
+        had already chosen `load()` — the read-only form — deliberately, with a comment saying so,
+        and was still defeated, because the write came from a helper THREE frames down
+        (`main` → `iter_admissible_facts` → `_admissible_records` → here) — and the WRITE one frame
+        below that (`_rebuild_locked`, frame 4). ⚠ Counted, not estimated: this sentence said "four"
+        while its own parenthetical terminated at `ensure`, which is frame 3, and an earlier pass
+        fixed the two sibling sites and declared THIS one correct without re-reading it. A guard one
+        call deep is not a
+        guard on the call path; that is this repo's weakest-enforcement-site rule, and the v0.4.45
+        inversion WIDENED the set of reasons that reach the rebuild (`predicate-changed` and
+        `row-fields` were already read-only), which is what made a latent hole a live one.
+        """
+        rows, reason = load(facts_dir, plugin_data_dir)
+        if rows is not None:
+            return _served(rows, reason)
+        if not may_write:
+            return _served(None, reason)
+        if reason not in _NONREBUILDABLE:
+            try:
+                rows, domain = _rebuild_locked(facts_dir, plugin_data_dir)
+            except _Oversize as _e:
+                # ⚠ FAIL OPEN, and never write. Nothing was written (the raise precedes the atomic
+                # write), so every later call re-enumerates rather than serving the truncated verdict
+                # — the safe direction, and the only one available: a row for this file cannot be
+                # built correctly WITHOUT reading all of it, and reading all of it is what the cap
+                # exists to avoid on the hook path.
+                # ⚠ AND IT IS NOT SILENT. A refusal that names nothing leaves the operator with a
+                # permanently-cold cache and no lead: measured, a 300-fact domain with ONE 5 MiB fact
+                # went from 1.3 ms to ~1.4 s EVERY call, forever, with `cm data facts-refresh` — the
+                # documented repair — cheerfully reporting that it "rebuilds lazily on next read".
+                # This is the one place the offending file can be named, so it is named here.
+                print(f"facts_manifest: refusing to cache {facts_dir} — {_e}; every read will "
+                      f"re-enumerate in full until this file is shrunk below {_READ_CAP} bytes",
+                      file=sys.stderr)
+                return _mint("oversize")
+            if rows is None:
+                # DECLINED, not failed: another process holds `global.lock` (see `_rebuild_locked`).
+                # Terminal — `ensure` does not retry, and every caller already has the full-read
+                # fallback this cache exists to skip.
+                # ⚠ `"lock-busy"` is deliberately in NEITHER `_REBUILDABLE` nor `_NONREBUILDABLE` —
+                # those classify the reasons `load()` returns, and filing this among them would repeat
+                # the defect that removed `"rebuild-failed"` (a member whose producer is elsewhere).
+                # ⚠ But "not mis-filed" is not "classified": it is minted HERE, so it belongs to the
+                # OTHER vocabulary, `_ENSURE_REASONS`, which names its TRANSIENCE — the property three
+                # separate consumers each had to get right by hand before this existed.
+                return _mint("lock-busy")
+            # ⚠ `rows, "rebuilt"` UNCONDITIONALLY — never `if rows:`. `_rebuild_locked` returns a dict
+            # on SUCCESS, and that dict is legitimately EMPTY for a domain with no facts: `build()`
+            # returns `[]`, the manifest is written as `{"files": []}`, and the rebuild SUCCEEDED.
+            # Reading `{}` as failure made `ensure` return `(None, "rebuild-failed")` for a successful
+            # empty rebuild — so `cm data facts-refresh`, the DOCUMENTED REPAIR, reported permanent
+            # failure with a BLANK cause on every freshly-enrolled domain, and no action could clear
+            # it because a zero-fact domain can never produce rows. MEASURED by two review lenses,
+            # independently, on this PR's own new helper.
+            return _served(rows, "rebuilt")
+        return _served(None, reason)
+
+    return _served(*_inner())
 def _rebuild_locked(facts_dir: Path, plugin_data_dir: Path):
     """Rebuild the cache under `global.lock`, or DECLINE. `(rows | None, domain)`.
 

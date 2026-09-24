@@ -5,6 +5,72 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.59] — 2026-09-24
+
+**Patch — the remaining open items, each with the measurement that named its repair.** Two were
+shipped *recorded open* by v0.4.57 rather than quietly closed. ⚠ **The third was not open at all**:
+the citation-binding gate had already shipped at v0.4.37, and this release's first cut built a
+duplicate of it before an exploration pass caught the premise. That correction is item 3 below,
+and it is the more useful half of this entry.
+
+1. **The reason classification gets a RUNTIME half** — `facts_manifest.py`. The pin enumerates the
+   AST **spellings** `_mint("<literal>")` / `return x, "<literal>"`, so a reason minted through a
+   **name** — `return None, _NEW_TOKEN` — passed every check while circulating an unclassified
+   reason (MEASURED: all ten v0.4.57 checks green, while the literal-form control reddened).
+   ⚠ **No wider scan can close that**: a `Name` in the return position is
+   AST-indistinguishable from `load()`'s legitimate passthrough, which is why the pin enumerates
+   literals at all. The producer can see the value and the scanner cannot, so the validation now
+   sits at a **single exit** — `ensure` wraps an inner function and validates what comes back —
+   membership at every `ensure` return. ⚠ It accepts **both** vocabularies — `ensure` passes
+   `load()`'s reasons through, so a guard keyed on `_ENSURE_REASONS` alone would redden on correct
+   trees.
+
+
+   ⚠ **Two review findings landed on this fix before it held, and both were about TOTALITY**
+   rather than behaviour. **(1)** The first cut called the validator from **four individual
+   returns** — totality by *convention*; a lens measured that a NEW return, or an existing one
+   edited to drop the call, escaped with the suite green at 2331/0. **(2)** The wrapper that fixed
+   that left an **importable bypass**: the inner sat at module level, so calling it directly
+   returned an unvalidated reason and nothing noticed (the structural pin inspected `ensure`'s
+   returns, never call sites). The inner is now a **CLOSURE** — a name that cannot be imported
+   cannot be called, so the bypass is inexpressible rather than merely undetected.
+   ⚠ And the pin written to guard that property **reddened on its own author**: `ast.walk(ensure)`
+   descends into the nested function, so it counted the inner's six returns as `ensure`'s. It now
+   counts OWN returns. That is the FIFTH instrument in this one patch to break on a refactor of the
+   same function — every one asserting a property of a SHAPE rather than of a VALUE, which is
+   precisely why the half that held is the half that reads values.
+2. **Two `preflight.py` sites stopped MANUFACTURING VERDICTS.** Unlike the `control_plane` sites
+   fixed in v0.4.57 (where the failure mode was a *silent cleanup*), these turned a faulted
+   `LOCK_UN` into a *finding*, because each wrapped the acquire and the unlock in ONE `try`.
+   MEASURED: the held-lock advisory reported **"1 HELD lock file(s) — another process holds the
+   plane; wait or investigate"** for a directory nobody held, and `probe_sqlite_roundtrip` reported
+   **`fail`** with the remedy *"Check disk space/permissions"*. Now **only the acquire decides**;
+   the unlock is cleanup. ⚠ Swallowing it is safe for the reason a review lens measured on the
+   sibling fix: `os.close(fd)` / the `with` close releases the flock via `close(2)` regardless.
+
+3. ⚠ **The citation-resolution gate was ALREADY SHIPPED, and this release's first cut built a
+   DUPLICATE of it.** The item was recorded open — *"the citation-binding gate designed in
+   `prose-tied-to-the-tree.spec.md` remains unshipped"* — and an exploration agent repeated it
+   (*"no resolver in `tests/`"*). **Both were false.** The gate has run since **v0.4.37** as
+   `tests/smoke.py` pins 6/7a/7b/8/9 — visible in this very repo's suite output, which prints
+   `v0.4.37 pin 7b … 25 of 25 citing docs resolved` on every run — and `CHANGELOG.md` records it
+   as shipped, with `ci.yml`'s `fetch-depth: 0` commented *"REQUIRED … smoke.py's citation gate
+   resolves every…"*.
+
+   ⚠ **A second implementation is the divergence class this repo keeps closing**, so the duplicate
+   was reverted rather than shipped alongside. The lesson is the one this whole docket has been
+   teaching: an item recorded as open is a HYPOTHESIS, and a hypothesis about *absence* needs the
+   same measurement as any other — I checked that no resolver existed in `tests/docs_links.py`,
+   and read that as no resolver existing.
+
+   ⚠ Worth stating what the shipped gate does and does not do, since the duplicate was built on a
+   belief about that too: it resolves each citing doc against the revision the doc **declares**
+   (range-checked, a range's END included, disambiguated by line-fit) — so it verifies **range,
+   not content**, and would **not** have caught the citation v0.4.57 repaired by hand. The
+   v0.4.57 entry's own note that this *"remains unshipped, so one unbound citation was fixed by
+   hand"* is corrected here rather than left standing.
+Suite: **2332 passed, 0 failed**; `mypy`, `docs_links`, `manifests`, accumulation sim green.
+
 ## [0.4.58] — 2026-09-24
 
 **Patch — two defects in v0.4.57's own final check, both found by the review round that was still
@@ -135,8 +201,10 @@ against: hardening a display guard for an unreachable input is building ahead of
    `session_beacon` occurrences in its diff — so it mis-aimed under both coordinate systems, for two
    different reasons. Now a **greppable anchor** (`if not missing and not stale:`), the durable form
    this repo prescribes, with the history recorded at the reading note. ⚠ The prose analysis in
-   `prose-tied-to-the-tree.spec.md` § Family 4 — *"binding is the entire repair"* — is **not gated**;
-   its resolution check was designed and never shipped, so this cite was fixed by hand.
+   `prose-tied-to-the-tree.spec.md` § Family 4 — *"binding is the entire repair"* — is **not gated** — ⚠ **CORRECTED in v0.4.59: it WAS gated**, since v0.4.37, as
+   `tests/smoke.py` pins 6/7a/7b/8/9. The belief that it was unshipped is what made v0.4.59's first
+   cut build a duplicate of it; the cite below was still fixed by hand, but because the existing gate
+   verifies RANGE and not content, not because no gate existed.
 10. **A `cwd-invariance` claim that was false, in `render_html.py`** — the comment named TWO fields
     falling back to the cwd template (`registry_state`, `plugin_data_dir`) and concluded invariance;
     `store_context_from_registry` falls back on **FOUR** (`project_root`, `session_dir`, `project_id`,
