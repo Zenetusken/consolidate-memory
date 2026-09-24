@@ -5,6 +5,33 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.53] — 2026-09-24
+
+**Patch — the beacon's fault path gets the behavioural arm 0.4.52 shipped without.**
+
+0.4.52 added three coverage guards and **stated rather than faked** that one of them — the beacon's
+fault path — had only a **structural** arm: it asserted the call and the sentence's source, and
+could not prove the sentence fired. I built the behavioural fixture and measured that
+`_store_gaps` returned `(0, 0)` for it, so `beacon_line` short-circuited at
+`if not missing and not stale: return ""` and any assertion would have read an empty string.
+
+⚠ **The fixture turned out to need no padding at all, and that is the point.** The v0.4.10 sibling
+pin has to pad its index to *one token under the ceiling* to observe `held` at all. Here the fault
+supplies that condition for free: an unreadable index seeds `INDEX_CEILING_TOKENS + 1`, so **every**
+admitted item is ceiling-held. What the fixture did need was a fact that survives `is_relevant` +
+`admit_cross_project` — a list-universal canonical admitted through a granted group.
+
+The arm is now behavioural and carries a **CONTROL**: the same fact under a *readable*, empty index
+is **not** held, so the arm measures the fault rather than a fixture that is permanently over the
+ceiling.
+
+⚠ **And it is a GUARD verified by MUTATION, not a PIN** — the routing shipped in v0.4.46, so **no
+shipped revision lacks it** and no revision-based pre-fix measurement can redden this. The two
+conjuncts were each mutation-tested **separately**, one fresh copy apiece: reverting the seed alone
+→ 1 red; dropping `_fault` alone → 1 red. A two-conjunct assertion whose halves are not
+individually checked is how a vacuous half hides, and this arc has already shipped one CONTROL
+whose second half passed pre-fix by construction.
+
 ## [0.4.52] — 2026-09-24
 
 **Patch — the coverage holes a mutation lens found: three behaviours shipped in 0.4.46–0.4.49 whose
