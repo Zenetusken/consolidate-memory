@@ -23488,13 +23488,51 @@ try:
                 "# Target spec\n\n**Status:** revised for review. ⚠ The drafting-era status survived "
                 "this line.\n\nTarget release: **v0.1.0 (patch)**\n")
             _o6p64 = _o6ck64 == 1 and len(_o6e64) == 1 and "Target release: v0.1.0" in _o6e64[0]
+
+            # ══ v0.4.68 — three behaviours mutation testing found UNWITNESSED ════════════════════
+            # Each of these mutations left the suite at 2365/0 before these arms existed.
+            # GUARD, NOT A PIN (all three are green on BOTH trees — their only witness is the
+            # mutation they name, because the behaviour they assert already shipped).
+            #
+            # M1 — the status WINDOW is bounded by the region. MEASURED: `_win = "\n".join(lines
+            # [:min(len(lines), CAP)])` leaves the suite GREEN, so no check sees the window's bound;
+            # only the TARGET scan's use of the region was witnessed. A declaration past the `## `
+            # heading must NOT be examined — that is what "the region is the preamble" means.
+            _o7ck64, _o7e64, _o7pm64 = _arm63(
+                "target.spec.md", "# Target spec\n\n## Body\n\n**Status:** revised for review.\n")
+            _o7g64 = _o7ck64 == 0 and not _o7e64
+            # M3 — the CAP binds. MEASURED: raising `_SPEC_PREAMBLE_CAP` 120 -> 10**9 leaves the
+            # suite GREEN, so nothing saw the cap bind. A declaration past line 120 must not be
+            # examined; `identity-from-the-input.spec.md` (hd=149) is the live shape.
+            # ⚠ AND THE CASE THAT ONLY LOOKS LIKE A GAP: deleting the cap term from the `min`
+            # (`min(_hd, _note)` vs `min(_hd, _note, _n)`) is an EQUIVALENT mutation — `_note` comes
+            # from `range(min(_hd, _n))` with default `_n`, so `_note <= _n` ALWAYS and the two agree
+            # on all 58 specs (MEASURED: 0 differences). Green by EQUIVALENCE is not green by GAP,
+            # and the mutation report this arm answers conflated them — it asked for a witness to a
+            # behaviour that does not change. Assert only the cap that BINDS.
+            _fill68 = "\n".join(f"Filler line {_i:03d}: nothing to see here." for _i in range(1, 131))
+            _o8ck64, _o8e64, _o8pm64 = _arm63(
+                "target.spec.md", "# Target spec\n\n" + _fill68 + "\n\n**Status:** revised for review.\n")
+            _o8g64 = _o8ck64 == 0 and not _o8e64
+            # M5 — the target arm's own ban on a `spec_done` guard. MEASURED: re-adding
+            # `and not spec_done(stated)` leaves the suite GREEN. ⚠ This is the defect v0.4.63 closed
+            # — `asserted-support.spec.md` read "implemented and REVIEWED … awaiting merge" and
+            # survived TWO merges because the done-token EXEMPTED it. A header stating BOTH states,
+            # with a shipped target and no citation, must still FIRE.
+            _o9ck64, _o9e64, _o9pm64 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status:** revised for review — implemented in part. "
+                "Target release: **v0.1.0 (patch)**\n")
+            _o9g64 = _o9ck64 == 1 and len(_o9e64) == 1
         except Exception as _x63:               # a broken gate is RED, not a traceback
             _a1p63 = _a1c63 = _a2p63 = _a2c63 = _a3p63 = _a4p63 = _a4f63 = _a4s63 = False
             _a5p63 = _a5c63 = False
             _o1p64 = _o2p64 = _o4g64 = _o5c64 = _o6p64 = False
+            _o7g64 = _o8g64 = _o9g64 = False
             _a1pm63 = _a2pm63 = _a3pm63 = _a4pm63 = _a5pm63 = f"could not exercise it: {type(_x63).__name__}: {_x63}"
             _a1cm63 = _a2cm63 = _a4fm63 = _a4sm63 = _a5cm63 = _a1pm63
             _o1pm64 = _o2pm64 = _o4pm64 = _o5pm64 = _o6pm64 = _a1pm63
+            _o7pm64 = _o8pm64 = _o9pm64 = _a1pm63
     finally:
         _dl40.ROOT = _spsroot61                 # restored even if the arm itself blew up
         _shpsd40.rmtree(_spstmp61, ignore_errors=True)
@@ -23597,6 +23635,20 @@ check("v0.4.66 O6 pin (PIN — the provenance boundary anchors on the preserved 
       "quote, ending their regions at lines 3/3/9/5 rather than at their `## ` headings (5/5/11/8). "
       "A latent false negative: any pre-shipping clause in the lost continuation was invisible. "
       f"MEASURED pre-fix silent, post-fix fires): ⚠ {_o6pm64}", _o6p64)
+check("v0.4.68 O7 guard (GUARD, NOT a pin — MEASURED: unbinding the status WINDOW to the bare cap "
+      "leaves the suite GREEN, so no check saw the window's bound; only the TARGET scan's use of the "
+      "region was witnessed. A declaration past the `## ` heading must NOT be examined — that is what "
+      f"'the region is the preamble' means): ⚠ {_o7pm64}", _o7g64)
+check("v0.4.68 O8 guard (GUARD, NOT a pin — MEASURED: raising `_SPEC_PREAMBLE_CAP` 120 -> 10**9 "
+      "leaves the suite GREEN, so nothing saw the cap bind. A declaration past line 120 must not be "
+      "examined; `identity-from-the-input.spec.md` (hd=149) is the live shape. ⚠ Deleting the cap "
+      "term from the `min` is NOT a gap — it is an EQUIVALENT mutation (`_note <= _n` always, 0 of 58 "
+      f"differ), so no arm can witness it): ⚠ {_o8pm64}", _o8g64)
+check("v0.4.68 O9 guard (GUARD, NOT a pin — MEASURED: re-adding `and not spec_done(stated)` to the "
+      "target arm leaves the suite GREEN. ⚠ This is the defect v0.4.63 CLOSED: "
+      "`asserted-support.spec.md` read 'implemented and REVIEWED ... awaiting merge' and survived TWO "
+      "merges because the done-token EXEMPTED it. A header stating BOTH states, with a shipped "
+      f"target and no citation, must still FIRE): ⚠ {_o9pm64}", _o9g64)
 
 # ── v0.4.63 (B4): the contiguity gate is PER-FILE now, and its needles are NEW ──────────────────
 # The v0.4.57 entry named `CLAUDE.md:32-33` as the wrapped-anchor instance and NOTED IT CLOSED — but a
@@ -26731,7 +26783,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     only docs_links.py + docs/ restored: pre-fix
                                        #     2350 passed / 5 failed (the five PINs, nothing else),
                                        #     post-fix 2355 passed / 0 failed.
-                            + 5        # v0.4.64/v0.4.65/v0.4.66 — the target arm's OPERAND (the provenance
+                            + 8        # v0.4.64-68 — the target arm's OPERAND (the provenance
                                        #     boundary + the preamble bound). TWO PINs, both
                                        #     asserting SILENCE post-fix and therefore RED
                                        #     pre-fix — the arm read raw `lines[:120]`, so it
