@@ -23240,8 +23240,19 @@ try:
     _spslive61 = _dl40.check_spec_status()
     _spsliveerr61 = len(_dl40.errors) - _spsn61
     del _dl40.errors[_spsn61:]
-    _spsa61 = _spslive61 >= 1 and _spsliveerr61 == 0
-    _spsamsg61 = f"live tree: {_spslive61} status line(s) checked, {_spsliveerr61} error(s)"
+    # ⚠ v0.4.64: `>= 1` was a VACUITY floor, and a mutation measured what that costs. Making
+    # `_spec_header_end` over-cut (return 0 whenever a note exists — the natural over-correction of
+    # this release's change) leaves the suite at **2363/1**, only O1 reddening, while the live
+    # denominator falls **52 → 26** — every note-carrying spec drops out at once and nothing says so.
+    # ⚠ The floor is PROPORTIONAL rather than an equality for the reason the release note gives: the
+    # COUNT is a property of the corpus (it has read 51 and 52 as the corpus moved), so an equality
+    # would red on every legitimate corpus change. The FRACTION is not: it has never been near half —
+    # 52 of 58 specs today. A bound that silently drops a third of the corpus is broken, not churned.
+    _corpus61 = len(list((ROOT / "docs").glob("*.spec.md")))
+    _floor61 = (_corpus61 * 3) // 4
+    _spsa61 = _spslive61 >= _floor61 and _spsliveerr61 == 0
+    _spsamsg61 = (f"live tree: {_spslive61}/{_corpus61} spec(s) examined (floor {_floor61}), "
+                  f"{_spsliveerr61} error(s)")
 
     _spstmp61 = Path(_tfpsd40.mkdtemp(prefix="smoke-spec-status-"))
     try:                                        # ── the firing arm, on a two-file tree ────────
@@ -23454,13 +23465,26 @@ try:
                 "target.spec.md",
                 "# Target spec\n\n> Preserved verbatim:\n\n**Status:** revised for review.\n")
             _o4g64 = _o4ck64 == 0 and not _o4e64
+            # CONTROL — the arm still FIRES on a LIVE shipped target sitting ABOVE its provenance
+            # note. ⚠ This is the control the narrowing's OWN failure shape needs, and O3 cannot
+            # supply it: O3's fixture carries no note, so it cannot see over-cutting in the note's
+            # presence, which is the only over-correction the new helper introduces. MEASURED under
+            # the over-cut mutation (region → 0 whenever a note exists): O2, O3 and O4 all stay
+            # GREEN and only O1 reds — this arm reds too, because the live target it names is inside
+            # the region such a cut removes. Green on BOTH trees, EXAMINED on both.
+            _o5ck64, _o5e64, _o5pm64 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status:** revised for review. Target release: **v0.1.0 (patch)**\n\n"
+                "> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM:\n\n"
+                "> **Status: revised for review.** Target release: **v0.1.0 (patch)**\n")
+            _o5c64 = _o5ck64 == 1 and len(_o5e64) == 1 and "Target release: v0.1.0" in _o5e64[0]
         except Exception as _x63:               # a broken gate is RED, not a traceback
             _a1p63 = _a1c63 = _a2p63 = _a2c63 = _a3p63 = _a4p63 = _a4f63 = _a4s63 = False
             _a5p63 = _a5c63 = False
-            _o1p64 = _o2p64 = _o3c64 = _o4g64 = False
+            _o1p64 = _o2p64 = _o3c64 = _o4g64 = _o5c64 = False
             _a1pm63 = _a2pm63 = _a3pm63 = _a4pm63 = _a5pm63 = f"could not exercise it: {type(_x63).__name__}: {_x63}"
             _a1cm63 = _a2cm63 = _a4fm63 = _a4sm63 = _a5cm63 = _a1pm63
-            _o1pm64 = _o2pm64 = _o3pm64 = _o4pm64 = _a1pm63
+            _o1pm64 = _o2pm64 = _o3pm64 = _o4pm64 = _o5pm64 = _a1pm63
     finally:
         _dl40.ROOT = _spsroot61                 # restored even if the arm itself blew up
         _shpsd40.rmtree(_spstmp61, ignore_errors=True)
@@ -23557,6 +23581,11 @@ check("v0.4.64 O4 guard (GUARD, NOT a pin — a spec whose provenance note sits 
       "`if m:` block never executes at examined 0, so reverting that bound leaves this GREEN. The "
       "locator's bound is in fact unobservable by construction (`m` and `_ix` search the same "
       f"region), so no check can witness it): ⚠ {_o4pm64}", _o4g64)
+check("v0.4.64 O5 control (CONTROL — the arm still FIRES on a LIVE shipped target sitting ABOVE its "
+      "provenance note. Green on BOTH trees and EXAMINED on both. ⚠ This is the control the "
+      "narrowing's OWN failure shape needs, and O3 could not supply it: O3's fixture carries no note, "
+      "so it cannot see over-cutting in the note's PRESENCE — the only over-correction the new helper "
+      f"introduces): ⚠ {_o5pm64}", _o5c64)
 
 # ── v0.4.63 (B4): the contiguity gate is PER-FILE now, and its needles are NEW ──────────────────
 # The v0.4.57 entry named `CLAUDE.md:32-33` as the wrapped-anchor instance and NOTED IT CLOSED — but a
@@ -26691,21 +26720,25 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     only docs_links.py + docs/ restored: pre-fix
                                        #     2350 passed / 5 failed (the five PINs, nothing else),
                                        #     post-fix 2355 passed / 0 failed.
-                            + 4        # v0.4.64 — the target arm's OPERAND (the provenance
+                            + 5        # v0.4.64 — the target arm's OPERAND (the provenance
                                        #     boundary + the preamble bound). TWO PINs, both
                                        #     asserting SILENCE post-fix and therefore RED
                                        #     pre-fix — the arm read raw `lines[:120]`, so it
-                                       #     read the preserved drafting-era blockquote (12 of
-                                       #     the 17 target-bearing specs carry their version
-                                       #     ONLY there) and up to 120 lines of BODY. Plus ONE
-                                       #     CONTROL: the arm still FIRES on a shipped target
-                                       #     named in the real preamble, which is the guard
-                                       #     against the over-correction this narrowing invites.
+                                       #     read the preserved drafting-era blockquote (most
+                                       #     target-bearing specs carry their version ONLY
+                                       #     there — the corpus count lives in the CHANGELOG
+                                       #     and beside the operand, not restated here) and up
+                                       #     to 120 lines of BODY. Plus TWO CONTROLS: the arm
+                                       #     still FIRES on a shipped target named in the real
+                                       #     preamble, and again on a LIVE target ABOVE its
+                                       #     note — the second is the one that sees the
+                                       #     over-correction this narrowing itself invites,
+                                       #     which a note-free control cannot.
                                        #     Plus ONE GUARD — the per-line locator's new bound
                                        #     is a NO-OP (MEASURED PRE-FIX: 0 of the 26
                                        #     note-carrying specs land at or after the note), so
                                        #     it cannot redden pre-fix
-                                       #     and is NOT a pin. ⚠ Two of the four are
+                                       #     and is NOT a pin. ⚠ Three of the five are
                                        #     deliberately not pins, and say so in their text.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
