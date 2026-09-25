@@ -5,6 +5,35 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.66] — 2026-09-25
+
+**Patch — the boundary anchored on a phrase the sweep itself writes into the live header.**
+
+Found by following v0.4.65's own recommendation to check whether `_SPEC_PROVENANCE_QUOTE` really is
+consulted in one place. It is not — and the audit turned up a live defect on the way.
+
+- ⚠ **The provenance boundary matched the phrase, not the quote.** The sweep this boundary exists to
+  fence off writes its own **correction sentence into the live header** — *"⚠ The drafting-era status
+  survived because no gate re-read it"* — so `_spec_header_end` cut the region at the sweep's own
+  feedback rather than at the preserved blockquote. MEASURED on the corpus: **four** specs
+  (`body-defragmentation`, `completion-driven-archiving`, `cross-domain-index-refresh`,
+  `group-lifecycle-completion`) ended their region at lines **3/3/9/5** instead of at their `## `
+  headings (**5/5/11/8**) — a **latent false negative**, since any pre-shipping clause in the lost
+  continuation was invisible. The boundary now requires a **blockquote** line, which is exact: the
+  marker the sweep writes is `> **Drafting-era status — …**`, and its live sentences are never quoted.
+  ⚠ This is **v0.4.63's own recorded lesson — "the sweep writes prose into the header the gate reads,
+  so its own annotation must be written around the detector's vocabulary" — broken by the sweep that
+  recorded it.**
+- **PIN:** O6. Reverting the anchor to the phrase-only form reads **2364 / 1** — the single red is O6 —
+  against **2365 / 0** anchored. ⚠ No other check in the suite discriminates it, which is why four
+  review rounds passed over it.
+
+⚠ **Still open, and named rather than implied:** the five behaviours mutation testing found
+unwitnessed in v0.4.65 (unbinding the status window, the boundary's side, the cap term, the two-arm
+`elif`, the forbidden `spec_done` guard), and the comment-prose cut. Neither is in this release.
+
+Measured: `tests/smoke.py` **2365 / 0** · `docs_links` **52** spec status lines, 0 errors · `mypy` 0 in 42.
+
 ## [0.4.65] — 2026-09-25
 
 **Patch — the findings the v0.4.64 review agents were holding, and a released figure that was wrong.**
