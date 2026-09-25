@@ -1,6 +1,8 @@
 # Defrag flow-signal + emoji index — design-of-record
 
-**Status: draft → advisor → review-to-zero → implementation.**
+**Status: SHIPPED (v0.4.23)** — verified against `CHANGELOG.md` §v0.4.23, which names this spec.
+> Drafting-era line, never revisited after the arc closed: Status: draft → advisor → review-to-zero → implementation.
+> (The class is now gated — `tests/docs_links.check_spec_status`.)
 Target release: **v0.4.23 (patch)** — two measured defects from the 2026-09-07 dream
 session's footnotes, each root-caused at its source with a discriminating pin.
 

@@ -1,9 +1,7 @@
 # Spec — body-defragmentation (curate bloated ACTIVE files) · Cycle 2
 
 Status: **SHIPPED (v0.4.23)** — `--justify-defrag` is in `memory_status.py` and covered; verified
-against the live tree 2026-09-24. ⚠ The drafting-era status survived because **nothing reads a
-spec's own header**: the version statements live in docs_links' LIVE_DOCS set, which a spec header
-is not in. Drafting-era tail: `gate-1 review pending · target: cm vNEXT (PATCH)`, following Cycle 1 (completion-driven archiving).
+against the live tree 2026-09-24. ⚠ The drafting-era status survived because no gate read a spec's status **WORD**: the version statements live in docs_links' LIVE_DOCS set — a *currency* axis, not a status one — and that set does contain ONE spec (`docs/1.0-preflight.spec.md`, whose status line is read for its version token only). A spec's status word was in no matcher; `tests/docs_links.check_spec_status` (v0.4.61) now reads the status WORD. Drafting-era tail: `gate-1 review pending · target: cm vNEXT (PATCH)`, following Cycle 1 (completion-driven archiving).
 
 ## The measured problem
 

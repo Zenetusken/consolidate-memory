@@ -1,8 +1,7 @@
 # Spec — completion-driven archiving (decouple archive from the over-budget gate)
 
 Status: **SHIPPED** — `cm local archive` is present in `cm_ops.py`/`local_ingress.py` and covered;
-verified against the live tree 2026-09-24. ⚠ Same blind spot as its sibling below/above: a spec's
-own header is read by no gate. Drafting-era line: `target: cm vNEXT (PATCH) · author cycle: 2026-06-22`
+verified against the live tree 2026-09-24. ⚠ Same blind spot as its sibling below/above: **no gate read a spec's status WORD** — the LIVE_DOCS set is a *currency* axis, and the one spec in it is read for its version token only. `tests/docs_links.check_spec_status` (v0.4.61) now reads the status WORD. Drafting-era line: `target: cm vNEXT (PATCH) · author cycle: 2026-06-22`
 
 ## The measured problem (not the one the audit first named)
 

@@ -2,7 +2,9 @@
 
 **Design-of-record for the HTML archive's shared-consciousness view: all topology
 layers on one diagram, any fleet combination.**
-Status: amend-3 (review BLOCK-1/2, HIGH-1..3, MED-1..4, LOW-1 folded) → implementation. Evidence ledger: every citation survived re-verification. Residual risk (LOW-1, stated): "pixel-identical" rests on string-presence pins over unexecuted JS — a shared-helper refactor could break legacy renders with all pins green; the painter's legacy branch is therefore left byte-untouched except the named gate additions, and the fleet path is a SEPARATE code block.
+**Status: SHIPPED (v0.4.13)** — verified against `CHANGELOG.md` §v0.4.13, which names this spec.
+> Drafting-era line, never revisited after the arc closed: Status: amend-3 (review BLOCK-1/2, HIGH-1..3, MED-1..4, LOW-1 folded) → implementation. Evidence ledger: every citation…
+> (The class is now gated — `tests/docs_links.check_spec_status`.)
 
 ## 1. Context (measured, 2026-09-05; two deep-dive reports)
 

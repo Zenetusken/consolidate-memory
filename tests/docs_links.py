@@ -878,6 +878,66 @@ def check_preview() -> None:
         # which is why nothing is re-added here.
 
 
+_SPEC_STATUS_LINE = re.compile(r"^\s*[>*_\-]*\s*\**\s*status[^\n]*", re.I | re.M)
+_SPEC_PRE_SHIPPING = re.compile(
+    r"draft|awaiting|→\s*implementation|for adversarial review|pending merge|proposed v|"
+    r"amend-\d+ folded|review-to-zero", re.I)
+_SPEC_DONE = re.compile(r"SHIPPED|shipped|implemented|implementation complete", re.I)
+_RELEASE_SECTION = re.compile(r"^##\s*\[(\d+\.\d+\.\d+)\]", re.M)
+
+
+def release_sections(ch: str) -> "list[tuple[str, str]]":
+    """`(version, body)` for every `## [X.Y.Z]` release section in the CHANGELOG.
+
+    `re.split` with a capturing group yields `[preamble, v1, body1, v2, body2, …]`, so the pairs walk
+    every other index — the bodies are the section TEXT, which is what a citation search must see."""
+    parts = _RELEASE_SECTION.split(ch)
+    return [(parts[i], parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
+
+
+def check_spec_status() -> int:
+    """v0.4.61 (RC-4): a `docs/*.spec.md` whose header still states a DRAFTING-era state while
+    CHANGELOG.md names that file inside a `## [X.Y.Z]` release section.
+
+    ⚠ WHY THIS EXISTS. `LIVE_DOCS` is a VERSION-CURRENCY set — membership means "this doc's version
+    statement goes stale when a release lands". A spec's STATUS is a different axis and was in NO
+    set, so a drafting-era line could survive every check: four headers did, for months, with the
+    whole suite green, and the survey that followed found 14. Nothing ever REVISITS a spec header
+    once the arc closes. That is `gate-coverage-is-its-match-set` — a gate proves only what its
+    matcher can see.
+
+    ⚠ THE RULE IS VERSIONED ON PURPOSE. Its first form was "cited ANYWHERE in CHANGELOG", and that
+    measurement was CIRCULAR: the same signal was both the rule's input and the evidence that the
+    work had landed. Restricting the citation to text inside a `## [X.Y.Z]` section makes the signal
+    independent, and the corpus's one legitimately-unreleased spec drops out on its own.
+
+    ⚠ HONEST LIMIT, stated rather than buried: a release section could cite a spec FORWARD ("staged
+    for a later release"), which would fire on a legitimately-open spec. The message names both
+    readings, and the remedy — update the header — is correct under either. A gate with a stated
+    ceiling, not a proof.
+
+    Returns the number of spec status lines EXAMINED, for the ✓ line's denominator: without it a
+    scan that stopped finding status lines would print exactly as green as one examining everything.
+    """
+    sections = release_sections(read("CHANGELOG.md"))
+    checked = 0
+    for spec in sorted((ROOT / "docs").glob("*.spec.md")):
+        head = "\n".join(spec.read_text(encoding="utf-8", errors="replace").splitlines()[:14])
+        m = _SPEC_STATUS_LINE.search(head)
+        if not m:
+            continue
+        checked += 1
+        line = m.group(0).strip()
+        if not _SPEC_PRE_SHIPPING.search(line) or _SPEC_DONE.search(line[:60]):
+            continue
+        named = [v for v, body in sections if spec.name in body]
+        if named:
+            err(f"{spec.name}: the header still reads {line[:90]!r} while CHANGELOG.md names this "
+                f"file in the v{named[0]} release section — the header is stale (state what shipped) "
+                f"or the citation is forward-looking (say so in the header)")
+    return checked
+
+
 def main() -> int:
     check_badge()
     check_links()
@@ -889,6 +949,7 @@ def main() -> int:
     dated_eligible, dated_checked = check_version_statements()
     plugin_rows = check_plugin_table()
     status_headers = check_plugin_status_docs()
+    spec_status = check_spec_status()
     check_preview()
     if errors:
         print("✗ documentation gate FAILED:")
@@ -913,6 +974,7 @@ def main() -> int:
           f"{dated_checked} of {dated_eligible} dated statements checked, "
           f"{plugin_rows} plugin-table rows, "
           f"{status_headers} plugin STATUS headers, "
+          f"{spec_status} spec status lines, "
           f"{len(DOCS)} files link-checked, "
           f"{len(REQUIRED_IN_README)} required strings unbroken, anchors balanced, "
           "preview current)")

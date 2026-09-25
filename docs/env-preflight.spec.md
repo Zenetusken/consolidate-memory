@@ -4,7 +4,9 @@
 > that commit — `git show 6a8eaac:<path>` — and **never against the working tree**, which has moved
 > them.
 
-**Status: advisor pass (11 findings, amend-1) + adversarial review-to-zero (11 findings, amend-2 —
+**Status: SHIPPED (v0.4.16)** — verified against `CHANGELOG.md` §v0.4.16, which names this spec.
+> Drafting-era line, never revisited after the arc closed: Status: advisor pass (11 findings, amend-1) + adversarial review-to-zero (11 findings, amend-2 —
+> (The class is now gated — `tests/docs_links.check_spec_status`.)
 1 HIGH · 5 MED · 5 LOW, all folded) + per-PR implementation review (8 findings — 3 MED · 5 LOW,
 all fixed + pinned, amend-3) + the shipped-state audit (1 MED · 2 LOW, fixed + pinned,
 amend-4) complete. Shipped in v0.4.16.**

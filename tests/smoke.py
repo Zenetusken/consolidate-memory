@@ -95,6 +95,28 @@ def _ens59(*a: Any, **k: Any) -> "tuple[Any, Any]":
         return ("<raised %s>" % type(_e59).__name__, "%s: %s" % (type(_e59).__name__, _e59))
 
 
+def _ms61(name: str, *a: Any, **k: Any) -> Any:
+    """A `memory_status` symbol called so that "it does not exist yet" and "its signature changed"
+    are VALUES rather than a crashed run.
+
+    ⚠ Same class as `_ens59` above, and it caught THIS pin set before it shipped. The v0.4.61 pins
+    call `_index_after_prune` (the fix ADDS it) and pass `pointer_line_tokens=` (the fix ADDS that
+    parameter). On the PRE-FIX tree neither exists, so an unguarded call raises
+    `AttributeError`/`TypeError` at MODULE SCOPE: the run ends with NO TOTALS LINE, D6 never runs,
+    and every check after it is lost — a CRASH where a red belongs. MEASURED the first time these
+    pins were run against `bb63015`, which is why the guard is here rather than in a later fix.
+    ⚠ RETURNED, never swallowed: every caller asserts on the value, so the pin still REDDENS.
+    """
+    import memory_status as _ms61m
+    fn = getattr(_ms61m, name, None)
+    if fn is None:
+        return "<absent:%s>" % name
+    try:
+        return fn(*a, **k)
+    except Exception as _e61:                       # noqa: BLE001 — a raise is a RESULT here
+        return "<raised %s>" % type(_e61).__name__
+
+
 def _enroll_personal(project_dir: Path) -> None:
     """ADR 008: --pull/--promote require enrollment. Tests that exercise pull must enroll."""
     import store_context as _sc_e
@@ -4896,11 +4918,17 @@ with _tfB.TemporaryDirectory() as _tdB:
     _stB = _homeB / ".claude" / "projects" / ms.slug_for(_projB) / "memory"; _stB.mkdir(parents=True)
     (_stB / "f.md").write_text("---\nname: f\nmetadata:\n  node_type: memory\n  type: project\n---\nbody\n",
                                encoding="utf-8")
+    # v0.4.61 (RC-1): a SECOND fact whose stem matches `_TRACKER_RE` and IS indexed, so the staged
+    # B_trackers stage has a real member. Without it "the stages exist" and "the stages are POPULATED"
+    # are the same observation, and a generator that emitted four empty keys would pass.
+    (_stB / "roadmap.md").write_text(
+        "---\nname: roadmap\nmetadata:\n  node_type: memory\n  type: project\n---\nbody\n", encoding="utf-8")
     _oldHomeB = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_homeB)
     try:
         def _ctxAt(tokens: int) -> dict:
-            (_stB / "MEMORY.md").write_text("# Memory Index\n- [f](f.md) — " + "h" * (tokens * 4),
-                                            encoding="utf-8")
+            (_stB / "MEMORY.md").write_text(
+                "# Memory Index\n- [f](f.md) — " + "h" * (tokens * 4) + "\n- [roadmap](roadmap.md) — cue\n",
+                encoding="utf-8")
             return ms.build_context(_projB)
         _amberB = _ctxAt(1600)["remediation"]
         check("v0.1.66 seed: over-TARGET-under-ceiling → required True (target gate UNTOUCHED) · over_ceiling False",
@@ -4917,6 +4945,57 @@ with _tfB.TemporaryDirectory() as _tdB:
               _sjB["remediation"].get("standing_justified") is True
               and _sjB["remediation"].get("required") is False
               and _sjB["remediation"].get("over_ceiling") is True)
+
+        # ── v0.4.61 (RC-1): the ceiling's INSTRUMENT is standing-justify-independent too ──
+        # ⚠ TWO layers, and a pin on either ALONE passes on the other's tree: the GENERATOR must build the
+        # stages on this path (pre-fix the suppressed branch returned a dict carrying no `stages` key at all,
+        # so the ceiling line had nothing to point at), and the RENDERER must reach them (pre-fix
+        # `_remediation_section` returned from the suppression branch before the staging loop). The v0.1.66
+        # comment hardened the ceiling LINE against suppression and left the stages behind it.
+        # ⚠ The VERDICT stays suppressed: `required` must remain False, or the fix would trade a hidden
+        # instrument for an activated gate.
+        check("v0.4.61 RC-1 (PIN): an over-ceiling STANDING-JUSTIFIED store still gets its four stages BUILT (pre-fix `stages` is absent, so `--triage` printed 'shrink to receive' over an empty space that reads as 'nothing is prunable')",
+              set((_sjB["remediation"].get("stages") or {})) == {"A_orphans", "B_trackers", "C_dated_oversized", "R_referenced"}
+              and _sjB["remediation"].get("required") is False)
+        _stgB = (_sjB["remediation"].get("stages") or {}).get("B_trackers") or []
+        check("v0.4.61 RC-1 (PIN): …and a tracker-named fact is actually STAGED in them — POPULATED, not merely PRESENT, which a generator emitting four empty keys would satisfy",
+              [c["stem"] for c in _stgB] == ["roadmap"])
+        _sjLinesB = ms._remediation_section((_sjB["remediation"]))
+        check("v0.4.61 RC-1 (PIN): …and the RENDERER reaches them, on the same record (the two halves are one repair: stages built but unrendered is the same silence)",
+              any("tracker/status" in ln for ln in _sjLinesB))
+        check("v0.4.61 RC-1 (CONTROL): a suppressed store UNDER the ceiling keeps the short form — `stages` absent is not an error, and every already-archived record must render exactly as it did",
+              len(ms._remediation_section(({"required": False, "standing_justified": True,
+                                                        "baseline_facts": 9, "current_facts": 9,
+                                                        "index_tokens": 2000, "budget": 1500,
+                                                        "over_ceiling": False}))) == 1)
+
+        # ── v0.4.61 (RC-2): `projected_index` is MEASURED, and it is the quantity its declaration names ──
+        # The `Remediation` TypedDict has always declared "est index tokens after evicting the candidates";
+        # the implementation computed `keep_core * _LEAN_HOOK_TOK`, a different quantity, at a constant
+        # measured at roughly half the writer. `reaches_budget` keys a RENDERED remedy, so the two disagreeing
+        # printed advice the store could not follow.
+        # ⚠ EVERY call here goes through `_ms61`, because on the PRE-FIX tree `_index_after_prune` is
+        # absent and `remediation_triage` has no `pointer_line_tokens` parameter. Unguarded, either
+        # raises at module scope and takes the whole run with it (no totals line, D6 never reached) —
+        # the crash-class this repo has now met five times. `_ms61` returns the fault as a VALUE.
+        check("v0.4.61 RC-2 (PIN): `projected_index` = the index MINUS the evicted candidates' own pointer lines — the declaration's quantity, measured from the index itself (pre-fix: the symbol does not exist, so this reports NOTHING-CALLED rather than a green)",
+              _ms61("_index_after_prune", 2000, [{"stem": "a"}, {"stem": "b"}], {"a": 50, "b": 60}) == 1890)
+        check("v0.4.61 RC-2 (PIN): an UNMEASURABLE line set frees NOTHING — the pessimistic direction, so a store whose index could not be scanned is never told a prune will reach budget",
+              _ms61("_index_after_prune", 2000, [{"stem": "a"}], None) == 2000
+              and _ms61("_index_after_prune", 2000, [{"stem": "a"}], {}) == 2000)
+        check("v0.4.61 RC-2 (PIN): the modelled constant is RETIRED, not retuned — re-introducing the model IS the defect returning",
+              not hasattr(ms, "_LEAN_HOOK_TOK"))
+        _factsB = [p for p in sorted(_stB.glob("*.md")) if p.name != "MEMORY.md"]
+        _trB = _ms61("remediation_triage", _factsB, {"f", "roadmap"}, 2000, 0, budget=1500,
+                     reference_stems=set(), pointer_line_tokens={"f": 40, "roadmap": 60})
+        # ⚠ Both conjuncts are the point, and BOTH flip on the pre-fix tree: the model computed
+        # `keep_core(1) * 30 = 30 ≤ 1500`, so it reported `reaches_budget: True` for a store whose real
+        # post-prune index is 1940 — it printed the `prune` remedy, which is the remedy the D5 clause exists
+        # to replace with prune-THEN-justify. `isinstance` first: pre-fix `_ms61` returns a STRING, and
+        # `.get` on a string would itself crash the run.
+        check("v0.4.61 RC-2 (PIN): the triage routes the MEASURED relief into the projection, and `reaches_budget` follows from it (pre-fix: 30 / True — a budget the store cannot reach, reported as reachable)",
+              isinstance(_trB, dict) and _trB.get("projected_index") == 1940
+              and _trB.get("reaches_budget") is False)
         _seedB = ms.seed_record(_sjB)
         check("v0.1.66 seed_record: over_ceiling relayed through the SJ branch + ceiling_tokens on budget.index",
               _seedB["remediation"]["over_ceiling"] is True
@@ -26026,6 +26105,20 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     A ledger whose terms do not sum to its total is the
                                        #     defect; a ledger that sums and misattributes is the
                                        #     same defect with a green light.
+                            + 8        # v0.4.61 — ASSERTED SUPPORT (docs/asserted-support.spec.md).
+                                       #     RC-1, 4 checks: 3 PINs + 1 CONTROL — the ceiling's
+                                       #     STAGES are standing-justify-independent at BOTH layers
+                                       #     (the generator builds them on the suppressed path, the
+                                       #     renderer reaches them); a pin on either layer ALONE
+                                       #     passes on the other's tree. The CONTROL is the suppressed
+                                       #     store UNDER the ceiling, whose short form must not change,
+                                       #     so every already-archived record renders as it did.
+                                       #     RC-2, 4 checks: 3 PINs (the measured projection, the
+                                       #     pessimistic unreadable arm, the retired constant) + the
+                                       #     triage end-to-end. ⚠ BOTH conjuncts of that last one flip
+                                       #     pre-fix: the model computed 30 / `reaches_budget` True for
+                                       #     a store whose real post-prune index is 1940 — the
+                                       #     remedy-SELECTING field reading the wrong answer.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

@@ -4,7 +4,9 @@
 > that commit — `git show ceaccc0:<path>` — and **never against the working tree**, which has moved
 > them.
 
-**Status:** DRAFT (gated, "fix everything" arc — the user's v0.1.51 live-run logs showed ~one lingering
+**Status: SHIPPED (v0.1.53)** — verified against `CHANGELOG.md` §v0.1.53, which names this spec.
+> Drafting-era line, never revisited after the arc closed: Status: DRAFT (gated, "fix everything" arc — the user's v0.1.51 live-run logs showed ~one lingering
+> (The class is now gated — `tests/docs_links.check_spec_status`.)
 defect per recent release).
 **Bump:** PATCH (all backward-compatible — `--json` schema unchanged, new flag is additive, SKILL prose;
 legacy cycle records still render, existing installs keep working).

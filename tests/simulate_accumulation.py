@@ -18,7 +18,7 @@ property —
   K --promote hands a local fact UP to the canonical store + mirrors the origin atomically
     (in-sync follow-up pull, no dup/orphan; never clobbers an existing canonical),
   L remediation triage stages an inherited over-budget backlog (mechanical A/B/C ranking +
-    projected lean rebuild), routes the lever (prune/gc/justify), and NEVER deletes.
+    projected index after evicting the candidates), routes the lever (prune/gc/justify), and NEVER deletes.
 
 Scope (stated honestly): this exercises only the SCRIPT-driven lifecycle. Phase-4
 prose decisions (which facts to prune, dedup, re-verify) remain a model call, so the
@@ -715,7 +715,7 @@ def run() -> None:
         # Auto-Dream (memex: 110 facts, index 5.5× over, 30 orphans; the one dream that ran GREW the index).
         # Build an Auto-Dream-style bloated store and assert `remediation_triage`: (1) over-budget → staged
         # candidates by MECHANICAL membership (A orphans / B trackers / C dated-oversized, content_review-
-        # flagged) + a projected lean-rebuild under budget; (2) lever ROUTED (local→prune, mirror-dominated→
+        # flagged) + a projected index after EVICTING THE CANDIDATES, back under budget; (2) lever ROUTED (local→prune, mirror-dominated→
         # gc, all-durable→justify — no deadlock); (3) NEVER deletes (pure analysis); (4) a clean under-budget
         # store → {} (no false alarm). Calls the pure fn directly (no CLI/slug).
         print("\n── Probe L: inherited-backlog remediation triage (v0.1.18) ──")
@@ -759,7 +759,17 @@ def run() -> None:
         mir_lines = [ln for ln in (bl / "MEMORY.md").read_text(encoding="utf-8").splitlines()
                      if any(f"]({s}.md)" in ln for s in mir_stems)]
         mir_tok = ms.est_tokens("\n".join(mir_lines))
-        tri = ms.remediation_triage(facts, idx_names, idx_tok, mir_tok)
+        # v0.4.61 (RC-2): `projected_index` is the index AFTER EVICTING THE CANDIDATES — the quantity its
+        # declaration has always named — so the probe measures the fixture's own pointer lines and passes
+        # them. ⚠ It used to assert the modelled `keep_core × _LEAN_HOOK_TOK` ("a projected lean rebuild
+        # under budget"), which promised a hook compression the writer never performs; the assertion's
+        # INTENT survives, its operand changes from a model to a measurement.
+        line_tok: dict = {}
+        for _ln in (bl / "MEMORY.md").read_text(encoding="utf-8").splitlines():
+            _m = ms._LINK_RE.search(_ln)
+            if _m:
+                line_tok.setdefault(_m.group(1), ms.est_tokens(_ln))
+        tri = ms.remediation_triage(facts, idx_names, idx_tok, mir_tok, pointer_line_tokens=line_tok)
         st = tri.get("stages", {})
         over = idx_tok > ms.INDEX_TOKEN_BUDGET
         members_ok = (len(st.get("A_orphans", [])) == len(orphans)
@@ -768,7 +778,7 @@ def run() -> None:
         c_flagged = bool(st.get("C_dated_oversized")) and all(c.get("content_review") for c in st["C_dated_oversized"])
         keep_ok = tri.get("keep_core") == len(durable) + len(mirrors)
         lever_ok = tri.get("lever") == "prune"                                   # local-dominated (tiny mirror share)
-        proj_ok = 0 < tri.get("projected_index", 1 << 30) < ms.INDEX_TOKEN_BUDGET  # lean rebuild back under budget
+        proj_ok = 0 < tri.get("projected_index", 1 << 30) < ms.INDEX_TOKEN_BUDGET  # after evicting the candidates — MEASURED
         no_delete = len([f for f in bl.glob("*.md") if f.name != "MEMORY.md"]) == before_n
         # clean under-budget store → {} (no false alarm)
         cl = home / ".claude" / "projects" / "-cleanrem" / "memory"
@@ -793,9 +803,9 @@ def run() -> None:
         print(f"  over-budget={over} · members(A/B/C)={members_ok} · C-flagged={c_flagged} · keep={keep_ok} · "
               f"lever=prune={lever_ok} · projected<budget={proj_ok}")
         print(f"  never-delete={no_delete} · clean-quiet={clean_quiet} · mirror→gc={gc_route} · all-durable→justify={justify_route}")
-        _verdict("L", "remediation triage stages an over-budget backlog (mechanical A/B/C + projected lean "
-                 "rebuild), routes the lever (prune/gc/justify, no deadlock), NEVER deletes, stays quiet on a "
-                 "healthy store",
+        _verdict("L", "remediation triage stages an over-budget backlog (mechanical A/B/C + a projected index "
+                 "after evicting the candidates), routes the lever (prune/gc/justify, no deadlock), NEVER "
+                 "deletes, stays quiet on a healthy store",
                  over and members_ok and c_flagged and keep_ok and lever_ok and proj_ok and no_delete
                  and clean_quiet and gc_route and justify_route,
                  "the inherited-backlog remediation: surfaces ranked candidates for the operator to judge "

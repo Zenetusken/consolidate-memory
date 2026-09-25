@@ -1,6 +1,8 @@
 # Network capture teeth — design-of-record
 
-**Status: review-to-zero CLEAN (amend-2 verified) → implementation.**
+**Status: SHIPPED (v0.4.20)** — verified against `CHANGELOG.md` §v0.4.20, which names this spec.
+> Drafting-era line, never revisited after the arc closed: Status: review-to-zero CLEAN (amend-2 verified) → implementation.
+> (The class is now gated — `tests/docs_links.check_spec_status`.)
 Target release: **v0.4.20 (patch)** — additive advisory + additive beta-oracle family + a
 UI readability fix; no record-schema change, no exit-key change.
 

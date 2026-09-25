@@ -5,6 +5,73 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.61] — 2026-09-24
+
+**Patch — asserted support: four surfaces that asserted a verdict their operands did not support. ⚠ The
+first of them manufactured a WRONG CONCLUSION inside the very pass that found it.**
+
+### RC-1 — the hard ceiling's instrument was suppressed with the gate
+
+`memory_status.py`'s standing-justified branch built no `stages`, and `_remediation_section` returned from
+the suppression branch *before* the staging loop. v0.1.21 suppressed the triage on standing-justify
+deliberately; v0.1.66 then added the hard ceiling as a **sibling signal** and hardened its **line** against
+that suppression — with a comment promising suppression "never hides it" — while leaving the **stages the
+line points to** behind the same early return. So an over-ceiling store was told **"shrink to receive"** and
+shown no candidates. ⚠ An empty candidate list reads as the verdict *"nothing is prunable."*
+
+**MEASURED, and it is why this entry exists.** `--triage` on this store printed two blocks and no stages.
+The 2026-09-24 dream pass recorded from that absence that *"there is no lesson-free relief; the ceiling's
+only consequence is a held test fixture"* — **a conclusion produced by the defect, in the pass that found
+it.** With the stages restored: **2 tracker/status + 6 dated/oversized** candidates, and a full prune frees
+**3991 → 3587 tok — under the 3840 ceiling.** The ceiling *is* locally satisfiable here.
+
+The ceiling boolean is now hoisted above the branch — a **pure move**; it still does not enter the
+`required`/standing-justify computation — and the stages are built when `over_ceiling`, with the VERDICT
+still the suppression's (`required` stays `False`). ⚠ The cost is paid only by a store that is BOTH
+standing-justified AND over the ceiling, which is precisely the store whose ceiling line was unactionable.
+
+### RC-2 — `projected_index` never computed what it declared
+
+`Remediation` has declared `projected_index` as *"est index tokens after evicting the candidates"* and
+`reaches_budget` as *"can a full prune of the candidates reach budget?"* since v0.1.18. The implementation
+computed `keep_core × _LEAN_HOOK_TOK` — the keep core re-indexed at an assumed lean cost — which is
+**neither** quantity. ⚠ Not a badly-tuned constant: the **wrong quantity**, at roughly half the writer (the
+constant read 30 against the 58.3 tok/pointer this store's own archive had already recorded). And
+`reaches_budget` **selects a rendered remedy** (`render_dashboard.py`), so the model printed the `prune`
+advice the D5 clause exists to replace with prune-THEN-justify.
+
+MEASURED: the model computed `keep_core(1) × 30 = 30` → `reaches_budget True`; the measured computation
+gives **1940 → False**. They disagree on the verdict. `_LEAN_HOOK_TOK` is **deleted, not retuned** — the
+relief is now the evicted candidates' own pointer-line costs, read from the index, and an unreadable index
+frees **nothing** (the pessimistic direction, so a store we could not scan is never told a prune will reach
+budget).
+
+### RC-3 / RC-4 — a status claim outside every matcher
+
+`LIVE_DOCS` is a **version-currency** set. A spec's STATUS is a different axis and was in **no** set, so a
+drafting-era header survived every check: four did, for months, with the suite green, and the survey that
+followed found **14**. `tests/docs_links.py` gains `check_spec_status` — a `docs/*.spec.md` whose header
+states a pre-shipping state while `CHANGELOG.md` names it inside a `## [X.Y.Z]` release section is a RED.
+⚠ The rule is **versioned on purpose**: its first form ("cited anywhere in CHANGELOG") was **circular**,
+the same signal serving as the rule's input and as the evidence that the work had landed. It fires on
+exactly 13 with 0 control failures, and the 14th drops out on its own.
+
+The 13 headers are swept. ⚠ Two claims from the v0.4.60 checkpoint PR are corrected: its **commit message**
+says FOUR where a census finds 14 — a commit message is immutable, so the correction lands on the readable
+surfaces — and **three** spec notes said *"nothing reads a spec's own header"*, where the true and narrower
+statement is that no gate read a spec's status **WORD** (`docs/1.0-preflight.spec.md` IS in `LIVE_DOCS`, and
+its status line IS read, for a version token).
+
+### Measured
+
+- smoke **2340 passed, 0 failed** (was 2332; +8 checks). Pre-fix tree, same pins: **2333 passed, 7 failed**
+  — every new PIN red, the CONTROL green on BOTH trees, totals line present and D6 reached.
+- `docs_links` green, with **45 spec status lines** now in its denominator; pre-sweep it was RED on 13.
+- ⚠ The new pins route through a new `_ms61` helper because two symbols they call **do not exist pre-fix**
+  (`_index_after_prune`, and `remediation_triage`'s `pointer_line_tokens=`). Unguarded they raised at
+  **module scope** and took the whole run with them — no totals line, D6 never reached. That is the
+  crash-class this repo has now met five times, and the guard caught it *before* the pins shipped.
+
 ## [0.4.60] — 2026-09-24
 
 **Patch — F3, the last residual the v0.4.59 review left open: a mutation of the suite's subject could

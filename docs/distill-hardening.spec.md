@@ -1,6 +1,8 @@
 # Distill — precision hardening, firewall transparency, deterministic capture (v0.1.58)
 
-**Status:** draft → spec-review (design lens, impl lens) → implement.
+**Status: SHIPPED (v0.1.58)** — verified against `CHANGELOG.md` §v0.1.58, which names this spec.
+> Drafting-era line, never revisited after the arc closed: Status: draft → spec-review (design lens, impl lens) → implement.
+> (The class is now gated — `tests/docs_links.check_spec_status`.)
 **Scope:** the patch-sized arc from the 2026-07-03 end-to-end distill audit (measured on three live
 corpora + a 27-case adversarial battery). LOCAL extraction precision/recall + capture integrity +
 CLI/doc honesty ONLY — the `&`/`||` separator semantics, pipeline next-stage recall, the verdict

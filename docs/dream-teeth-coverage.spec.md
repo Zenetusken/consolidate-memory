@@ -4,7 +4,9 @@
 > that commit — `git show 308e15b:<path>` — and **never against the working tree**, which has moved
 > them.
 
-**Status: draft for adversarial review.** Target release: **v0.4.29 (patch)** — additive
+**Status: SHIPPED (v0.4.29)** — verified against `CHANGELOG.md` §v0.4.29, which names this spec.
+> Drafting-era line, never revisited after the arc closed: Status: draft for adversarial review. Target release: v0.4.29 (patch) — additive
+> (The class is now gated — `tests/docs_links.check_spec_status`.)
 strictness on gates that were *supposed* to fire; no schema, flag, or install-contract change.
 
 This spec closes the coverage class the `docs/dream-narration-teeth.spec.md` contract forbids and
