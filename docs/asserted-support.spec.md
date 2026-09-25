@@ -1,7 +1,9 @@
 # Asserted support — design-of-record
 
-**Status: implemented and REVIEWED (one round, 11 findings, 6 substantive ones patched — see §The
-review round in the CHANGELOG entry) on `arc-0.4.61-dream-defects` — awaiting merge.** Base
+**Status: implemented and REVIEWED — TWO rounds (11 + 15 findings; every substantive one patched,
+each verified by measurement — see §The review round in the CHANGELOG entry). ⚠ Round 2 is the one
+that matters: it measured that round 1's OWN fix was UNPINNED, which is this release's class turned
+on its author. On `arc-0.4.61-dream-defects` — awaiting merge.** Base
 revision `bb63015` (main @ v0.4.60). Target release **v0.4.61 (patch)** — every change is additive or a
 correction; no install/marketplace/schema contract moves.
 
