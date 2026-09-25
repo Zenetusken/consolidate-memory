@@ -744,8 +744,11 @@ HOOK_TOKEN_WARN = 60            # est tok per index POINTER line above which the
 # diagnostics (distinct messages, distinct call sites) but shared one knob — split it so
 # the two can diverge without re-naming the canonical constant everywhere.
 LOCAL_HOOK_TOKEN_WARN = HOOK_TOKEN_WARN
-                                # Measured (2026-07-04): fleet median ≈48-57 tok/line, the triage's
-                                # lean model 30; the offenders (116/141 tok) were status-content-in-
+                                # Measured (2026-07-04): fleet median ≈48-57 tok/line, and the triage's
+                                # lean model — ⚠ DELETED at v0.4.61 as the WRONG QUANTITY, not a badly-
+                                # tuned value; cited here only as the historical median WITNESS, because
+                                # a reader following this calibration would find no such model in the
+                                # tree; the offenders (116/141 tok) were status-content-in-
                                 # the-hook — 2 lines = 17% of the whole budget. Detected here (report
                                 # + seed, v0.1.63); linted at write time in sync_global (v0.1.66).
 
@@ -1774,6 +1777,22 @@ def classify_store_doc(path: Path) -> str:
     return "archive" if _is_archive_index_text(rest) else "fact"
 
 
+def pointer_lines_by_stem(index_text: str) -> dict:
+    """v0.4.61 (RC-2): every pointer line's TEXT, keyed by the stem it links to.
+
+    ⚠ ONE definition deliberately. This walk had THREE call sites after the RC-2 fix — `build_context`,
+    and an inline copy in `tests/simulate_accumulation.py` that asserts ABOUT the producer. A change to
+    `_LINK_RE`'s grouping or to the first-match-wins `setdefault` rule would silently diverge them, and
+    the sim would keep passing while measuring a different rule than the code it exists to check — the
+    single-enumerator lesson this repo already carries. The sim now calls this."""
+    out: dict = {}
+    for ln in index_text.splitlines():
+        m = _LINK_RE.search(ln)
+        if m:
+            out.setdefault(m.group(1), ln)
+    return out
+
+
 def _index_after_prune(index_tokens: int, indexed_candidates: list,
                        pointer_line_texts: "dict | None") -> int:
     """v0.4.61 (RC-2): the index size AFTER EVICTING THE CANDIDATES — the quantity
@@ -1795,10 +1814,15 @@ def _index_after_prune(index_tokens: int, indexed_candidates: list,
     - `pointer_line_texts` missing (an absent or unreadable index), or missing a stem → that candidate
       frees nothing → `projected_index` stays high → `reaches_budget` False.
     - ⚠ The relief is `est_tokens` over the JOINED evicted lines, NOT the sum of per-line estimates.
-      `est_tokens` rounds up PER CALL, so summing N of them over-counts by up to (N-1)/4 tokens and
-      would subtract more than the lines hold — an OPTIMISTIC bias, the wrong direction for the D5
-      remedy boundary. The joined form carries exactly one rounding, the same measure the index total
-      was taken with, so the subtraction is like-for-like."""
+      ⚠ **The first draft justified this with a rounding bound — "summing N of them over-counts by up to
+      (N-1)/4" — and that bound is ARITHMETICALLY WRONG.** Measured with the shipped `est_tokens`
+      (ceil(chars/4)): 8 one-character lines sum to 8 against a joined 4, an over-count of 4 where the
+      claimed bound is 1.75; and for lengths ≡ 0 mod 4 the sum wastes nothing at all while the join adds
+      N−1 newline characters, so the JOINED form counts MORE. The choice stands, for a different and
+      stated reason: the joined form is the SAME MEASURE the index total was taken with, so the
+      subtraction is like-for-like rather than between two differently-rounded quantities. ⚠ It is
+      therefore the CONSISTENT arm, not a guaranteed-pessimistic one — the missing-index arm below is
+      that, and this docstring no longer claims the property for both."""
     _texts = [t for c in indexed_candidates if (t := (pointer_line_texts or {}).get(c["stem"]))]
     if not _texts:
         return index_tokens
@@ -3670,14 +3694,8 @@ def build_context(project_dir: Path) -> dict:
         # two-enumerations shape this file already has a lesson about, and the first cut did exactly
         # that. The TEXT is carried, not a per-line token count, so `_index_after_prune` can take one
         # `est_tokens` over the joined block — see its docstring for why that direction matters.
-        _mirror_idx: list = []
-        _line_text: dict = {}
-        for _ln in _idx_text.splitlines():
-            _lm = _LINK_RE.search(_ln)
-            if _lm:
-                _line_text.setdefault(_lm.group(1), _ln)
-                if _lm.group(1) in mirror_stems:
-                    _mirror_idx.append(_ln)
+        _line_text = pointer_lines_by_stem(_idx_text)
+        _mirror_idx = [_ln for _stem, _ln in _line_text.items() if _stem in mirror_stems]
         # C2 (v0.1.18.x): gather reference_stems from the OTHER always-loaded surfaces so a fact reachable
         # there is NOT mis-flagged as a safe-evict orphan. Two match modes (Gate-1 #5): archive-index docs →
         # link-targets; CLAUDE.md prose → bare-stem substring.
@@ -4164,8 +4182,14 @@ def seed_record(ctx: dict) -> CycleRecord:
                 "projected_index": rem.get("projected_index", 0),
                 "projected_recall": rem.get("projected_recall", 0),
                 "reaches_budget": rem.get("reaches_budget", True),
-                "mirror_share": rem.get("mirror_share", 0.0),
             })
+            # ⚠ v0.4.34 (E1)'s rule, honoured HERE too — the first cut of this relay broke it with
+            # `rem.get("mirror_share", 0.0)`, a default asserting "not mirror-dominated" for a share
+            # nobody computed, while the sibling arm below deliberately leaves the key ABSENT. The two
+            # arms stated opposite policies for one field in one function.
+            if (isinstance(rem.get("mirror_share"), (int, float))
+                    and not isinstance(rem["mirror_share"], bool)):
+                record["remediation"]["mirror_share"] = float(rem["mirror_share"])
     elif rem:
         record["remediation"] = {
             "required": rem["required"], "lever": rem["lever"],

@@ -31,7 +31,7 @@ the absence is a reader, and a drafting-era line reads as current.
 | RC-1 | `memory_status.py` — the SJ branch + `_remediation_section` | the hard ceiling's relief candidates become computable while standing-justified |
 | RC-2 | `memory_status.py` — `remediation_triage` | `projected_index` / `reaches_budget` become the quantity their declarations name |
 | RC-3 | the v0.4.60 checkpoint PR's claims (commit message + THREE spec notes) | two claims corrected to what a stated matcher measures |
-| RC-4 | `tests/docs_links.py` + 13 `docs/*.spec.md` headers | a gate over spec status lines, then the sweep it finds |
+| RC-4 | `tests/docs_links.py` + 14 `docs/*.spec.md` headers | a gate over spec status lines, then the sweep it finds |
 
 Out of scope: `seed` (a canonical whose deletion the auto-mode classifier denied as an unrequested
 irreversible delete — it needs the user to name it).
@@ -142,7 +142,7 @@ Both ship in the v0.4.60 checkpoint PR (`af0d88d`). Neither has runtime effect; 
 `af0d88d`, not in CHANGELOG prose** — that PR added no CHANGELOG entry at all ("docs/ is not part of the
 plugin artifact"), which this spec's first draft got wrong and this line corrects. It enumerates four
 `docs/*.spec.md` files that said DRAFT after their designs shipped. A census over the same corpus, with a
-stated matcher, finds **fourteen**, 13 of them named inside a versioned release section (RC-4). The four
+stated matcher, finds **sixteen**, 14 of them named inside a versioned release section (RC-4). The four
 were read, not enumerated — the defect `a-sole-claim-needs-a-census-not-a-sighting` describes, committed
 in the same PR that added that fact. A commit message is immutable, so the correction lands where the
 claim is actually READ: the spec notes below, and the v0.4.61 entry.
@@ -190,7 +190,8 @@ simply has no versioned citation to contradict them. A gate's denominator is its
 is the sentence immediately above, applied to this gate.
 
 ⚠ **Why the release-section requirement, and not "cited somewhere in CHANGELOG".** The first form of this
-rule was measured as "referenced anywhere in CHANGELOG" and fired on 13 of 14 with 0 control failures —
+rule was measured as "referenced anywhere in CHANGELOG" and fired on 14 of 16 with 0 control failures
+(13 of 16 under the retired narrow matcher, which is the count this paragraph carried until the fix) —
 but that measurement was **circular**: the same signal served as the rule's input and as my evidence that
 the work had landed. Restricting to text inside a `## [X.Y.Z]` section makes the signal versioned and
 independent, and the 14th spec drops out on its own.
@@ -201,7 +202,7 @@ therefore names both readings — stale header, or forward-looking citation — 
 header) is correct under either. This is a gate with a stated ceiling, not a proof.
 
 **Fix.** A new check in `tests/docs_links.py`, over the same corpus, with a pin in `tests/smoke.py`
-following the D6 self-counting constant. Then sweep the 13 headers to state what actually happened,
+following the D6 self-counting constant. Then sweep the 14 headers to state what actually happened,
 each citing the release that names it.
 
 ## Verification

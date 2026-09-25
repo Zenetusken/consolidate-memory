@@ -70,9 +70,13 @@ and each is an instance of the class this entry is about.
 
 1. ⚠ **RC-1 stopped at the live-ctx layer.** `seed_record`'s standing-justified arm relayed no `stages`
    and no `candidates_surfaced`, and `render_dashboard` guards its OWN renderer on that key — so the
-   DASHBOARD, which `CLAUDE.md` names as the end-user deliverable, still printed *"shrink to receive"*
-   over an empty space. The repair one layer down never reached the surface a user reads. Both halves are
-   wired now, and the D5 remedy sentence is hoisted to ONE constant because it renders from two branches.
+   DASHBOARD still printed *"shrink to receive"* over an empty space. ⚠ The first draft of this item
+   attributed the claim to `CLAUDE.md`, which does NOT make it — the artifact SKILL.md Phase 5 points an
+   END USER at is `dashboards/index.html`, the HTML archive, and the repair had not reached that either.
+   Three surfaces now carry it: the terminal report, the ASCII dashboard, and the archive template
+   (`dashboard.template.html`, 1343 browser checks green). ⚠ And the D5 remedy is keyed on the LEVER,
+   not on the operand alone — gating it on `reaches_budget is False` printed prune advice directly under
+   a line reporting `lever JUSTIFY`.
 2. ⚠ **The new gate's matcher was narrower than its own claim.** `_SPEC_STATUS_LINE` was anchored on
    `status` STARTING a line, so `docs/cm-commands-onboarding.spec.md:3` — status mid-line, NAMED in
    CHANGELOG §0.4.8 — was invisible, and two specs that state a status as a TITLE had no `status` word
@@ -104,7 +108,9 @@ the correction visible rather than silently edited.
   failed** — every new PIN red, the RC-1 CONTROL green on BOTH trees, totals line present and D6 reached.
   ⚠ The RC-4 arm pair reds on BOTH trees BY ABSENCE (`check_spec_status` does not exist pre-fix) — the
   shape the v0.4.40 pin established for this validator, stated rather than glossed as a control.
-- `docs_links` green, with **45 spec status lines** now in its denominator; pre-sweep it was RED on 13.
+- `docs_links` green, with **51 spec status lines** now in its denominator; on the un-swept corpus the
+  shipped matcher is RED on 14. ⚠ The first draft of this line said 45 — the number the RETIRED narrow
+  matcher produced, carried forward instead of re-measured. No revision of the corpus yields it.
 - ⚠ The new pins route through a new `_ms61` helper because two symbols they call **do not exist pre-fix**
   (`_index_after_prune`, and `remediation_triage`'s `pointer_line_tokens=`). Unguarded they raised at
   **module scope** and took the whole run with them — no totals line, D6 never reached. That is the

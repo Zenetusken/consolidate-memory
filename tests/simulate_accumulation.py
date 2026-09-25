@@ -764,11 +764,9 @@ def run() -> None:
         # them. ⚠ It used to assert the modelled `keep_core × _LEAN_HOOK_TOK` ("a projected lean rebuild
         # under budget"), which promised a hook compression the writer never performs; the assertion's
         # INTENT survives, its operand changes from a model to a measurement.
-        line_text: dict = {}
-        for _ln in (bl / "MEMORY.md").read_text(encoding="utf-8").splitlines():
-            _m = ms._LINK_RE.search(_ln)
-            if _m:
-                line_text.setdefault(_m.group(1), _ln)
+        # ⚠ The PRODUCER's own walk, not a re-implementation: a copy here would diverge silently and
+        # this probe would keep passing while asserting about a rule the code no longer has (F14).
+        line_text = ms.pointer_lines_by_stem((bl / "MEMORY.md").read_text(encoding="utf-8"))
         tri = ms.remediation_triage(facts, idx_names, idx_tok, mir_tok, pointer_line_texts=line_text)
         st = tri.get("stages", {})
         over = idx_tok > ms.INDEX_TOKEN_BUDGET
@@ -923,7 +921,11 @@ def run() -> None:
         A = [c["stem"] for c in stn.get("A_orphans", [])]
         R = [c["stem"] for c in stn.get("R_referenced", [])]
         d4_ok = "form_research_2026_06_15" in R and "form_research_2026_06_15" not in A and "lonely_orphan_2026_06_01" in A
-        d5_ok = ctxn["remediation"].get("reaches_budget") is True   # small keep core → a prune CAN reach budget
+        d5_ok = ctxn["remediation"].get("reaches_budget") is True
+        # ⚠ NOT "small keep core" — v0.4.61 (RC-2) retired that model. `reaches_budget` is now
+        # `index_tokens − Σ(evicted pointer lines) ≤ budget`, and this fixture reaches it because the
+        # candidates are a large share of a small index. The old comment described semantics the
+        # suite no longer has; the assertion passed either way, which is why nothing flagged it.
         _sec = ms._remediation_section(ctxn["remediation"])
         d8_ok = bool(ctxn["remediation"].get("required")) and not any("TRUE orphans" in str(s) for s in _sec[:3])
         _nfacts = len(ctxn["fact_files"])

@@ -1053,7 +1053,14 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
                                    + (f"projected index ≈{_g(_num(rem.get('projected_index', 0)))} tok"
                                       if _recorded(rem, "projected_index")
                                       else "projected index: not recorded"), "dim"))
-            if rem.get("reaches_budget") is False:
+            # v0.4.61 (review): ⚠ THE D5 REMEDY IS KEYED ON THE LEVER, NOT ONLY ON THE OPERAND — exactly
+            # as `memory_status._remediation_section` keys it. Gating on `reaches_budget is False` ALONE
+            # printed "prune can't reach budget → prune-then-justify" directly beneath a line reporting
+            # `lever JUSTIFY · 0 candidate(s) surfaced`: two renderers of one record disagreeing three
+            # lines apart, and the panel contradicting itself. RC-2 makes `reaches_budget` False whenever
+            # the candidates cannot free nearly the whole index — the common mature-store case — so this
+            # was newly reachable, not hypothetical.
+            if str(rem.get("lever") or "") == "prune" and rem.get("reaches_budget") is False:
                 out.append("    " + _c(_D5_REMEDY, "dim"))
     elif rem and rem.get("required"):
         # v0.1.36: gate on `required`, NOT mere presence — a healthy record may carry remediation={required:false}

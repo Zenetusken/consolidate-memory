@@ -4969,6 +4969,23 @@ with _tfB.TemporaryDirectory() as _tdB:
                                                         "index_tokens": 2000, "budget": 1500,
                                                         "over_ceiling": False}))) == 1)
 
+        # ── v0.4.61 (RC-1), SECOND LAYER: the record → dashboard relay ──
+        # ⚠ The pins above cover `build_context` and `memory_status._remediation_section`. They do NOT
+        # cover the layer BELOW them, and that is MEASURED rather than assumed: disabling the
+        # `seed_record` relay AND `render_dashboard`'s branch with an `and False` on each guard leaves
+        # the whole suite GREEN at 2343 passed / 0 failed — not one of the eight checks above moves.
+        # They are a SECOND renderer for one contract, and the surface a user actually reads is the
+        # dashboard, so the repair one layer up did not reach it. These two close that gap.
+        _seedB61 = ms.seed_record(_sjB)
+        check("v0.4.61 RC-1 (PIN, layer 2): `seed_record`'s SUPPRESSED arm RELAYS the triage operands — without the relay the record carries no candidate count and the dashboard has nothing to state (under the measured mutation this reddens and NO other check does)",
+              _seedB61["remediation"].get("candidates_surfaced") is not None
+              and _seedB61["remediation"].get("reaches_budget") is False
+              and _seedB61["remediation"].get("required") is False)
+        _outB61 = rd.render(_seedB61)
+        check("v0.4.61 RC-1 (PIN, layer 2): the DASHBOARD prints the ceiling's REMEDY for a suppressed over-ceiling record — the end-user surface CLAUDE.md names by name, and the one a fix one layer down does not reach",
+              any("candidate(s) surfaced" in _ln for _ln in _outB61.splitlines())
+              and any("prune-safe-THEN-standing-justify" in _ln for _ln in _outB61.splitlines()))
+
         # ── v0.4.61 (RC-2): `projected_index` is MEASURED, and it is the quantity its declaration names ──
         # The `Remediation` TypedDict has always declared "est index tokens after evicting the candidates";
         # the implementation computed `keep_core * _LEAN_HOOK_TOK`, a different quantity, at a constant
@@ -26170,7 +26187,13 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     A ledger whose terms do not sum to its total is the
                                        #     defect; a ledger that sums and misattributes is the
                                        #     same defect with a green light.
-                            + 11       # v0.4.61 — ASSERTED SUPPORT (docs/asserted-support.spec.md).
+                            + 13       # v0.4.61 — ASSERTED SUPPORT (docs/asserted-support.spec.md).
+                                       #     RC-1 LAYER 2, 2 checks: the record→dashboard relay and
+                                       #     the dashboard's rendering of it — ADDED after a review
+                                       #     mutation measured that disabling BOTH left the suite
+                                       #     green at 2343/0, i.e. the first four RC-1 checks cover
+                                       #     `build_context` + `_remediation_section` and
+                                       #     NOTHING covered the end-user surface.
                                        #     RC-4, 3 checks: the vacuity floor (a spec status word
                                        #     is read at all), the firing arm, and its CONTROL —
                                        #     which reds pre-fix by ABSENCE, the shape the v0.4.40

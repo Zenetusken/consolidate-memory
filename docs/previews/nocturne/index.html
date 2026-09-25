@@ -2083,8 +2083,19 @@ var NocturneSections = (function(){
     var remLead=g(CUR,"remediation",null);
     remLead=(remLead&&typeof remLead==="object"&&!Array.isArray(remLead))?remLead:{};
     var sj=truthy(remLead.standing_justified), ceil=truthy(remLead.over_ceiling)||t.cur>CEIL;
-    if(ceil){ h.innerHTML="The index is past the <span class=\"hot\">hard ceiling</span> at "+tok(t.cur)+" of "+tok(CEIL)+" tokens.";
-      sub.textContent="New shares are held until this index shrinks. Standing-justify does not apply to the ceiling."; }
+    if(ceil){
+      // v0.4.61 (RC-1, review): the ceiling is standing-justify-INDEPENDENT and so is its INSTRUMENT —
+      // on THIS surface too. `SKILL.md` Phase 5 names `dashboards/index.html` as the end-user artifact
+      // (and says explicitly not to send an end user to `cm report`), so a repair that reached the
+      // ASCII dashboard and the terminal report but stopped here left the ONE file a user actually
+      // opens still printing "shrink to receive" over an empty space. `candidates_surfaced` absent
+      // (every record written before v0.4.61, and any suppressed store under the ceiling) keeps the
+      // original sentence byte-for-byte, so no archived cycle re-renders differently.
+      h.innerHTML="The index is past the <span class=\"hot\">hard ceiling</span> at "+tok(t.cur)+" of "+tok(CEIL)+" tokens.";
+      var _cand=remLead.candidates_surfaced, _lev=String(remLead.lever||"");
+      var _instr=((_cand===0||_cand)?(" "+_cand+" candidate(s) surfaced · lever "+_lev.toUpperCase()+
+                   " — the staged list is in this cycle's record below."):"");
+      sub.textContent="New shares are held until this index shrinks. Standing-justify does not apply to the ceiling."+_instr; }
     else if(t.over&&sj){ h.innerHTML="The index sits at "+tok(t.cur)+" tokens — just past the "+tok(IDXB)+" target, and that’s <span class=\"hot\">standing-justified</span>.";
       sub.textContent=t.breach!=null
         ?("The prune gate stays off until the store grows. At the current rate it would reach the "+tok(CEIL)+" ceiling in ~"+t.breach+" dreams.")
