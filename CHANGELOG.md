@@ -31,12 +31,20 @@ specs** — the arm was reading preserved *history* as the header's own target f
 dropped its `>`, so the retired line's tail reads as ordinary text. (This entry first said all 12 were
 "inside the blockquote", which a review lens measured false. The case is also the design's own
 argument: a boundary anchored on `>` prefixes would MISS it, which is why it is anchored on the
-provenance NOTE.) It fires on none today — but ⚠ **not** for the reason this entry first
-gave (`_pending`), which a review lens refuted by measurement. MEASURED: **all 5** specs in the arm's
-region-population are **already cited** in a `## [X.Y.Z]` section, so the CITATION arm
-(`if _pending and named`) **preempts** this one (`elif _tgt and _pending`) for every one of them. The
-arm's zero is **STRUCTURAL — it is the `elif`** — and no `_pending` value could revive it. So the
-operand was wrong *and* the arm was doubly unreachable for what it was built for.
+provenance NOTE.) It fires on none today because **`_pending` is False** for every one of them —
+headers the sweep already corrected to `SHIPPED (vX)`, so no arm has anything to catch. The first
+draft of this entry said that, and it was RIGHT.
+
+⚠ **AND THIS SENTENCE FLIPPED THREE TIMES — that is the real finding here.** (2) A review lens
+reported the opposite: *"all 5 are already cited, so the CITATION arm preempts this one; the zero is
+STRUCTURAL, it is the `elif`"* — and it was adopted into this entry. It is **false**: `if _pending and
+named` needs `_pending` TOO, so a cited-but-settled header preempts nothing. The lens measured
+**citedness**, observed a correlated fact, and mis-attributed the cause. (3) A second lens measured
+the operand that actually decides it — `_pending` is **False for all 5** — restoring the first draft.
+⚠ **I propagated (2) having checked `named` and never `_pending`** — the *same* incomplete operand as
+the finding I adopted. That is `a-reviewers-correction-is-an-unaudited-claim`, committed twice against
+the very claim this release is about. The lesson is not "trust the third measurement": it is
+**measure the operand the claim turns on** — and both of us measured a neighbour of it.
 
 ⚠ **AND THE CAUSALITY, which is the sharper finding.** The operand was **correct when the arm was
 authored**. At `f0a4b75` — the commit before it — `docs/asserted-support.spec.md:7` read
@@ -65,12 +73,14 @@ docstring says so.
   are named *"NOWHERE in CHANGELOG.md — the citation OPERAND hides them, not the matcher"*. True when
   written (`24e2ea8`); **false one commit later**, when `e0a8970` — a **descendant** of that commit — swept
   the headers and added both citations. All 17 target-bearing specs are named there and the arm fires on
-  **zero**. The repair invalidated its own diagnosis. Corrected on **SIX** surfaces, two of them
-  user-visible (the pin's own check **label** and the SKILL blurb), each now stating the fact
-  historically — the rationale is kept, not deleted. ⚠ **This sentence said "five" in the first
-  pass, and MISSED one** — `smoke.py`'s A4 comment, three lines above the call it annotates, sat
-  uncorrected while the release note claimed the claim was corrected. So the note asserting the
-  repair was itself over-claiming: the same defect, one layer up, caught by the review round.
+  **zero**. The repair invalidated its own diagnosis. Corrected on every surface it appears on —
+  **enumerated, not counted**, because the count has been wrong twice: its own clause in this entry,
+  the A5 clause beside it, `docs_links.py`'s `_SPEC_TARGET_RELEASE` comment, `smoke.py`'s A4
+  pin-block comment, that pin's **check label** (user-visible), and the SKILL blurb above. Two are
+  user-visible; each now states the fact historically, and the rationale is kept, not deleted.
+  ⚠ **This sentence said "five" in the first pass and MISSED `smoke.py`'s A4 comment**, then said
+  "six" and was off again — the note asserting the repair was itself over-claiming, the same defect
+  one layer up. **A count is a claim; an enumeration is a list.**
 - **`:1004-1006` claimed a suppression never implemented** — *"an UNSHIPPED target anywhere in the preamble
   suppresses the arm"*. The code filters to targets that HAVE shipped, so a header naming both a shipped
   and an unshipped target **fires**. Corrected to match the code, keeping the gate recall-biased.

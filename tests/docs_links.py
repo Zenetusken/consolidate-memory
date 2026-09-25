@@ -1056,7 +1056,9 @@ def _spec_header_end(lines: "list[str]") -> int:
     # ⚠ v0.4.65: an earlier form (this PR's own first cut, adopted because a review lens suggested
     # the idiom) scanned ALL of `lines` for both the heading and the note. The RESULT was identical —
     # measured across all 58 specs — but the COST was not: **15,074** provenance searches over the
-    # corpus against the **6,960** a cap-bounded scan costs, because a spec whose heading sits at
+    # corpus against **968** for the bounded scan — ⚠ 6,960 is the cap-bound CEILING (58 x 120), not
+    # the cost; a review lens caught this line pairing a measured figure with a theoretical one —
+    # because a spec whose heading sits at
     # line 8 still had every one of its lines searched for a note. The longest spec here is 3,646
     # lines. ⚠ Equivalence proven by RESULT is not equivalence proven by COST, and this gate runs in
     # CI on every push.
@@ -1310,7 +1312,11 @@ def check_spec_status() -> int:
         # over-reaches on one line, both found by the 2026-09-25 dream pass:
         #   (a) NO provenance boundary. `_SPEC_PROVENANCE_QUOTE` bounds the status locator and the
         #       statement join; this THIRD reader of the same field had no cut, so it read the
-        #       preserved drafting-era blockquote as the header's own target. MEASURED: 12 of the 17
+        #       preserved drafting-era blockquote as the header's own target. MEASURED: the region
+        #       bound removes the target for 12 of the 17 — 11 on `>`-marked quote lines, the 12th
+        #       an UNMARKED continuation. (Corpus counts live in the CHANGELOG; this is the operand
+        #       comment. ⚠ The count here read "12 ... inside the blockquote" until v0.4.65, which
+        #       over-states 11 of them.) The detail that used to follow: 12 of the 17
         #       target-bearing specs carry their version ONLY inside that quote, so the arm was reading
         #       preserved HISTORY for most of its population. ⚠ And the operand was RIGHT when the arm
         #       was authored — at `f0a4b75` this spec's target sat in the LIVE header, and `24e2ea8`,

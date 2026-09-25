@@ -23242,12 +23242,14 @@ try:
     del _dl40.errors[_spsn61:]
     # ⚠ v0.4.64: `>= 1` was a VACUITY floor, and a mutation measured what that costs. Making
     # `_spec_header_end` over-cut (return 0 whenever a note exists — the natural over-correction of
-    # this release's change) leaves the suite at **2363/1**, only O1 reddening, while the live
+    # this release's change) leaves the suite at **2362/3** — the RC-4 pin (this floor), O1, and O5 —
+    # where BEFORE this floor and O5 existed the same mutation read only **2363/1**, O1 alone, while the live
     # denominator falls **52 → 26** — every note-carrying spec drops out at once and nothing says so.
     # ⚠ The floor is PROPORTIONAL rather than an equality for the reason the release note gives: the
     # COUNT is a property of the corpus (it has read 51 and 52 as the corpus moved), so an equality
     # would red on every legitimate corpus change. The FRACTION is not: it has never been near half —
-    # 52 of 58 specs today. A bound that silently drops a third of the corpus is broken, not churned.
+    # 52 of 58 specs today. A bound that silently drops 26 of 58 — 45% of the corpus — is broken,
+    # not churned.
     _corpus61 = len(list((ROOT / "docs").glob("*.spec.md")))
     _floor61 = (_corpus61 * 3) // 4
     _spsa61 = _spslive61 >= _floor61 and _spsliveerr61 == 0
@@ -23450,7 +23452,11 @@ try:
             _o2p64 = _o2ck64 == 1 and not _o2e64
             # ⚠ v0.4.65: an "O3 control" stood here asserting that the arm still FIRES on a shipped
             # target in the real preamble. It was REMOVED because it was **byte-identical to the
-            # v0.4.63 A4 pin's own fixture** (`smoke.py:23359` — the string occurs 4x in this file),
+            # v0.4.63 A4 pin's own fixture** (`smoke.py:23378` — those two fixtures were
+            # BYTE-IDENTICAL; ⚠ this tombstone first said "the string occurs 4x", which counted a
+            # SUBSTRING: four fixtures in this file CONTAIN that target line but have four different
+            # tails, and only the deleted one matched the A4 pin exactly — the same wrong-operand
+            # error the release is about),
             # so it asserted what an existing pin already asserts, added no coverage, and inflated
             # the D6 count by one. ⚠ Its stated job — being the guard against the narrowing's own
             # over-correction — was never one it could do anyway: its fixture carries no provenance
@@ -23467,12 +23473,13 @@ try:
                 "# Target spec\n\n> Preserved verbatim:\n\n**Status:** revised for review.\n")
             _o4g64 = _o4ck64 == 0 and not _o4e64
             # CONTROL — the arm still FIRES on a LIVE shipped target sitting ABOVE its provenance
-            # note. ⚠ This is the control the narrowing's OWN failure shape needs, and O3 cannot
-            # supply it: O3's fixture carries no note, so it cannot see over-cutting in the note's
-            # presence, which is the only over-correction the new helper introduces. MEASURED under
-            # the over-cut mutation (region → 0 whenever a note exists): O2, O3 and O4 all stay
-            # GREEN and only O1 reds — this arm reds too, because the live target it names is inside
-            # the region such a cut removes. Green on BOTH trees, EXAMINED on both.
+            # note. ⚠ This is the control the narrowing's OWN failure shape needs: its fixture
+            # carries a note, the only over-correction the new helper introduces. The note-free
+            # control that used to claim this job was removed at v0.4.65 — it duplicated the v0.4.63
+            # A4 pin and could never have done this work. MEASURED under the over-cut mutation
+            # (region → 0 whenever a note exists): **this arm REDS** where O2 and O4 stay GREEN,
+            # because the live target it names sits inside the region such a cut removes.
+            # Green on BOTH trees, EXAMINED on both.
             _o5ck64, _o5e64, _o5pm64 = _arm63(
                 "target.spec.md",
                 "# Target spec\n\n**Status:** revised for review. Target release: **v0.1.0 (patch)**\n\n"
