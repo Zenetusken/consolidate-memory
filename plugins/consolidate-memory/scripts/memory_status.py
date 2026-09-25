@@ -5177,7 +5177,15 @@ def _remediation_section(rem: dict) -> list:
                       f"(pointers) · recall body-hygiene −≈{rem['projected_recall']} tok (SEPARATE disk axis)",
                       indent=4, bullet="→", bullet_color="cyan"))
     # D5 (v0.1.21): if a full prune can't reach budget, it's prune-the-safe-THEN-standing-justify the residual.
-    if rem["lever"] == "prune" and not rem.get("reaches_budget", True):
+    if rem.get("standing_justified"):
+        # v0.4.62: ⚠ the SUPPRESSED path must not print the remedy above. "prune-safe-THEN-standing-justify"
+        # instructs an operator to do what the kv three lines up says is ALREADY DONE, and on an
+        # over-ceiling store it names a standing-justification the ceiling line FORBIDS. Measured on the
+        # live store before the fix: "STANDING-JUSTIFIED" above, "prune the safe candidates, THEN
+        # standing-justify the residual" below. Here the binding constraint is the ceiling.
+        hint = ("the target gate is OFF (standing-justified) — the binding constraint is the CEILING, so "
+                "shrink by the staged candidates and re-justify the residual")
+    elif rem["lever"] == "prune" and not rem.get("reaches_budget", True):
         hint = "prune the safe candidates, THEN standing-justify the residual (full prune can't reach budget — earned density)"
     else:
         hint = {"gc": "mirror-dominated → the GLOBAL demote/GC lever (a local prune is futile)",

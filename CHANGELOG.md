@@ -52,6 +52,36 @@ that produced it. A gate's number is a property of its matcher.
 scripts of mine re-implemented the gate's window-slice and disagreed with it (13 vs 14). **Measure with
 the instrument, not a copy of it**; the copy diverges exactly where the rule is subtle.
 
+### ⚠ Three more, from the same round's second drain — including one VISIBLE in the shipped output
+
+- **The remedy contradicted its own header, in the released artifact.** On a standing-justified store the
+  report printed `✓ … STANDING-JUSTIFIED` at the top and then **"prune the safe candidates, THEN
+  standing-justify the residual"** at the bottom — instructing the operator to do what the header says is
+  already done. On an OVER-CEILING store it is worse: the residual is still over the ceiling, so the
+  sentence names a standing-justification the ceiling line three rows up **forbids**. Both renderers now
+  carry a standing-aware remedy ("the target gate is OFF — the binding constraint is the CEILING"), and the
+  layer-2 pin asserts its PRESENCE *and* the prune sentence's ABSENCE, so the contradiction cannot return
+  as a passing render.
+- **The sweep's own convention was a trap for the gate that reads it.** The v0.4.61 sweep preserves each
+  retired line inside a blockquote beginning `**Drafting-era status — never revisited after the arc
+  closed.**` — which matches the gate's PRE-shipping vocabulary through "Drafting". So in any swept spec,
+  deleting the live declaration (the cheap fix the gate's own message invites) would make the fallback
+  land on the PRESERVED line and RED **quoting history as the header's own status**. Measured: 0 misfires
+  today, i.e. the pass rested entirely on the live line happening to precede the quote. The provenance note
+  is now a **BOUNDARY**, not a filter — excluding it by text is not enough, because the quote's *second*
+  line (`> Status: draft → …`) is declaration-SHAPED.
+- **The validator's own index omitted its new gate.** `tests/docs_links.py`'s module docstring enumerates
+  invariants 1–10; `check_spec_status` shipped as an eleventh with no entry, so a maintainer asking "does
+  any gate read a spec's status?" read a contract that mentions no status axis — the very enumeration
+  §RC-4 leans on. Entry 11 added.
+
+⚠ **And a residual, measured rather than implied:** with the trap closed, a corpus-wide probe (remove
+every `Status…`-leading line, then ask what the fallback finds) still leaks on **2 of 50 specs** —
+`completion-driven-archiving.spec.md` (a continuation of the deleted declaration) and
+`index-usage-and-budget-ladder.spec.md` (a genuine "Phase C status note"). Left live and recorded in the
+gate's docstring rather than narrowed, because narrowing would drop the MID-SENTENCE shape that caught a
+real file.
+
 ### Measured
 
 - smoke **2345 passed, 0 failed**; the pre-fix tree with the same pins reads **2333 passed, 12 failed**.

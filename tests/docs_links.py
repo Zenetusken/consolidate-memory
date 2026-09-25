@@ -81,6 +81,12 @@ Invariants:
    So the sibling's header is checked against the manifest BESIDE it, discovered the way invariant
    7's rows are rather than named — a third plugin's STATUS.md is covered the day it lands. ⚠ One
    site, pinned like the badge, and the boundary is stated in the function rather than implied.
+11. **Every `docs/*.spec.md` whose header still states a DRAFTING-era status while CHANGELOG.md names it
+   inside a `## [X.Y.Z]` release section is a contradiction** (`check_spec_status`, v0.4.61). ⚠ This
+   entry was ADDED at v0.4.62: the gate shipped without one, so the file's own index of what it gates
+   omitted the gate — and invariant 6 above is the reason the axis was invisible in the first place
+   (`LIVE_DOCS` is a CURRENCY set; a status was in no set). 16 pre-shipping headers were found and 14
+   swept, and the count moved once per matcher fix — a gate's number is a property of its matcher.
 
 Run:  python3 tests/docs_links.py   (exit 0 = clean)
 """
@@ -894,6 +900,33 @@ def check_preview() -> None:
 # mid-sentence is a real shape (see `cm-commands-onboarding.spec.md`).
 _SPEC_STATUS_DECL = re.compile(r"(?im)^\s*[>*_\-]*\s*\**\s*status\b[^\n]*")
 _SPEC_STATUS_MENTION = re.compile(r"(?im)^.*?\bstatus\b[^\n]*")
+
+# ⚠ THE SWEEP'S OWN CONVENTION IS A TRAP FOR THE MENTION FALLBACK, and a late review lens measured it:
+# the v0.4.61 sweep preserves each retired line inside a blockquote BEGINNING `**Drafting-era status —
+# never revisited after the arc closed.**`, which matches `_SPEC_PRE_SHIPPING` through "Drafting". So in
+# any swept spec, if the LIVE declaration is deleted (the cheap fix this gate's own message invites) or
+# pushed past the window, a fallback landing on the PRESERVED line would RED while quoting HISTORY as
+# "the header still states a pre-shipping status". Measured: 0 misfires today — the pass rested entirely
+# on the live line happening to precede the quote. The provenance note is not a declaration, and is
+# excluded by its own words.
+_SPEC_PROVENANCE_QUOTE = re.compile(r"(?i)drafting-era status|preserved verbatim")
+
+
+def _spec_status_line(window: str):
+    """The status DECLARATION in a header window, or None.
+
+    Prefers a line that LEADS with the status word; falls back to one that merely mentions it — and
+    STOPS at the sweep's provenance note, because everything after it is preserved HISTORY, not the
+    header's own status. ⚠ Excluding matches by their own text is not enough: the swept blockquote's
+    SECOND line is `> Status: draft → …`, which is DECL-shaped, so a text-level exclusion leaves the
+    fallback landing on it — measured. The note is a BOUNDARY, not a filter."""
+    _cut = _SPEC_PROVENANCE_QUOTE.search(window)
+    if _cut:
+        window = window[:_cut.start()]
+    m = _SPEC_STATUS_DECL.search(window)
+    if m:
+        return m
+    return _SPEC_STATUS_MENTION.search(window)
 # ⚠ …and a window, not a line 1. Two specs state their status further down a header the v0.4.61 sweep
 # itself lengthened, and two state it as a title (`— spec DRAFT`), which carries no `status` word at
 # all. Both were invisible to a 14-line, `status`-only search.
@@ -973,6 +1006,16 @@ def check_spec_status() -> int:
     readings, and the remedy — update the header — is correct under either. A gate with a stated
     ceiling, not a proof.
 
+    ⚠ SECOND, MEASURED, and found while closing a third: the MENTION fallback can still land on ordinary
+    PROSE that happens to contain "status" when a spec has no declaration at all. Probed across the
+    corpus — remove every `Status…`-leading line, then ask what the fallback finds — **2 of 50 specs
+    leak**: `completion-driven-archiving.spec.md` (a continuation line of the deleted declaration) and
+    `index-usage-and-budget-ladder.spec.md` (a genuine "Phase C status note"). ⚠ The remedy is to state
+    the shape, not to widen again: the fallback exists for the MID-SENTENCE declaration
+    (`cm-commands-onboarding.spec.md` was one before the sweep), and a spec that deletes its declaration
+    entirely is the pathological case this gate's own message invites. Left live and recorded rather
+    than narrowed, because narrowing it would drop the mid-sentence shape that caught a real file.
+
     Returns the number of spec status lines EXAMINED, for the ✓ line's denominator: without it a
     scan that stopped finding status lines would print exactly as green as one examining everything.
     """
@@ -981,7 +1024,7 @@ def check_spec_status() -> int:
     for spec in sorted((ROOT / "docs").glob("*.spec.md")):
         lines = spec.read_text(encoding="utf-8", errors="replace").splitlines()
         _win = "\n".join(lines[:_SPEC_STATUS_WINDOW])
-        m = _SPEC_STATUS_DECL.search(_win) or _SPEC_STATUS_MENTION.search(_win)
+        m = _spec_status_line(_win)
         if m:
             # ⚠ THE STATEMENT, NOT THE LINE. The matcher LOCATES the status over a 40-line window but
             # `[^\n]*` captures only to the end of that one line — so a status that WRAPS was judged on
@@ -991,7 +1034,7 @@ def check_spec_status() -> int:
             # instance (`awaiting merge` on line 4, which no predicate saw). The statement is the
             # matched line plus its continuation up to a blank line, capped.
             _ix = next((k for k, ln in enumerate(lines[:_SPEC_STATUS_WINDOW])
-                        if _SPEC_STATUS_DECL.match(ln) or _SPEC_STATUS_MENTION.match(ln)), None)
+                        if _spec_status_line(ln)), None)
             _jx = _ix
             # ⚠ `_ix is not None` is a conjunct of the GUARD, not just of the ternary below: without it
             # mypy cannot narrow `_ix` and `(_jx - _ix)` is an int-minus-optional.

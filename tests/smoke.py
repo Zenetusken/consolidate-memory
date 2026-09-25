@@ -4982,9 +4982,15 @@ with _tfB.TemporaryDirectory() as _tdB:
               and _seedB61["remediation"].get("reaches_budget") is False
               and _seedB61["remediation"].get("required") is False)
         _outB61 = rd.render(_seedB61)
-        check("v0.4.61 RC-1 (PIN, layer 2): the DASHBOARD prints the ceiling's REMEDY for a suppressed over-ceiling record — the end-user surface CLAUDE.md names by name, and the one a fix one layer down does not reach",
+        # ⚠ v0.4.62: this pin first asserted the `prune-safe-THEN-standing-justify` sentence here, which
+        # encoded a CONTRADICTION — on a suppressed, over-ceiling store that sentence tells the operator
+        # to do what the panel's own green ✓ says is already done, AND names a standing-justification the
+        # ceiling line three rows up forbids. It now asserts the standing-aware sentence AND the ABSENCE
+        # of the prune one, so the contradiction cannot come back as a passing render.
+        check("v0.4.61/62 RC-1 (PIN, layer 2): the DASHBOARD prints the ceiling's REMEDY for a suppressed over-ceiling record, and NOT the prune-then-justify sentence that would contradict the standing-justified line above it — the end-user surface, and the one a fix one layer down does not reach",
               any("candidate(s) surfaced" in _ln for _ln in _outB61.splitlines())
-              and any("prune-safe-THEN-standing-justify" in _ln for _ln in _outB61.splitlines()))
+              and any("binding constraint is the" in _ln or "CEILING" in _ln for _ln in _outB61.splitlines())
+              and not any("prune-safe-THEN-standing-justify" in _ln for _ln in _outB61.splitlines()))
 
         # ── v0.4.61 (RC-2): `projected_index` is MEASURED, and it is the quantity its declaration names ──
         # The `Remediation` TypedDict has always declared "est index tokens after evicting the candidates";
