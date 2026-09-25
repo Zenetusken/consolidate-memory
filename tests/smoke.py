@@ -23269,6 +23269,132 @@ try:
         _spscerr61 = len(_dl40.errors) - _spsn61c
         del _dl40.errors[_spsn61c:]
         _spsc61 = _spscerr61 == 0
+
+        # ── v0.4.63: the holes the v0.4.61/v0.4.62 gate shipped with (A1–A5) ──────────────────
+        # The gate shipped at v0.4.61 and was corrected twice at v0.4.62; five more holes were
+        # measured while planning the v0.4.63 docket, and 24e2ea8 closed them. Each arm below
+        # pins ONE, in the temp tree the arms above already repointed `ROOT` to — no new
+        # scaffolding, no second temp tree.
+        # ⚠ EVERY ARM RESETS THE CORPUS TO EXACTLY ONE FILE, and the CHANGELOG is re-stated here
+        # rather than inherited from the arms above. Both are because these arms assert EXACT
+        # error counts: a spec left behind by the previous arm would contribute its own error to
+        # the next arm's count, and WHICH FILE IS CITED is a precondition — `stale.spec.md` is
+        # named in the release section, `target.spec.md` is NOT, which is A4's entire point.
+        # ⚠ A CONTROL here means "green on BOTH trees" for the quiet ones and "fires on BOTH
+        # trees" for A2's and A5's — what makes an arm a control is that it does not discriminate
+        # the revision. Those two pairs are deliberately one of each: their pins assert a
+        # SILENCE (`errors == 0`), and a silence is equally produced by a gate that stopped
+        # reading anything, so each sibling asserts the reading still happens.
+        (_spstmp61 / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [0.1.0] — 2026-01-01\n\nshipped per docs/stale.spec.md\n",
+            encoding="utf-8")
+        _spd63 = _spstmp61 / "docs"
+
+        def _arm63(_name: str, _body: str) -> tuple[int, list[str], str]:
+            """Run the gate over a corpus holding exactly ONE spec → (examined, errors, message)."""
+            for _old in _spd63.glob("*.spec.md"):
+                _old.unlink()
+            (_spd63 / _name).write_text(_body, encoding="utf-8")
+            _n = len(_dl40.errors)
+            _ck = _dl40.check_spec_status()
+            _got = list(_dl40.errors[_n:])
+            del _dl40.errors[_n:]           # leave the gate module exactly as this arm found it
+            _msg = (f"{_ck} status line(s) examined, errors={len(_got)}"
+                    + (f" — {' '.join(_got)[:150]}" if _got else ""))
+            return _ck, _got, _msg
+
+        try:
+            # A1 — DONE-WINS. A header asserting BOTH states passed, because a done-token
+            # exempted it: `docs/asserted-support.spec.md` read "implemented … awaiting merge"
+            # and survived TWO merges. MEASURED: pre-fix `checked=1, errors=0`; post-fix 1.
+            _a1ck63, _a1e63, _a1pm63 = _arm63(
+                "stale.spec.md", "# Stale spec\n\n**Status: implemented — awaiting merge.**\n")
+            _a1p63 = (len(_a1e63) == 1 and "stale.spec.md" in _a1e63[0] and "v0.1.0" in _a1e63[0]
+                      and "ALONGSIDE a done-state" in _a1e63[0])
+            # …and its CONTROL: a DONE-only header. Without it the pin is satisfied by a gate
+            # that reds on every spec, which is the blanket refusal. Green on BOTH trees, and it
+            # is EXAMINED on both (`checked == 1`) — a control that reds by never being read
+            # would pair with the pin for the wrong reason.
+            _a1cck63, _a1ce63, _a1cm63 = _arm63(
+                "stale.spec.md", "# Stale spec\n\n**Status: vetting complete; SHIPPED in v0.1.0.**\n")
+            _a1c63 = not _a1ce63
+
+            # A2 — the MENTION LEAK. A spec whose only `status` occurrence is PROSE is not a
+            # declaration: the fallback now requires the LABEL shape (`status` + colon). MEASURED
+            # pre-fix `checked=1, errors=1` (the prose line read as the header's own status, on a
+            # file the release section names); post-fix `checked=0, errors=0` — not examined at all.
+            _a2ck63, _a2e63, _a2pm63 = _arm63(
+                "stale.spec.md",
+                "# Stale spec\n\nThe gate reads the call. Status per item: ✓ certified — "
+                "pending sign-off.\n")
+            _a2p63 = _a2ck63 == 0 and not _a2e63
+            # …and its CONTROL is a FIRING one, because the pin above asserts an ABSENCE. The
+            # narrowed fallback must still read a genuine MID-SENTENCE declaration — the shape it
+            # exists for (`cm-commands-onboarding.spec.md` was one before the sweep). Fires on
+            # BOTH trees: it discriminates nothing, and that is the job.
+            _a2cck63, _a2ce63, _a2cm63 = _arm63(
+                "stale.spec.md",
+                "# Stale spec\n\n**Design-of-record for the flow.** Status: draft.\n")
+            _a2c63 = (_a2cck63 == 1 and len(_a2ce63) == 1 and "stale.spec.md" in _a2ce63[0])
+
+            # A3 — the VOCABULARY. Four headers stated a vetting state the alternative list never
+            # matched ("revised for review", "design-of-record", "ready to ship"), so no arm ever
+            # saw them as pre-shipping. MEASURED: pre-fix errors=0 on a CITED spec; post-fix 1.
+            _a3ck63, _a3e63, _a3pm63 = _arm63(
+                "stale.spec.md", "# Stale spec\n\n**Status:** revised for review.\n")
+            _a3p63 = len(_a3e63) == 1 and "stale.spec.md" in _a3e63[0]
+
+            # A4 — the rule that needs NO citation. `asserted-support.spec.md` and
+            # `marker-coordinate-truth.spec.md` are named NOWHERE in CHANGELOG.md, so every
+            # matcher fix left them silent: the citation OPERAND hid them, not the matcher. A
+            # header naming a target release that ALREADY SHIPPED is stale without one.
+            # MEASURED: pre-fix errors=0 (no such arm existed); post-fix 1 — and `target.spec.md`
+            # is deliberately NOT the file the release section names.
+            _a4ck63, _a4e63, _a4pm63 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status:** revised for review. Target release: "
+                "**v0.1.0 (patch)**\n")
+            _a4p63 = (len(_a4e63) == 1 and "target.spec.md" in _a4e63[0]
+                      and "Target release: v0.1.0" in _a4e63[0])
+            # …and TWO CONTROLS, both green on BOTH trees, because an arm that fires on any
+            # `Target release:` would be satisfied by the pin above. (a) a target with no release
+            # section is a spec legitimately aiming at the FUTURE — the arm must not fire, or the
+            # widened vocabulary would red every open spec. (b) a header that already says SHIPPED
+            # beside a shipped target must not fire either: the arm tests the PENDING clause, not
+            # the presence of a target.
+            _a4fck63, _a4fe63, _a4fm63 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status:** revised for review. Target release: "
+                "**v9.9.9 (patch)**\n")
+            _a4f63 = _a4fck63 == 1 and not _a4fe63
+            _a4sck63, _a4se63, _a4sm63 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status: SHIPPED (v0.1.0)** — Target release: v0.1.0, shipped.\n")
+            _a4s63 = _a4sck63 == 1 and not _a4se63
+
+            # A5 — the WINDOW. The search region is the PREAMBLE (the lines before the first
+            # `## ` heading, capped), not a fixed 40: `docs/marker-coordinate-truth.spec.md`
+            # declares its status at line 84, past every earlier window. MEASURED on a 49-line
+            # fixture whose declaration sits at line 45: pre-fix `checked=0, errors=0` (the gate
+            # never REACHED it); post-fix `checked=1, errors=1`.
+            _fill63 = "\n".join(f"Filler line {_i:02d}: nothing to see here." for _i in range(1, 43))
+            _a5ck63, _a5e63, _a5pm63 = _arm63(
+                "stale.spec.md",
+                "# Stale spec\n\n" + _fill63
+                + "\n\n**Status:** awaiting merge.\n\n## Scope\n\nThe body.\n")
+            _a5p63 = (_a5ck63 == 1 and len(_a5e63) == 1 and "stale.spec.md" in _a5e63[0])
+            # …and its CONTROL moves the DECLARATION and nothing else — the same file, the same
+            # filler, the same release citation, the status at line 3 instead of line 45. It fires
+            # on BOTH trees, which is the contrast A5 needs: the WINDOW moved, not the reading.
+            _a5cck63, _a5ce63, _a5cm63 = _arm63(
+                "stale.spec.md",
+                "# Stale spec\n\n**Status:** awaiting merge.\n\n" + _fill63 + "\n")
+            _a5c63 = _a5cck63 == 1 and len(_a5ce63) == 1
+        except Exception as _x63:               # a broken gate is RED, not a traceback
+            _a1p63 = _a1c63 = _a2p63 = _a2c63 = _a3p63 = _a4p63 = _a4f63 = _a4s63 = False
+            _a5p63 = _a5c63 = False
+            _a1pm63 = _a2pm63 = _a3pm63 = _a4pm63 = _a5pm63 = f"could not exercise it: {type(_x63).__name__}: {_x63}"
+            _a1cm63 = _a2cm63 = _a4fm63 = _a4sm63 = _a5cm63 = _a1pm63
     finally:
         _dl40.ROOT = _spsroot61                 # restored even if the arm itself blew up
         _shpsd40.rmtree(_spstmp61, ignore_errors=True)
@@ -23288,6 +23414,101 @@ check("v0.4.61 RC-4 pin (the CONTROL for the arm above: the SAME fixture with it
       "what shipped stays GREEN, so that arm is not satisfied by a check that reds on every spec "
       "unconditionally. ⚠ It reds on the PRE-FIX tree too, by ABSENCE — paired with its sibling, "
       f"which is the shape the v0.4.40 pin above established): ⚠ {_spsbmsg61}", _spsc61)
+
+check("v0.4.63 A1 pin (PIN — a header stating BOTH a done-state AND a pre-shipping clause now "
+      "FIRES; pre-fix `spec_done` EXEMPTED it, which is how this release's own design-of-record "
+      "read 'implemented … awaiting merge' through TWO merges. The assertion is the VALUE: pre-fix "
+      "0 errors, post-fix exactly 1 — a RED BY VALUE, not by absence — and the message must say "
+      f"which of the two clauses the release section contradicts): ⚠ {_a1pm63}", _a1p63)
+check("v0.4.63 A1 control (CONTROL — the same fixture with a DONE-only header stays green, and is "
+      "still EXAMINED: without that second conjunct the pin above is satisfied by a gate that reds "
+      "on every spec, and a control that goes quiet by never being READ pairs with the pin for the "
+      f"wrong reason. Green on BOTH trees): ⚠ {_a1cm63}", _a1c63)
+
+check("v0.4.63 A2 pin (PIN — a spec whose only `status` occurrence is PROSE is not a DECLARATION; "
+      "the fallback now requires the label shape. The first conjunct is the denominator, not "
+      "decoration: post-fix the file is not examined AT ALL (checked 1 → 0), so the arm cannot be "
+      "satisfied by a gate that still reads the line and merely happens to stay quiet. MEASURED "
+      f"pre-fix checked=1/errors=1, post-fix 0/0): ⚠ {_a2pm63}", _a2p63)
+check("v0.4.63 A2 control (CONTROL — and this one FIRES on BOTH trees, which is exactly its job: "
+      "the pin above asserts an ABSENCE, and an absence is equally produced by a fallback that "
+      "stopped reading anything at all. A genuine MID-SENTENCE declaration still fires post-fix — "
+      f"the shape the fallback exists for): ⚠ {_a2cm63}", _a2c63)
+
+check("v0.4.63 A3 pin (PIN — the WIDENED VOCABULARY reaches a header it could not see: 'revised for "
+      "review' states a vetting state the alternative list never matched ('design-of-record' and "
+      "'ready to ship' were added with it), so four live headers went UNMATCHED by every arm — "
+      "examined, never seen. MEASURED pre-fix 0 errors on a CITED spec, post-fix exactly 1): "
+      f"⚠ {_a3pm63}", _a3p63)
+
+check("v0.4.63 A4 pin (PIN — the arm that needs NO citation: a header naming a target release that "
+      "ALREADY SHIPPED is stale by definition, and this is the only arm that can see a spec named "
+      "NOWHERE in CHANGELOG.md — the citation OPERAND hid the two live instances, not the matcher. "
+      f"MEASURED pre-fix 0 (no such arm existed), post-fix exactly 1): ⚠ {_a4pm63}", _a4p63)
+check("v0.4.63 A4 control (CONTROL — a target with NO release section is a spec legitimately aiming "
+      "at the FUTURE and must stay silent, or the vocabulary widened WITH this arm would red every "
+      f"open spec. Green on BOTH trees, and examined on both): ⚠ {_a4fm63}", _a4f63)
+check("v0.4.63 A4 control (CONTROL — a header that already says SHIPPED beside a shipped target "
+      "stays green on BOTH trees: this arm tests the PENDING clause, not the mere presence of a "
+      "target, and a pin without it is satisfied by the wider rule it was written to avoid. ⚠ The "
+      f"second conjunct asserts the header was EXAMINED, not skipped): ⚠ {_a4sm63}", _a4s63)
+check("v0.4.63 A5 pin (PIN — the WINDOW is the PREAMBLE, not a fixed 40 lines: a declaration at "
+      "line 45 of a 49-line header is now REACHED, where the old region stopped at 40. ⚠ The "
+      "discriminating conjunct is the DENOMINATOR (`checked` 0 → 1): pre-fix the gate did not "
+      f"merely stay quiet, it never examined the file): ⚠ {_a5pm63}", _a5p63)
+check("v0.4.63 A5 control (CONTROL — the SAME fixture with its declaration moved to line 3 and "
+      "nothing else changed, so it fires on BOTH trees: the window MOVED, the reading did not "
+      "change. ⚠ A pin asserting a longer window is satisfied by a gate that fires on any long "
+      f"file, and this arm is what says otherwise): ⚠ {_a5cm63}", _a5c63)
+
+# ── v0.4.63 (B4): the contiguity gate is PER-FILE now, and its needles are NEW ──────────────────
+# The v0.4.57 entry named `CLAUDE.md:32-33` as the wrapped-anchor instance and NOTED IT CLOSED — but a
+# peer MEASURED that the span is contiguous at v0.4.57, at v0.4.62 AND today: the record's boundary was
+# READ rather than measured, and the live instance sat at `:20-21` the whole time. That token is now one
+# unbroken span, and `check_contiguity` iterates a per-file needle map instead of `read("README.md")`.
+# ⚠ WIDENING THE SCOPE ALONE WOULD HAVE BEEN VACUOUS: the README's seven needles occur ZERO times in
+# `CLAUDE.md` (measured), so re-using them would examine a second file and see nothing while reading as
+# coverage. The new needle set is what makes the arm real.
+try:
+    _b4root = _dl40.ROOT                      # the live tree, captured before anything moves
+    _b4tmp = Path(_tfpsd40.mkdtemp(prefix="smoke-contig63-"))
+    try:                                      # ── the firing arm: one WRAPPED needle in CLAUDE.md ──
+        (_b4tmp / "README.md").write_text((_b4root / "README.md").read_text(encoding="utf-8"),
+                                          encoding="utf-8")
+        # the install needle, broken across a newline — the exact shape the gate exists to catch
+        (_b4tmp / "CLAUDE.md").write_text(
+            "# fake\n\n`claude plugin install consolidate-memory@zenetusken-\nplugins`\n",
+            encoding="utf-8")
+        _dl40.ROOT = _b4tmp
+        _b4n = len(_dl40.errors)
+        _dl40.check_contiguity()
+        _b4err = _dl40.errors[_b4n:]
+        del _dl40.errors[_b4n:]
+        # ── the CONTROL: the SAME tree with the needle intact stays green ──
+        (_b4tmp / "CLAUDE.md").write_text(
+            "# fake\n\n`claude plugin install consolidate-memory@zenetusken-plugins`\n",
+            encoding="utf-8")
+        _b4n2 = len(_dl40.errors)
+        _dl40.check_contiguity()
+        _b4clean = len(_dl40.errors) - _b4n2
+        del _dl40.errors[_b4n2:]
+    finally:
+        _dl40.ROOT = _b4root
+        _shpsd40.rmtree(_b4tmp, ignore_errors=True)
+    _b4ok = len(_b4err) == 1 and "CLAUDE.md" in _b4err[0]
+    _b4msg = f"wrapped: {len(_b4err)} error(s) — {' '.join(_b4err)[:110]} · control: {_b4clean}"
+    _b4c = _b4clean == 0
+except Exception as _b4x:                      # a broken gate is RED, not a traceback
+    _b4ok = _b4c = False
+    _b4msg = f"could not exercise it: {type(_b4x).__name__}: {_b4x}"
+
+check("v0.4.63 B4 pin (PIN — pre-fix `check_contiguity` reads README.md ONLY, so a wrapped needle in "
+      "CLAUDE.md is INVISIBLE and this is 0 errors; post-fix exactly 1, naming the file and the break. "
+      "Reddens by VALUE, not by absence): the always-loaded docs are in the contiguity gate's scope, on "
+      f"needles measured to be ABSENT from the README — {_b4msg}", _b4ok)
+check("v0.4.63 B4 control (CONTROL — the SAME fixture with the needle intact stays GREEN, so the arm "
+      "above is not satisfied by a check that reds on any CLAUDE.md at all)",
+      _b4c)
 
 # --- v0.4.41 R1: the timestamp fill must not mint a coordinate that never existed ------------
 # `reconcile_marker` copies the state file's `timestamp` into a record whose own is empty. Before
@@ -24719,6 +24940,61 @@ with _tf43.TemporaryDirectory() as _td_t56:
           "contradicts at rc 0)",
           _rcc56 == 1 and "lock-busy" in _msgc56 and "until this clears" not in _msgc56)
 
+# ── v0.4.63 (B3): THE STRAY-POSITIONAL CLASS — 8 unguarded triples, not the recorded 5 ──────────
+# The v0.4.57 entry recorded "The remaining four (\`cm journal\` ×3, \`cm group\` ×2) … are recorded, not
+# guarded: a guard there would be noise" — against its OWN total of 8 in the same paragraph. Re-derived
+# mechanically (argparse introspection + AST reachability): data 9 (one guard covers all nine) · local 2
+# · canonical 1 (all guarded since v0.4.57) · journal 3 · **group 5** — \`project\` is read by
+# add/remove ONLY, so create/delete/show/list drop it, and \`list\` drops \`name_or_group\` too.
+# ⚠ The record's REASON for exempting them held and was measured (plugin-data is global; \`cmd_group\`
+# hardcodes its ctx) — so these guards rest on the class rule the shipped ones state in their own
+# comments (a silently-ignored argument IS the defect), not on severity.
+with _tf43.TemporaryDirectory() as _td_st63:
+    _hd_st63 = Path(_td_st63) / "home"; _hd_st63.mkdir()
+    _env_st63 = {**_os53.environ, "HOME": str(_hd_st63)}
+    # ⚠ SELF-CONTAINED, not `_cmdD57`. That name is defined by the v0.4.57 block BELOW this one, and
+    # `smoke.py` executes top-to-bottom — the first cut used it and the run died with a `NameError` at
+    # module scope, taking the totals line with it. The same class as `_ens59`'s original placement.
+    _cmd_st63 = [sys.executable,
+                 str(ROOT / "plugins" / "consolidate-memory" / "scripts" / "cm_ops.py")]
+
+    def _st63(*_a: str):
+        return _sp53.run(_cmd_st63 + list(_a), capture_output=True, text=True, timeout=120, env=_env_st63)
+
+    _STRAY63 = [(("journal", "inventory", "op_x"), "OP-ID"),
+                (("journal", "compact", "op_x"), "OP-ID"),
+                (("journal", "cleanup", "op_x"), "OP-ID"),
+                # ⚠ The stray sits in the PROJECT slot — the SECOND positional. The first cut passed it
+                # first (`group create /tmp/p`), which lands in the NAME slot and is refused by a
+                # DIFFERENT guard ("group name must not contain path components") at the same rc 2, so
+                # three cases read as "missed" while the parser was behaving correctly. MEASURED.
+                (("group", "create", "g", "/tmp/p"), "FLEET-WIDE"),
+                (("group", "delete", "g", "/tmp/p"), "FLEET-WIDE"),
+                (("group", "show", "g", "/tmp/p"), "FLEET-WIDE"),
+                (("group", "list", "/tmp/p"), "FLEET-WIDE"),
+                (("group", "list", "g", "/tmp/p"), "FLEET-WIDE")]
+    _missed63 = []
+    for _a63, _mark63 in _STRAY63:
+        _r63 = _st63(*_a63)
+        if not (_r63.returncode == 2 and "unexpected argument" in (_r63.stderr or "")
+                and _mark63 in (_r63.stderr or "")):
+            _missed63.append((_a63, _r63.returncode, (_r63.stderr or "")[:60]))
+    check("v0.4.63 B3 pin (PIN — pre-fix 0 of these 8 were refused: each was SILENTLY ACCEPTED while "
+          "the argument it named was ignored, which is exactly the class the v0.4.57 guards state in "
+          "their own comments): all 8 refuse at rc 2, naming the offending argument and a remedy that "
+          "is TRUE for that parser (journal points at \`journal show <op-id>\`; group says the registry is "
+          "fleet-wide and takes no project path, because \`group\` has no --project flag and repeating "
+          f"the sibling clause would print a FALSE remedy) — missed: {_missed63}", not _missed63)
+    # ⚠ THE CONTROL PREDICATE IS THE MESSAGE, NOT THE RC. Pre-fix \`group delete g <stray>\` already
+    # returned rc 2 ("no such group") and \`journal show <op>\` legitimately returns rc 2 ("unknown op"),
+    # so an rc-only control would be VACUOUS — green for a reason unrelated to the guard.
+    _CTRL63 = ["journal inventory", "group list", "group show g", "group create g"]
+    _falsely63 = [c for c in _CTRL63 if "unexpected argument" in (_st63(*c.split()).stderr or "")]
+    check("v0.4.63 B3 control (CONTROL — green on BOTH trees, and asserted by MESSAGE: these forms take "
+          "no stray, so the guard must stay silent on them. It is what stops the pin above being "
+          "satisfied by a parser that refuses everything)",
+          not _falsely63)
+
 # --- v0.4.57: the open-items PR ----------------------------------------------------------------
 _time57 = __import__("time")
 import os as _os57
@@ -25032,6 +25308,51 @@ with _tf43.TemporaryDirectory() as _td_p57:
     _pp57.try_acquire()
     _pp57.release()
     _saw_t57 = "take" in _pp57.seen
+
+# ⚠ v0.4.63 (B2) — THE ARM THAT WAS MISSING. Everything above proves `_take` is consulted on BOTH
+# forms; NOTHING above shows the bypass at all, so "the policy half is not fixed" was a comment and only
+# a comment. This subclass puts its policy in `acquire` — the hook `try_acquire` never reaches — and the
+# check asserts the CONSEQUENCE: the try path returns True without the policy body ever running.
+# ⚠ GREEN on both trees by construction (the behaviour shipped in v0.4.56/57), so it is a GUARD whose
+# only witness is a MUTATION: route `try_acquire` through `self.acquire()` and this reddens.
+# ⚠ It also documents WHY the record's "cannot be closed" is right, rather than asserting it: the
+# guard would fail if someone closed the hole, which is the signal to move the prose in
+# `control_plane._take`'s and `try_acquire`'s docstrings, not to delete the guard.
+class _AcquireOnly57(_cp56.FileLock):
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.policy_hits: list = []
+
+    def acquire(self) -> None:                    # the WRONG hook: the try path never calls it
+        # ⚠ The override RECORDS AND REFUSES rather than calling `super()`. The first cut called
+        # `super().acquire()` — which TAKES the lock — so the following `try_acquire` opened a SECOND fd
+        # on the same file, saw contention, and returned False: `flock` is per-open-file-description, so
+        # a lock this process already holds BLOCKS its own second fd. The fixture tripped on the exact
+        # semantic this arc exists for. Raising never takes it, which is all the ledger needs.
+        self.policy_hits.append("acquire")
+        raise _cp56.LockBusy("policy: this lock is refused")
+
+
+with _tf43.TemporaryDirectory() as _td_ao57:
+    _ao57 = _AcquireOnly57(Path(_td_ao57) / "ao.lock")
+    _raised_ao57 = False
+    try:
+        _ao57.acquire()                           # the override DOES fire on the WAITING form
+    except _cp56.LockBusy:                        # the override's deliberate refusal — the lock is
+        _raised_ao57 = True                       #   never taken, so the try path below is uncontended
+    _hits_waiting57 = list(_ao57.policy_hits)     # ⚠ CAPTURED BEFORE the clear — the first cut cleared
+    _ao57.policy_hits = []                        #   first and then asserted on an empty list, which
+    _took_ao57 = _ao57.try_acquire()              #   is green for the wrong reason
+    _ao57.release()
+
+check("v0.4.63 B2 (GUARD, regression — green on BOTH trees by construction, its only witness is a "
+      "MUTATION: route `try_acquire` through `self.acquire()` and it reddens): the bypass the record "
+      "only DESCRIBES is now WITNESSED — an `acquire`-only override runs on the waiting form and is "
+      "NEVER ENTERED on the try form, which is why `try_acquire` cannot route through it without "
+      "either waiting or breaking every `acquire(self)` override at its own call site. ⚠ Before this "
+      "arm the file proved `_take` is consulted on both forms and never showed the bypass at all, so "
+      "'the policy half is not fixed' was a comment and only a comment",
+      _raised_ao57 and _hits_waiting57 == ["acquire"] and _took_ao57 is True and _ao57.policy_hits == [])
 # ⚠ GUARD, NOT A PIN — and a review lens measured the difference. This is GREEN on the pre-fix
 # tree (both public forms already routed through `_take`; the try path is what v0.4.56 added), so
 # nothing flips and by the rule adopted one round earlier it is a regression guard. ELEVENTH
@@ -25441,6 +25762,14 @@ with _tf43.TemporaryDirectory() as _td_ov52:
           "the module's only chance to say why the cache went permanently cold, and a coverage "
           "lens measured that removing the print left every check green",
           "big.md" in _msg_ov52 and str(_fm44._READ_CAP) in _msg_ov52
+          # ⚠ v0.4.63 (B5): the binding was BOUND AND NEVER READ — the roadmap recorded it as
+          # "harmless, and kept deliberately", which is a comment asserting nothing. It now carries the
+          # check, because it is UNIQUELY discriminating: the mutation "rename the token AND declare it
+          # in `_ENSURE_REASONS`" leaves every producer pin green (the AST scan, `_mint`, `_served` all
+          # see a legal token) and reddens THIS conjunct alone. The sibling kill-switch check already
+          # reads `_why_ks == "kill-switch"` for exactly this reason. Green on both trees — so it stays
+          # a GUARD, and gains nothing to claim.
+          and _why_ov52 == "oversize"
           and _rows_ov52 is None)   # ⚠ the RETURN, not only the print: see the note above
 
 # --- v0.4.51: THE FAULT'S POSITIVE VERDICTS -----------------------------------------------------
@@ -26217,6 +26546,54 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     pre-fix: the model computed 30 / `reaches_budget` True for
                                        #     a store whose real post-prune index is 1992 — the
                                        #     remedy-SELECTING field reading the wrong answer.
+                            + 15       # v0.4.63 — THE HOLES THE STATUS GATE SHIPPED WITH
+                                       #     (10) + B2's bypass WITNESS (1): the record described
+                                       #     the `acquire`-only hole in prose and nothing showed it
+                                       #     (`docs_links.check_spec_status`, arms added inside
+                                       #     the v0.4.61 RC-4 block above, in the temp tree that
+                                       #     block already repoints `ROOT` to):
+                                       #     A1, 2 checks: a header stating BOTH a done-state
+                                       #     and a pre-shipping clause FIRES (pre-fix
+                                       #     `spec_done` exempted it, and the live instance
+                                       #     survived TWO merges) + its CONTROL, a DONE-only
+                                       #     header that stays green AND examined on both trees.
+                                       #     A2, 2 checks: a prose mention carrying a
+                                       #     pre-shipping token is no longer read as a
+                                       #     DECLARATION (the denominator is asserted too — the
+                                       #     file stops being examined at all) + its CONTROL,
+                                       #     which FIRES ON BOTH TREES: an absence-shaped pin
+                                       #     without a firing sibling is satisfied by a fallback
+                                       #     that stopped reading anything.
+                                       #     A3, 1 check: the widened vocabulary ('revised for
+                                       #     review', and with it 'design-of-record' / 'ready to
+                                       #     ship') reaches a header every earlier arm was blind
+                                       #     to. ⚠ The only hole here whose defect is a VOCABULARY
+                                       #     gap rather than a rule error — four live headers were
+                                       #     EXAMINED and never MATCHED — which is why it earns
+                                       #     its own arm rather than riding A1's.
+                                       #     A4, 3 checks: the arm that needs NO citation (a
+                                       #     target release that already shipped) + TWO CONTROLS —
+                                       #     a FUTURE target stays silent, and an already-SHIPPED
+                                       #     header with a shipped target stays green.
+                                       #     A5, 2 checks: the search region is the PREAMBLE, so a
+                                       #     declaration past line 40 is REACHED (pre-fix the gate
+                                       #     never examined the file) + its CONTROL, the same
+                                       #     fixture with the declaration moved to line 3, which
+                                       #     fires on BOTH trees — a longer window is otherwise
+                                       #     satisfied by a gate that fires on any long file.
+                                       #     ⚠ A3 and A5 are counted as their own arms although
+                                       #     the task for this work listed A1/A2/A4: both are
+                                       #     shipped behaviours of 24e2ea8 — its message names
+                                       #     A3's four unmatched headers and A5's preamble
+                                       #     window — and a shipped behaviour with no arm is the
+                                       #     silent gap this repo keeps its lessons about.
+                                       #     ⚠ Every pin here reddens BY VALUE (0 vs 1, or
+                                       #     1 vs 0), not by absence, on the revision this branch
+                                       #     sits on; all five controls are green there. MEASURED
+                                       #     2026-09-24 on a FULL COPY of the parent revision with
+                                       #     only docs_links.py + docs/ restored: pre-fix
+                                       #     2350 passed / 5 failed (the five PINs, nothing else),
+                                       #     post-fix 2355 passed / 0 failed.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

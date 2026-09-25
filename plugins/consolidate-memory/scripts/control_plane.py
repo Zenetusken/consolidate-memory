@@ -1421,9 +1421,25 @@ class FileLock:
         shape: `Boom.acquire()` raises (its refusal of `global.lock`) while `Boom.try_acquire()`
         returns True for the SAME lock — the subclass's POLICY is silently skipped, because
         `try_acquire` reaches `_take` directly and never calls `acquire`. So the honest contract is
-        narrower: the TypeError half of substitutability is fixed; the policy half is not, and
-        cannot be without re-introducing the keyword. A subclass that narrows acquisition must
-        override `try_acquire` (or `_take`, where the policy belongs) as well as `acquire`.
+        narrower: the TypeError half of substitutability is fixed; the policy half is not.
+        ⚠ AND IT IS NOT CLOSABLE BY THIS CLASS — corrected here from *"cannot be without
+        re-introducing the keyword"*, which named ONE design's cost instead of the impossibility.
+        The reason is the SIGNATURE, not the keyword: `acquire`'s body WAITS, so every design that
+        ROUTES THE TRY PATH THROUGH the override pays a price this class refuses. (1) Call it —
+        the try path stops being a try. (2) Pass it a non-waiting parameter it may not declare —
+        that is the `blocking=` keyword, and it raises `TypeError` at the CALL SITE of every
+        subclass that overrode `acquire(self)`, arbitrarily far from the override that caused it.
+        (3) Probe non-blockingly, release, then re-enter `acquire` — which makes "never waits"
+        FALSE in the window where another process takes the lock between the probe and the
+        re-entry, and that property is pinned separately.
+        ⚠ AND THE ONE DESIGN THAT DOES NOT route through the override is refused rather than
+        unconsidered: DETECT it (`type(self).acquire is not FileLock.acquire`) and raise. It is
+        the one route that is neither a wait nor a TypeError — and it would refuse a subclass whose
+        override is not a policy at all (a log line, a timer) at a site that subclass never got to
+        declare, trading a silent skip for a WRONG REFUSAL. So the base class cannot consult an
+        arbitrary `acquire` override; what it can do is state WHERE the policy belongs, which is
+        here. A subclass that narrows acquisition must override `try_acquire` (or `_take`) as well
+        as `acquire` — and `_take` is the hook that is consulted on BOTH forms.
         Latent in-tree — the only patch window drives blocking acquisition — but it is a real
         hole in the primitive, so it is stated here rather than left to be rediscovered.
         ⚠ The no-`fcntl` path is IDENTICAL in both forms, and that is load-bearing: a non-waiting
@@ -1463,6 +1479,11 @@ class FileLock:
 
         ⚠ `False` is a RESULT, not a fault: the caller declines an OPTIONAL write and carries on.
         A platform without `fcntl` still RAISES out of `_take` — see the note there.
+
+        ⚠ An override of `acquire` is NOT consulted here, and cannot be — the reason is at `_take`
+        ("not closable by this class"). The caveat sits on THIS method too because this is the
+        method its caller reads: a subclass that narrows acquisition must override `try_acquire`
+        or `_take` as well, and reading only `acquire`'s contract would hide that.
         """
         try:
             self._take(wait=False)

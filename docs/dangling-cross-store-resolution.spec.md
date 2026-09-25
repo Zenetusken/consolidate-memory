@@ -4,9 +4,13 @@
 > that commit — `git show c6b432c:<path>` — and **never against the working tree**, which has moved
 > them.
 
-**Status:** REVIEWED — ready to ship as v0.1.52 (spec-review to zero + 3-reviewer code-review, SHIP).
-Track 2 of the "wikilinks recurrence" fix (Track 1 = the canonical de-link, already applied + verified).
-**Bump:** PATCH (additive, backward-compatible — legacy call site + behavior preserved).
+**Status: SHIPPED (v0.1.52)** — verified against `CHANGELOG.md` §v0.1.52, which names this spec.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status:** REVIEWED — ready to ship as v0.1.52 (spec-review to zero + 3-reviewer code-review, SHIP).
+> Track 2 of the "wikilinks recurrence" fix (Track 1 = the canonical de-link, already applied + verified).
+> **Bump:** PATCH (additive, backward-compatible — legacy call site + behavior preserved).
 
 ## Problem (measured)
 

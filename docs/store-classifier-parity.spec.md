@@ -1,6 +1,10 @@
 # Store classifier parity — the shapes the counters don't know
 
-**Status:** design-of-record · **Cycle:** `fix/store-classifier-parity` · **Target:** v0.4.31 (patch)
+**Status: SHIPPED (v0.4.31)** — verified against `CHANGELOG.md` §v0.4.31, which names this spec.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status:** design-of-record · **Cycle:** `fix/store-classifier-parity` · **Target:** v0.4.31 (patch)
 
 ## 1. Context
 

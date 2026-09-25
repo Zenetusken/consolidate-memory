@@ -1,6 +1,10 @@
 # Periphery parity — the second copies of a rule the store already states
 
-**Status:** design-of-record · **Cycle:** `fix/periphery-parity` · **Target:** v0.4.32 (patch)
+**Status: SHIPPED (v0.4.32)** — verified against `CHANGELOG.md` §v0.4.32, which names this spec.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status:** design-of-record · **Cycle:** `fix/periphery-parity` · **Target:** v0.4.32 (patch)
 
 ## 1. Context
 

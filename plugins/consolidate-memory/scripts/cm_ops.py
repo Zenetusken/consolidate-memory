@@ -2344,6 +2344,44 @@ def cmd_group(args: argparse.Namespace) -> int:
     from control_plane import connect, connect_if_exists, db_path, transact
     from identifiers import IdentifierRefused, validate_domain_id, validate_group_slug
     from store_context import resolve_store
+    # ⚠ v0.4.63: the stray-positional class, and this parser is where the v0.4.57 record was wrong.
+    # CENSUS (every `add_subparsers` block in this file, each branch read for the positionals it
+    # actually reads): `project` is read by `add`/`remove` ONLY — they resolve the member that way —
+    # so it is dropped by FOUR subcommands, and `list` drops `name_or_group` too, taking no group at
+    # all. FIVE sites here, not the two the record carried; with `cm journal`'s three that is EIGHT
+    # unguarded sites, against the five the record named.
+    # ⚠ WHAT THE RECORD GOT RIGHT, kept because the corrected count must not be read as a
+    # correction of the reason: "plugin-data is global and `cmd_group` hardcodes its ctx" is TRUE —
+    # every branch resolves the fleet registry from `_ctx(".")`, so no stray here can misdirect the
+    # subject, and the sibling guards' severity story (a WRONG-PROJECT WRITE) does not apply. What
+    # applies is the class rule those guards state in their own comments: a positional the parser
+    # accepts and no branch reads is the defect, and `group delete g /typo` printing a group as
+    # though it had been asked about `/typo` is what this refuses.
+    # ⚠ NO `--project` remedy here, deliberately, and the reason is stronger than at `journal`:
+    # `group` HAS no such flag. The registry is FLEET-WIDE — one per plugin-data root, a group is
+    # HOMED in a domain and belongs to no project — so there is no project spelling the caller
+    # could have meant. The remedy is to drop the argument, and the message says so.
+    # ⚠ BOTH names are read through a LITERAL `getattr`, never a variable key, and that is not
+    # style: this guard closes the very class a static census audits, and a census can only see
+    # the reads it can name. MEASURED while re-deriving this census — a variable-key form left the
+    # five `group` sites reading as OPEN to the instrument while the behaviour was correct, i.e.
+    # the guard would have been invisible to the next audit of its own class. The `getattr` stays
+    # (the three sibling guards use it) so a hand-built Namespace still cannot `AttributeError`.
+    _IGNORED_BY_CMD = {"create": ("project",), "delete": ("project",),
+                       "show": ("project",), "list": ("name_or_group", "project")}
+    _strays_g = [(k, v)
+                 for k, v in (("name_or_group", getattr(args, "name_or_group", None)),
+                              ("project", getattr(args, "project", None)))
+                 if v and k in _IGNORED_BY_CMD.get(args.group_cmd, ())]
+    if _strays_g:
+        _vals = ", ".join(repr(v) for _, v in _strays_g)
+        _takes = ("no argument at all" if args.group_cmd == "list" else "a group NAME")
+        print(f"group {args.group_cmd}: unexpected argument{'s' if len(_strays_g) > 1 else ''} "
+              f"{_vals} — `{args.group_cmd}` takes {_takes}, and `group` takes no project path: "
+              f"the registry is FLEET-WIDE (one per plugin-data root), so a project names nothing "
+              f"this command reads. Drop the argument.",
+              file=sys.stderr)
+        return 2
     ctx = _ctx(".")
     _writable = args.group_cmd in ("create", "add", "remove", "delete")
     conn = connect(db_path(ctx)) if _writable else connect_if_exists(db_path(ctx))
@@ -2543,6 +2581,31 @@ def cmd_journal(args: argparse.Namespace) -> int:
                                journal_rollback, journal_show)
     ctx = _ctx(args.project)
     cmd = args.journal_cmd
+    # ⚠ v0.4.63: the stray-positional class, closed here and per PARSER (v0.4.57's own finding —
+    # each parser shares ONE set of positionals across a flat `choices=[...]`, so a positional is
+    # accepted for every choice and read by only some). `op_id` is shared by all seven
+    # `journal_cmd`s and read by FOUR — `show`, `retry`, `rollback`, `abandon` — while `inventory`,
+    # `compact` and `cleanup` take the WHOLE store.
+    # So `cm journal inventory <op-id>`, or an operator who meant `journal retry <op>` and mistyped
+    # the verb, was silently accepted and dropped — and the run looked like it had honoured it.
+    # ⚠ v0.4.57 recorded these three as "noise without a wrong subject to prevent", and the SEVERITY
+    # half of that record holds (measured: `journal.sqlite` is ONE file under plugin-data, so no
+    # stray here can misdirect the store). What does not hold is treating severity as the test: the
+    # class the shipped guards state is the ARGUMENT — "a silently-ignored argument IS the defect" —
+    # and the sibling guards' own comments say so. (The COUNT in that record is wrong too, but at
+    # `cm group` — see the census there: 8 sites, not 5.)
+    # ⚠ The remedy is NOT the sibling guards' `--project` clause, and that is deliberate. There,
+    # `--project` was the spelling a caller who named another project actually needed; here it
+    # would be a FALSE remedy — the journal is one global file, so `--project` cannot redirect this
+    # command. The remedy that clears this refusal is dropping the argument, and the spelling a
+    # caller who wanted ONE op actually needed is the verb itself, so the message names it.
+    if cmd in ("inventory", "compact", "cleanup") and getattr(args, "op_id", None):
+        print(f"journal {cmd}: unexpected argument {args.op_id!r} — `{cmd}` takes the WHOLE store "
+              f"and no OP-ID (only `show`, `retry`, `rollback` and `abandon` name one op; for a "
+              f"single op use `journal show {args.op_id}`). Drop the argument — journal.sqlite is "
+              f"one file under plugin-data, so no positional can redirect this command.",
+              file=sys.stderr)
+        return 2
     if cmd == "inventory":
         # Phase-5 SLO: keyset-paged — a 1M-row journal prints ONE bounded page
         # (default 200), never a 1M-line dump. `--after` continues from the
@@ -3154,8 +3217,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     gp = sub.add_parser("group")
     gp.add_argument("group_cmd", choices=["create", "add", "remove", "delete", "list", "show"])
-    gp.add_argument("name_or_group", nargs="?")
-    gp.add_argument("project", nargs="?")
+    # ⚠ The roles are stated HERE because a stray one is now REFUSED (v0.4.63): a shared positional
+    # is accepted for every choice, so `--help` is the only place a caller can learn which choices
+    # read one — and it is the surface that keeps the refusal from reading as a regression.
+    gp.add_argument("name_or_group", nargs="?",
+                    help="GROUP name (every group_cmd but `list` reads it)")
+    gp.add_argument("project", nargs="?",
+                    help="member project path — read by `add`/`remove` ONLY; create/delete/show/"
+                         "list take no project path (the registry is fleet-wide) and refuse one")
     gp.add_argument("--domain")
     gp.add_argument("--apply", action="store_true")
     gp.add_argument("--confirm", metavar="PHRASE")
@@ -3187,7 +3256,11 @@ def build_parser() -> argparse.ArgumentParser:
     j.add_argument("journal_cmd", choices=["inventory", "show", "retry",
                                            "rollback", "abandon", "compact",
                                            "cleanup"])
-    j.add_argument("op_id", nargs="?")
+    # ⚠ Read by `show`/`retry`/`rollback`/`abandon` only — `inventory`/`compact`/`cleanup` take the
+    # whole store and REFUSE one (v0.4.63); stated here because a shared positional is otherwise
+    # indistinguishable from one every choice reads.
+    j.add_argument("op_id", nargs="?",
+                   help="OP-ID for show/retry/rollback/abandon ONLY")
     j.add_argument("--project", default=".")
     j.add_argument("--json", action="store_true")
     j.add_argument("--apply", action="store_true")

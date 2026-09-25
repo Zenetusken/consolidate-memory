@@ -82,7 +82,8 @@ users run the skill — they do not have ./cm on PATH)
                        [--apply --confirm purge-domain-canonicals|purge-all-plugin-data]
                        purge-status|resume|cancel --domain NAME
                        cancel --accept-partial when canonicals already gone
-  cm journal inventory|show|retry|rollback|abandon|compact|cleanup [OP-ID]
+  cm journal inventory|show|retry|rollback|abandon|compact|cleanup
+                       show|retry|rollback|abandon [OP-ID]   (the other three take the whole store)
                        cleanup [--scan-all-stores] [--apply --confirm journal-cleanup]
                        abandon --accept-fs after verifying leftover trash/recovery
   cm forget STEM       tombstone a canonical (does not resurrect on pull)
@@ -101,6 +102,8 @@ users run the skill — they do not have ./cm on PATH)
                        add|remove <name> <project-path> [--apply --confirm add|remove-group-<name>]
                        delete <name> [--apply --confirm delete-group-<name>]  (refuses a populated
                        group; prints the citation count — facts naming it will deliver to nobody)
+                       list takes nothing; every verb but add|remove refuses a project path — the
+                       registry is fleet-wide, one per plugin-data root, so a project selects nothing
 
 A full pass is best driven by the plugin itself. Dogfood it from this repo:
   claude plugin marketplace add ./

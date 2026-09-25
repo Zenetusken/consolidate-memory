@@ -246,10 +246,30 @@ _ENSURE_REASONS = (
 )
 
 
+class UnclassifiedReason(AssertionError):
+    """A reason reached a consumer that no vocabulary declares — the module's own refusal.
+
+    ⚠ A NAMED class rather than a bare `AssertionError`, and that is a PIN's requirement rather
+    than style. MEASURED, recorded open by the v0.4.59 review and closed here: the check that
+    drives the `_served` guard reads `except Exception` and asserts only that SOMETHING came
+    back, so a guard raising `ValueError` where an `AssertionError` belongs passed every check —
+    the observable could not carry the difference between "this guard fired" and "something,
+    anywhere, raised".
+    ⚠ A SUBCLASS, so `except AssertionError` — which the v0.4.50 `_miss` pin uses, and which any
+    caller may use — still catches every raise from the three sites below. What the subclass ADDS
+    is a type a pin can assert, so the thing measured becomes the guard rather than the fact of
+    an exception.
+    ⚠ RAISED AT ALL THREE SITES (`_mint`, `_served`, `_miss`), not only the one the review named.
+    The type-agnostic shape sits at `_mint`'s check too (`except Exception` → a bool), so naming
+    the class at one site while its siblings raise the bare base leaves the hole live at the
+    WEAKEST site — which is exactly where the next edit re-opens it.
+    """
+
+
 def _mint(reason: str) -> "tuple[None, str]":
     """A terminal reason `ensure` MINTS, validated like `_miss` validates `load()`'s reasons."""
     if reason not in _ENSURE_REASONS:
-        raise AssertionError(
+        raise UnclassifiedReason(
             f"unclassified ensure reason {reason!r} — declare it in _ENSURE_REASONS (and say "
             f"whether it is transient) before `ensure` can return it")
     return None, reason
@@ -276,7 +296,7 @@ def _served(rows: Any, reason: str) -> "tuple[Any, str]":
     so the assertion lives here, where the decision that produced it is made.
     """
     if reason not in _KNOWN_REASONS:
-        raise AssertionError(
+        raise UnclassifiedReason(
             f"unclassified reason {reason!r} returned by ensure — mint it through `_mint` (and "
             f"declare it in `_ENSURE_REASONS`, saying whether it is transient), or it is not a "
             f"reason this cache may serve")
@@ -380,7 +400,7 @@ def _miss(reason: str) -> "tuple[None, str]":
     once per reason (a developer's first run), never in production.
     """
     if reason not in _NONREBUILDABLE and reason not in _REBUILDABLE:
-        raise AssertionError(
+        raise UnclassifiedReason(
             f"unclassified cache-miss reason {reason!r} — declare it in _REBUILDABLE or "
             f"_NONREBUILDABLE before `ensure` can act on it")
     return None, reason

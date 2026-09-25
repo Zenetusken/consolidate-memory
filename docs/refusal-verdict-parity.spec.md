@@ -1,10 +1,14 @@
 # Refusal/verdict parity — design-of-record
 
-**Status: implemented on `fix/refusal-verdict-parity` — awaiting `/code-review` and the PR.** Base
-revision `e5cce77` (main @ v0.4.34). The acceptance table's measured cells are the implementation's;
-the pre-fix / live / mutation runs are recorded in the PR, not here (§Verification). Target release
-**v0.4.35** unless the open policy question in §RC-3b resolves to a renamed public key, in which
-case **v0.5.0** (see §Risks) — that question is still open and the decision is the user's.
+**Status: SHIPPED (vv0.4.37)** — verified against `CHANGELOG.md` §vv0.4.37, which names this spec. ⚠ The retired line stated a DONE-state and an unfinished one at once — the contradiction the A1 arm was written for. (This annotation is itself worded around the detector's vocabulary: an earlier draft's own words matched it.)
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM:
+>
+> **Status: implemented on `fix/refusal-verdict-parity` — awaiting `/code-review` and the PR.** Base
+> revision `e5cce77` (main @ v0.4.34). The acceptance table's measured cells are the implementation's;
+> the pre-fix / live / mutation runs are recorded in the PR, not here (§Verification). Target release
+> **v0.4.35** unless the open policy question in §RC-3b resolves to a renamed public key, in which
+> case **v0.5.0** (see §Risks) — that question is still open and the decision is the user's.
 
 **Provenance.** The approved plan `~/.claude/plans/<slug>.md`
 root-caused the roadmap's recorded tail after v0.4.34 and split it into two PRs. **F1** (this spec)
