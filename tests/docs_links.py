@@ -1036,6 +1036,15 @@ def _spec_header_end(lines: "list[str]") -> int:
     this repo's own `a-reviewers-correction-is-an-unaudited-claim`. A spec that pairs a declaration
     with such a line would vanish from the denominator with nothing to say so; `checked` is the tell.
 
+    ⚠ **DISCLOSED, NOT GUARDED — and the pin it suggests is deliberately refused.** A review lens
+    reproduced the divergence (`checked` 1 → 0 with no error, on a fixture pairing a declaration with
+    a same-line provenance phrase) and proposed pinning the `checked` denominator. It is refused for
+    the reason this file's own release note gives: an equality on `checked` reddens on every
+    legitimate corpus change, which is why `smoke.py` asserts `>= 1` — a FLOOR — and not the number.
+    The mechanical half that WOULD be sound is a structural cross-check (does the line-cut region
+    drop a declaration the char-cut region kept?), not a frozen figure. Recorded here as a residual
+    with its remedy named, rather than left as an implication that something guards it.
+
     ⚠ The heading predicate `ln.startswith("## ")` now lives HERE and nowhere else: the arms consume
     this helper rather than computing their own bound, so the drift this comment used to warn about
     ("a fresh regex here would let the two regions drift") can no longer occur. An earlier version
@@ -1250,6 +1259,13 @@ def check_spec_status() -> int:
             # region; bounding is a no-op on all 4 today (each crossing line IS the phrase match, so
             # `_cut2` already cut it) — a GUARD, not a pin. It makes this docstring's own invariant
             # true: every reader now takes the region.
+            # ⚠ CORRECTION (review): "no-op" is accurate for the VERDICT and NOT for `stated`, which
+            # is the operand `_cut2` and the firing message actually read. MEASURED: the clamp changes
+            # `stated` for **3** live specs (`body-defragmentation`, `completion-driven-archiving`,
+            # `group-lifecycle-completion`), each losing the trailing note-line prefix the old join
+            # left behind. No observable in any firing path (`_pending` False→False for all three,
+            # `checked` 52, errors 0), and it cannot EMPTY `stated` (`_ix < len(_hdr)` always) — so it
+            # cannot silently drop a spec. Prose-level, but the operand is `stated`.
             while (_ix is not None and _jx is not None and _jx < len(_hdr)
                    # ⚠ SIX, not three. At three, a status that wraps to a fifth line
                    # (`asserted-support.spec.md`'s "awaiting merge" sits on line 6) fell outside the
@@ -1298,6 +1314,13 @@ def check_spec_status() -> int:
         #   (b) NO preamble bound — the status arms use `min(first '## ', cap)`; this used the bare cap
         #       and therefore read up to 120 lines of BODY.
         # Both now come from `_spec_header_end`, so the boundary has ONE site.
+        # ⚠ CAVEAT on (b), measured: the preamble bound is **INERT for a spec whose first `## ` lies
+        # at or past the cap and that carries no note** — there `min(hd, cap)` is just the cap, so the
+        # region is byte-identical to the pre-fix `lines[:120]`. MEASURED: exactly TWO specs have
+        # `hd >= 120`; `record-post-state.spec.md` (hd=212) is saved by its note at index 8, but
+        # `identity-from-the-input.spec.md` (hd=149, no note) still reads lines 27-120 of what this
+        # gate's own A5 rule calls BODY. Verdict-safe today only because its target at line 27 is
+        # genuine header text. The O2 pin cannot see this shape — its fixture's `## ` sits at index 4.
         # ⚠ CORRECTED CLAIM (defect 2, v0.4.64). This comment asserted, present tense, that the two
         # instance specs are named *"NOWHERE in CHANGELOG.md — the citation OPERAND hides them, not the
         # matcher"*. That was TRUE when the arm was added (`24e2ea8`) and FALSE one commit later:
