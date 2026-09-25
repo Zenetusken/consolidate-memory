@@ -4170,23 +4170,34 @@ def seed_record(ctx: dict) -> CycleRecord:
                                  "over_ceiling": bool(rem.get("over_ceiling"))}
         # v0.4.61 (RC-1): ⚠ THE SUPPRESSION DOES NOT COVER THE CEILING'S INSTRUMENT. `build_context`
         # builds the triage exactly when over_ceiling (the ceiling is standing-justify-INDEPENDENT),
-        # but this relay dropped it — so the DASHBOARD, which CLAUDE.md names as the end-user
-        # deliverable, kept printing "shrink to receive" over an empty space: the same "nothing is
-        # prunable" verdict the v0.4.61 repair removed one layer up. ⚠ Relay only what the triage
+        # but this relay dropped it — so the DASHBOARD kept printing "shrink to receive" over an empty
+        # space: the same "nothing is prunable" verdict the v0.4.61 repair removed one layer up.
+        # ⚠ This comment first said "the DASHBOARD, which CLAUDE.md names as the end-user deliverable",
+        # and that is NOT CLAUDE.md's claim: the artifact SKILL.md Phase 5 points an END USER at is
+        # `dashboards/index.html`, the HTML archive (`dashboard.template.html`) — a THIRD renderer this
+        # relay does not feed, and which was repaired separately, in its own template. ⚠ Relay only what the triage
         # actually supplied, so a SUPPRESSION WITHOUT an over-ceiling store keeps the lightweight
         # form and every already-archived record renders exactly as it did.
         if "stages" in rem:
-            record["remediation"].update({
-                "lever": rem.get("lever", ""),
-                "candidates_surfaced": rem.get("candidates", 0),
-                "projected_index": rem.get("projected_index", 0),
-                "projected_recall": rem.get("projected_recall", 0),
-                "reaches_budget": rem.get("reaches_budget", True),
-            })
-            # ⚠ v0.4.34 (E1)'s rule, honoured HERE too — the first cut of this relay broke it with
-            # `rem.get("mirror_share", 0.0)`, a default asserting "not mirror-dominated" for a share
-            # nobody computed, while the sibling arm below deliberately leaves the key ABSENT. The two
-            # arms stated opposite policies for one field in one function.
+            # ⚠ PRESENCE-GATED, ONE KEY AT A TIME — never `.get(k, DEFAULT)`. The first cut defaulted
+            # `reaches_budget` to True, which is the OPTIMISTIC direction on the very field that SELECTS
+            # a rendered remedy (RC-2's own thesis, re-committed in RC-2's own relay), and defaulted the
+            # counts to 0. A record must not assert a value the triage never supplied — the renderer's
+            # `_recorded` test exists for exactly that, and the sibling arm below already states the rule
+            # for `mirror_share`. Absent here means absent in the record.
+            # ⚠ UNROLLED rather than looped over (src, dst) pairs: `Remediation` is a TypedDict and its
+            # keys must be LITERALS, which mypy enforces as a contract (`typeddict-item` IS the contract
+            # in this repo). A variable key is exactly the drift the TypedDicts exist to catch.
+            if "lever" in rem:
+                record["remediation"]["lever"] = rem["lever"]
+            if "candidates" in rem:
+                record["remediation"]["candidates_surfaced"] = rem["candidates"]
+            if "projected_index" in rem:
+                record["remediation"]["projected_index"] = rem["projected_index"]
+            if "projected_recall" in rem:
+                record["remediation"]["projected_recall"] = rem["projected_recall"]
+            if "reaches_budget" in rem:
+                record["remediation"]["reaches_budget"] = rem["reaches_budget"]
             if (isinstance(rem.get("mirror_share"), (int, float))
                     and not isinstance(rem["mirror_share"], bool)):
                 record["remediation"]["mirror_share"] = float(rem["mirror_share"])
@@ -5128,7 +5139,11 @@ def _remediation_section(rem: dict) -> list:
         # exactly when over_ceiling, so when they are present, fall through and render them.
         # ⚠ `stages` ABSENT keeps the pre-v0.4.61 behaviour (and keeps every already-archived record rendering
         # exactly as it did): the suppression still short-circuits when the generator had nothing to add.
-        if not rem.get("stages"):
+        # ⚠ ONE PREDICATE FOR BOTH LAYERS. `_remediation_section` reads the LIVE ctx (`stages`) while
+        # `render_dashboard` reads the RECORD (`candidates_surfaced`), so keying this on `stages` alone
+        # made the two render the same block on different definitions of "the triage ran". Either marker
+        # opens the stage block; the tail below is presence-gated so a record-shaped dict cannot crash it.
+        if not rem.get("stages") and "candidates_surfaced" not in rem:
             return out
     else:
         out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
@@ -5156,11 +5171,21 @@ def _remediation_section(rem: dict) -> list:
     # v0.4.61 (RC-2): `projected_index` now MEANS what it declares — the index after evicting the candidates —
     # so it is labelled as that. The old label said "relief" and printed `keep_core × _LEAN_HOOK_TOK`, a
     # different quantity; the number was never a relief and the label described the one it was not.
+    if "keep_core" not in rem:
+        return out      # a record-shaped dict carries the counts but not the live triage's keep_core
     out.append(_ui.li(f"keep core {rem['keep_core']} · projected index after a full prune ≈{rem['projected_index']}/{rem['budget']} tok "
                       f"(pointers) · recall body-hygiene −≈{rem['projected_recall']} tok (SEPARATE disk axis)",
                       indent=4, bullet="→", bullet_color="cyan"))
     # D5 (v0.1.21): if a full prune can't reach budget, it's prune-the-safe-THEN-standing-justify the residual.
-    if rem["lever"] == "prune" and not rem.get("reaches_budget", True):
+    if rem.get("standing_justified"):
+        # v0.4.62: ⚠ the SUPPRESSED path must not print the remedy above. "prune-safe-THEN-standing-justify"
+        # instructs an operator to do what the kv three lines up says is ALREADY DONE, and on an
+        # over-ceiling store it names a standing-justification the ceiling line FORBIDS. Measured on the
+        # live store before the fix: "STANDING-JUSTIFIED" above, "prune the safe candidates, THEN
+        # standing-justify the residual" below. Here the binding constraint is the ceiling.
+        hint = ("the target gate is OFF (standing-justified) — the binding constraint is the CEILING, so "
+                "shrink by the staged candidates and re-justify the residual")
+    elif rem["lever"] == "prune" and not rem.get("reaches_budget", True):
         hint = "prune the safe candidates, THEN standing-justify the residual (full prune can't reach budget — earned density)"
     else:
         hint = {"gc": "mirror-dominated → the GLOBAL demote/GC lever (a local prune is futile)",

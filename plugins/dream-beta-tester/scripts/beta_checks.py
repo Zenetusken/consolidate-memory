@@ -595,7 +595,13 @@ def _skill_triage(ctx: Ctx) -> dict[str, Any] | None:
         return None
     rem = bctx.get("remediation") or {}
     # build_context already ran the full triage (incl. reference_stems with wikilink folding) when
-    # over budget; if it suppressed (standing-justified) or stayed under budget, there are no stages.
+    # over budget. ⚠ v0.4.62: the original clause read "if it suppressed (standing-justified) or stayed
+    # under budget, there are no stages", and consolidate-memory's RC-1 repair INVALIDATED the first half
+    # WITHOUT TOUCHING THIS FILE: a standing-justified store that is ALSO over the hard ceiling now gets
+    # its stages built (the ceiling is standing-justify-independent, and so is its instrument), so this
+    # returns a dict where the comment promised None. That is the intended new behaviour — such a store
+    # genuinely HAS prunable candidates — but it is a CROSS-PLUGIN effect of a change made in the other
+    # plugin, so it is named here rather than left for a reader to discover from an altered D4 row.
     return rem if isinstance(rem, dict) and rem.get("stages") else None
 
 

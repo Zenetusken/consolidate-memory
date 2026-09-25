@@ -181,6 +181,14 @@ def _kv(label: str, value: str) -> str:
 # gate-active one, and the SUPPRESSED one whose ceiling line has no other way to name a remedy — and a
 # sentence copied into two places is the divergence class this repo keeps closing.
 _D5_REMEDY = ("prune can't reach budget → prune-safe-THEN-standing-justify the residual (earned density)")
+# v0.4.62: the remedy for a store whose gate is ALREADY OFF. ⚠ Printing the sentence above on the
+# suppressed path told an operator to do what the panel's own green ✓ says is already done — and on an
+# over-ceiling store it instructed a standing-justification the ceiling line three rows up FORBIDS
+# ("standing-justify does not apply to the ceiling"). Measured on the live store: the report printed
+# "STANDING-JUSTIFIED" at the top and "prune the safe candidates, THEN standing-justify the residual"
+# at the bottom. The binding constraint on this path is the CEILING, not the target.
+_D5_REMEDY_SUPPRESSED = ("the target gate is OFF (standing-justified) — the binding constraint is the "
+                         "CEILING, so shrink by the staged candidates and re-justify the residual")
 
 
 def _num(x: object) -> float:
@@ -1060,8 +1068,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
             # lines apart, and the panel contradicting itself. RC-2 makes `reaches_budget` False whenever
             # the candidates cannot free nearly the whole index — the common mature-store case — so this
             # was newly reachable, not hypothetical.
-            if str(rem.get("lever") or "") == "prune" and rem.get("reaches_budget") is False:
-                out.append("    " + _c(_D5_REMEDY, "dim"))
+            out.append("    " + _c(_D5_REMEDY_SUPPRESSED, "dim"))
     elif rem and rem.get("required"):
         # v0.1.36: gate on `required`, NOT mere presence — a healthy record may carry remediation={required:false}
         # (the schema default), which must NOT render an over-budget block (it did pre-v0.1.36: `elif rem:`). The

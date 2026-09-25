@@ -121,7 +121,11 @@ the next reader finds why it is gone rather than re-deriving it.
 
 ⚠ **Measured on both trees, on the v0.4.61 fixture** (the RC-2 triage pin in `tests/smoke.py`): with two
 facts, one of them indexed and tracker-named, the model computed `keep_core(1) × 30 = 30` → `reaches_budget
-True`; the measured computation yields 1940 → `False`. They disagree on the VERDICT — the field that
+True`; the measured computation yields **1992** → `False`. ⚠ This line said 1940 until a late review
+lens re-derived it from the pin it CITES: the fixture's evicted line is 29 chars → `est_tokens` 8, and
+2000 − 8 = 1992. 1940 was the value from the RETIRED per-line-sum relief, carried here after the pin
+was updated — the release's own thesis, on the release's own measurement. They disagree on the
+VERDICT — the field that
 selects the rendered remedy. Pre-fix the suite reads `2333 passed, 10 failed`; post-fix `2343 passed, 0` (the count includes the three RC-4 pins below).
 
 ⚠ **And the fix rewrote THIS DREAM'S OWN CONCLUSION.** With the stages finally visible (RC-1), `--triage`
@@ -144,7 +148,8 @@ Both ship in the v0.4.60 checkpoint PR (`af0d88d`). Neither has runtime effect; 
 `af0d88d`, not in CHANGELOG prose** — that PR added no CHANGELOG entry at all ("docs/ is not part of the
 plugin artifact"), which this spec's first draft got wrong and this line corrects. It enumerates four
 `docs/*.spec.md` files that said DRAFT after their designs shipped. A census over the same corpus, with a
-stated matcher, finds **sixteen**, 14 of them named inside a versioned release section (RC-4). The four
+stated matcher, finds **sixteen**, 13 of them named inside a versioned release section (RC-4 — and see
+that section for why this count moved once per matcher fix). The four
 were read, not enumerated — the defect `a-sole-claim-needs-a-census-not-a-sighting` describes, committed
 in the same PR that added that fact. A commit message is immutable, so the correction lands where the
 claim is actually READ: the spec notes below, and the v0.4.61 entry.
@@ -178,14 +183,27 @@ Status: draft…`, named in CHANGELOG §0.4.8 — was invisible to it, and two s
 TITLE (`— spec DRAFT`) carried no `status` word to find at all. Widened to the word anywhere in the first
 40 lines plus the title form:
 
-| population | count | fires? |
-|---|---|---|
-| header states a pre-shipping state, named in a release section | **14** | **yes** |
-| header states a pre-shipping state, in no release section | 2 | no — the rule cannot adjudicate them |
-| header states done/implemented (the control) | 30 | no — all release-named; the rule does not constrain them |
+⚠ **Each row names the TREE it was measured on**, because the two differ and an earlier version of this
+table mixed them (a late review lens caught it):
 
-Corpus at this revision: **58 specs, 164 release sections**. ⚠ The first draft said 57/163 — true only
-before this spec and its `## [0.4.61]` entry joined the globs it measures.
+| population | PRE-sweep (`bb63015` docs + its CHANGELOG) | POST-sweep (this revision) | fires? |
+|---|---|---|---|
+| pre-shipping, named in a release section | **13** | **0** (all swept) | **yes** |
+| pre-shipping, in no release section | 2 | 2 | no — the rule cannot adjudicate them |
+| done/implemented (the control) | 36 | 49 | no — the rule does not constrain them |
+| no status found at all | 7 | 7 | no |
+| **status lines EXAMINED** (the ✓ denominator) | **51** | **51** | — |
+
+Corpus: 58 specs, 163 release sections pre-sweep and 164 post — the extra section is this release's own.
+⚠ The control row is not stable across the two because the SWEEP moves files out of the pre-shipping
+population into it (13 + 36 = 49 post-sweep; pre-sweep's 13 were still pre-shipping).
+
+⚠ **And this count moved TWICE, once per matcher fix — which is the finding, not a footnote.** The
+first matcher (line-anchored on `status`) read 13; widening it to the word anywhere read 14; ranking a
+DECLARATION above a prose mention reads 13 again, because the widened form had been reading
+`env-preflight.spec.md`'s first line and missing the “Shipped in v0.4.16” four lines below it. **A gate's
+number is a property of its matcher**, and every fix to one must re-measure it — which is why the
+shipped claim is stated with its instrument rather than as a bare figure.
 
 ⚠ **And 14 is a FLOOR, not a ceiling.** The two unadjudicable headers are stale in the same way; the rule
 simply has no versioned citation to contradict them. A gate's denominator is its matcher's reach — which
