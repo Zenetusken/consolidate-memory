@@ -1226,8 +1226,14 @@
       // original sentence byte-for-byte, so no archived cycle re-renders differently.
       h.innerHTML="The index is past the <span class=\"hot\">hard ceiling</span> at "+tok(t.cur)+" of "+tok(CEIL)+" tokens.";
       var _cand=remLead.candidates_surfaced, _lev=String(remLead.lever||"");
-      var _instr=((_cand===0||_cand)?(" "+_cand+" candidate(s) surfaced · lever "+_lev.toUpperCase()+
-                   " — the staged list is in this cycle's record below."):"");
+      // ⚠ v0.4.62: this sentence first ended "— the staged list is in this cycle's record below", and a
+      // late review lens measured that NO record can carry one: `seed_record` relays `lever`/`candidates_*`/
+      // `projected_*`/`reaches_budget`/`over_ceiling`/`mirror_share` and never `stages` (the only `"stages"`
+      // writes are the triage's own return and `_remediation_section`'s reads). So the archive pointed the
+      // reader at a list that does not exist — a false claim in shipped copy, on the very surface this
+      // repair was written for. The COUNT and the LEVER are what the record can actually support; the
+      // staged names are the dream report's job.
+      var _instr=((_cand===0||_cand)?(" "+_cand+" candidate(s) surfaced · lever "+_lev.toUpperCase()):"");
       sub.textContent="New shares are held until this index shrinks. Standing-justify does not apply to the ceiling."+_instr; }
     else if(t.over&&sj){ h.innerHTML="The index sits at "+tok(t.cur)+" tokens — just past the "+tok(IDXB)+" target, and that’s <span class=\"hot\">standing-justified</span>.";
       sub.textContent=t.breach!=null

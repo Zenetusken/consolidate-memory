@@ -82,6 +82,26 @@ every `Status…`-leading line, then ask what the fallback finds) still leaks on
 gate's docstring rather than narrowed, because narrowing would drop the MID-SENTENCE shape that caught a
 real file.
 
+### ⚠ And two more from the same drain — one of them a FALSE CLAIM THIS ENTRY'S OWN FIX INTRODUCED
+
+- **The archive pointed at a list no record can contain.** The v0.4.62 sentence added to
+  `dashboard.template.html` ended *"— the staged list is in this cycle's record below"*, and a late lens
+  measured that **no record can carry one**: `seed_record` relays `lever`/`candidates_*`/`projected_*`/
+  `reaches_budget`/`over_ceiling`/`mirror_share` and never `stages` (the only `"stages"` writes in the file
+  are the triage's own return and `_remediation_section`'s reads). So the END-USER surface pointed the
+  reader at something that does not exist — **a false claim in shipped copy, written by the fix whose
+  whole subject is claims that outrun their operands.** The pointer is removed: the count and the lever
+  are what the record can support, and the staged NAMES are the dream report's job (it reads the live ctx,
+  which does have them).
+- **A cross-plugin effect, named rather than left to be discovered.** `dream-beta-tester`'s
+  `_skill_triage` guarded on `rem.get("stages")` with a comment promising *"if it suppressed
+  (standing-justified) … there are no stages"*. RC-1 invalidated the first half **without a line of that
+  plugin being touched**: a standing-justified store that is ALSO over the hard ceiling now gets its
+  stages built, so the function returns a dict where its comment promised `None`, and the beta oracle's D4
+  leg emits a PASS row for a store class it previously said nothing about. The new behaviour is INTENDED —
+  such a store genuinely has prunable candidates — but a consumer changed by a producer's edit is exactly
+  the thing a comment should say out loud.
+
 ### Measured
 
 - smoke **2345 passed, 0 failed**; the pre-fix tree with the same pins reads **2333 passed, 12 failed**.
