@@ -1,10 +1,14 @@
 # Group scopes — the routed-link tier above the domain (v0.4.10 spec, amend-2)
 
-**Design-of-record for operator-granted recipient groups.** Status: advisor
-pass (11 findings) + adversarial review-to-zero (8 findings, 5 design attacks)
-complete — all folded and re-verified green; SHIPPED in v0.4.10 (PR #192, with
-the per-PR review round: 6 findings fixed and re-verified; the pull-side leg of
-the recreation guard is the tracked fast-follow).
+**Status: SHIPPED (v0.4.10)** — verified against `CHANGELOG.md` §v0.4.10, which names this spec. ⚠ Its status was stated MID-SENTENCE, after a sentence describing the document — the shape the matcher's mention fallback exists for.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM:
+>
+> **Design-of-record for operator-granted recipient groups.** Status: advisor
+> pass (11 findings) + adversarial review-to-zero (8 findings, 5 design attacks)
+> complete — all folded and re-verified green; SHIPPED in v0.4.10 (PR #192, with
+> the per-PR review round: 6 findings fixed and re-verified; the pull-side leg of
+> the recreation guard is the tracked fast-follow).
 
 ## 1. Context (measured, 2026-09-04)
 

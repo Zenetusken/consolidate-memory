@@ -899,7 +899,12 @@ def check_preview() -> None:
 # green. A declaration wins over a mention; a mention is still accepted, because a status stated
 # mid-sentence is a real shape (see `cm-commands-onboarding.spec.md`).
 _SPEC_STATUS_DECL = re.compile(r"(?im)^\s*[>*_\-]*\s*\**\s*status\b[^\n]*")
-_SPEC_STATUS_MENTION = re.compile(r"(?im)^.*?\bstatus\b[^\n]*")
+# ⚠ A2 (v0.4.63): the fallback requires the LABEL shape — `status` immediately followed by a
+# colon (markup between) — not merely the word. Measured: narrowing this way drops the
+# deletion-mutation leaks 7 → 1 while KEEPING the mid-sentence declaration it exists for
+# (`**Design-of-record for the five UX verbs…** Status: draft for advisor pass…`), and it drops
+# `Status per item:`, `status WORD`, `STATUS.md`, `phase C status note` and `cm status —`.
+_SPEC_STATUS_MENTION = re.compile(r"(?im)^.*?\bstatus\b\s*\**:[^\n]*")
 
 # ⚠ THE SWEEP'S OWN CONVENTION IS A TRAP FOR THE MENTION FALLBACK, and a late review lens measured it:
 # the v0.4.61 sweep preserves each retired line inside a blockquote BEGINNING `**Drafting-era status —
@@ -909,7 +914,10 @@ _SPEC_STATUS_MENTION = re.compile(r"(?im)^.*?\bstatus\b[^\n]*")
 # "the header still states a pre-shipping status". Measured: 0 misfires today — the pass rested entirely
 # on the live line happening to precede the quote. The provenance note is not a declaration, and is
 # excluded by its own words.
-_SPEC_PROVENANCE_QUOTE = re.compile(r"(?i)drafting-era status|preserved verbatim")
+# ⚠ WIDENED at v0.4.63 from `drafting-era status` to `drafting-era\b`: the sweep writes the note as
+# `**Drafting-era status — never revisited…**`, and a variant whose wording differs by one word
+# would have slipped the boundary.
+_SPEC_PROVENANCE_QUOTE = re.compile(r"(?i)drafting-era|preserved verbatim")
 
 
 def _spec_status_line(window: str):
@@ -927,6 +935,16 @@ def _spec_status_line(window: str):
     if m:
         return m
     return _SPEC_STATUS_MENTION.search(window)
+# ⚠ A4 (v0.4.63): the rule that needs no versioned CITATION. Two live instances were invisible to
+# every matcher fix because `asserted-support.spec.md` and `marker-coordinate-truth.spec.md` are named
+# NOWHERE in CHANGELOG.md — the citation OPERAND hides them, not the matcher. But a header that names
+# `Target release: vX.Y.Z` where **vX.Y.Z already exists as a release section** is decidable without one.
+# ⚠ The version must be ADJACENT to the label (markup only between), which excludes the drafting-era
+# `target: cm v0.1.49` form; and an UNSHIPPED target anywhere in the preamble suppresses the arm, so a
+# spec legitimately aiming at a future release stays silent.
+_SPEC_TARGET_RELEASE = re.compile(r"(?i)target(?: release)?\s*:?\s*\**\s*(v?\d+\.\d+\.\d+)\b")
+_SPEC_PREAMBLE_CAP = 120      # `marker-coordinate-truth`'s label sits at line 84, past the 40-line window
+
 # ⚠ …and a window, not a line 1. Two specs state their status further down a header the v0.4.61 sweep
 # itself lengthened, and two state it as a title (`— spec DRAFT`), which carries no `status` word at
 # all. Both were invisible to a 14-line, `status`-only search.
@@ -937,9 +955,22 @@ _SPEC_TITLE_DRAFT = re.compile(r"(?i)\bdraft\b")
 # DONE was negation-blind, so `awaiting approval; nothing shipped yet` and `drafted, unimplemented`
 # were both EXEMPTED by the very words that state the defect. A silent false negative on a coverage
 # gate is the failure this repo has a standing lesson about.
+# ⚠ A3 (v0.4.63): the alternative list was missing the shapes four headers actually use — MEASURED.
+# `revised for review` (`marker-coordinate-truth`), `design-of-record` (`periphery-parity`,
+# `store-classifier-parity`), `ready to ship` (`dangling-cross-store-resolution`) and
+# `awaiting approval` (`0.4.5-issue-closeout`) all state a vetting state and none was matched, so those
+# headers were invisible to every arm. ⚠ Widened WITH A4, never alone: the target-release arm is what
+# keeps a spec legitimately aiming at a FUTURE release silent, so the vocabulary can afford to be wide.
 _SPEC_PRE_SHIPPING = re.compile(
-    r"draft|awaiting|pending|→\s*implementation|for adversarial review|proposed v|"
-    r"amend-\d+ folded|review-to-zero|unimplemented|nothing shipped", re.I)
+    r"awaiting|pending|→\s*implementation|for adversarial review|proposed v|"
+    r"amend-\d+ folded|review-to-zero|unimplemented|nothing shipped|"
+    r"revised for review|design-of-record|ready to ship", re.I)
+# ⚠ `draft` is NOT a bare alternative — it needs a CLAIM CONTEXT. MEASURED: with it bare, raising the
+# statement cap to reach a wrapped status made `index-usage-and-budget-ladder` fire, purely on prose that
+# reads *"a code-review-skill gate on the draft: 6 finder angles…"* — a header whose status is
+# "Phase A/B/C SHIPPED". The word is the canonical status word, so it cannot simply be dropped; it must be
+# adjacent to a status label or bare emphasis.
+_SPEC_DRAFT_CLAIM = re.compile(r"(?i)(?:\bstatus\b|[:*])\s*\**\s*draft")
 _SPEC_DONE = re.compile(r"\b(?:SHIPPED|shipped|implemented|implementation complete)\b", re.I)
 # ⚠ NEGATION IS CHECKED BY DISTANCE, NOT BY A LOOKBEHIND. The first cut was fixed-width
 # (`(?<!un)(?<!not )(?<!nothing )(?<!never )`), and that is DISTANCE-anchored: in
@@ -1023,7 +1054,8 @@ def check_spec_status() -> int:
     checked = 0
     for spec in sorted((ROOT / "docs").glob("*.spec.md")):
         lines = spec.read_text(encoding="utf-8", errors="replace").splitlines()
-        _win = "\n".join(lines[:_SPEC_STATUS_WINDOW])
+        _hd0 = next((k for k, ln in enumerate(lines) if ln.startswith("## ")), len(lines))
+        _win = "\n".join(lines[:min(_hd0, _SPEC_PREAMBLE_CAP)])
         m = _spec_status_line(_win)
         if m:
             # ⚠ THE STATEMENT, NOT THE LINE. The matcher LOCATES the status over a 40-line window but
@@ -1033,30 +1065,81 @@ def check_spec_status() -> int:
             # a pre-shipping, release-named spec. The release's own design-of-record was the live
             # instance (`awaiting merge` on line 4, which no predicate saw). The statement is the
             # matched line plus its continuation up to a blank line, capped.
-            _ix = next((k for k, ln in enumerate(lines[:_SPEC_STATUS_WINDOW])
-                        if _spec_status_line(ln)), None)
+            # ⚠ A1's sibling (v0.4.63): the DECLARATION's own line, not merely the first line matching
+            # EITHER shape. v0.4.62 ranked a DECL above a MENTION when locating the window match but left
+            # this statement locator taking `next(… if _spec_status_line(ln))`, so
+            # `docs/1.0-preflight.spec.md` was STILL judged on line 5's prose while its declaration sits at
+            # line 8. A late review lens measured it as v0.4.62's own residual.
+            # ⚠ A5 (v0.4.63): the search region is the PREAMBLE — the lines before the first `## `
+            # heading — not a fixed 40. `docs/marker-coordinate-truth.spec.md` declares its status at
+            # line 84 and its header runs to line 93, so a 40-line window never reached it. ⚠ The
+            # diagnostic that found this first claimed SEVEN files were unreached; six were body prose
+            # and one a table row, which the gate is RIGHT to ignore — measure with the instrument.
+            _hd = next((k for k, ln in enumerate(lines) if ln.startswith("## ")), len(lines))
+            _end = min(_hd, _SPEC_PREAMBLE_CAP)
+            _ix = next((k for k, ln in enumerate(lines[:_end])
+                        if _SPEC_STATUS_DECL.match(ln)), None)
+            if _ix is None:
+                _ix = next((k for k, ln in enumerate(lines[:_end])
+                            if _SPEC_STATUS_MENTION.match(ln)), None)
             _jx = _ix
             # ⚠ `_ix is not None` is a conjunct of the GUARD, not just of the ternary below: without it
             # mypy cannot narrow `_ix` and `(_jx - _ix)` is an int-minus-optional.
             while (_ix is not None and _jx is not None and _jx < len(lines)
-                   and lines[_jx].strip() and (_jx - _ix) < 3):
+                   # ⚠ SIX, not three. At three, a status that wraps to a fifth line
+                   # (`asserted-support.spec.md`'s "awaiting merge" sits on line 6) fell outside the
+                   # join and the header read as settled — the very instance A1 exists for. The
+                   # provenance boundary and the DECL preference now bound the join, so the cap can
+                   # afford to be generous. MEASURED: raising it adds no false positive.
+                   and lines[_jx].strip() and (_jx - _ix) < 6):
                 _jx += 1
             stated = " ".join(ln.strip() for ln in lines[_ix:_jx]) if _ix is not None else m.group(0).strip()
+            # ⚠ AND the provenance note bounds the STATEMENT too, not just the locator. v0.4.62 applied
+            # the boundary to `_spec_status_line`'s window and left the join reading RAW lines — so the
+            # correction text this very gate's sweep writes (*"⚠ The drafting-era status survived
+            # because…"*) was parsed as the header's own status and made a SHIPPED header read as
+            # pre-shipping. MEASURED on the four swept headers that carry that sentence.
+            _cut2 = _SPEC_PROVENANCE_QUOTE.search(stated)
+            if _cut2:
+                stated = stated[:_cut2.start()].strip()
         else:
             # The title-only form (`# … — spec DRAFT`) states a status with no `status` word at all.
             stated = lines[0].strip() if lines and _SPEC_TITLE_DRAFT.search(lines[0]) else ""
         if not stated:
             continue
         checked += 1
+        # ⚠ A1 (v0.4.63): a DONE token NO LONGER EXEMPTS the statement. It did, and the live instance
+        # survived TWO merges: `docs/asserted-support.spec.md` reads "implemented and REVIEWED … awaiting
+        # merge" — both tokens — and "implemented" excused it. Judging the pending clause too is the
+        # design decision; positional ranking ("last clause wins") was simulated and MEASURED producing a
+        # FALSE NEGATIVE, because `network-graph-interaction`'s "pending merge" is followed by a later
+        # shipped clause. A statement asserting BOTH is a contradiction, and `spec_done` now only
+        # SELECTS THE MESSAGE.
+        _pending = bool(_SPEC_PRE_SHIPPING.search(stated) or _SPEC_DRAFT_CLAIM.search(stated))
         # ⚠ ONE string for BOTH predicates. The first draft matched DONE over a 60-char slice while PRE
         # saw the whole line, so the two tests were about different text.
-        if not _SPEC_PRE_SHIPPING.search(stated) or spec_done(stated):
-            continue
         named = [v for v, body in sections if spec.name in body]
-        if named:
-            err(f"{spec.name}: the header still states a pre-shipping status ({stated[:90]!r}) while "
-                f"CHANGELOG.md names this file in the v{named[0]} release section — the header is "
-                f"stale (state what shipped) or the citation is forward-looking (say so in the header)")
+        # ⚠ A4 (v0.4.63): a target release **that has already shipped** is stale with NO citation —
+        # which is what hides `asserted-support.spec.md` and `marker-coordinate-truth.spec.md`, named
+        # nowhere in CHANGELOG.md. An UNSHIPPED target anywhere in the preamble suppresses the arm, so a
+        # spec legitimately aiming at a future release stays silent.
+        _targets = {x.lstrip("v") for x in _SPEC_TARGET_RELEASE.findall("\n".join(lines[:_SPEC_PREAMBLE_CAP]))}
+        _tgt = sorted(t for t in _targets if t in {v.lstrip("v") for v, _ in sections})
+        if _pending and named:
+            err(f"{spec.name}: the header still states a pre-shipping status ({stated[:90]!r})"
+                + (" — ALONGSIDE a done-state, which is itself the contradiction"
+                   if spec_done(stated) else "")
+                + f" — while CHANGELOG.md names this file in the v{named[0]} release section. The header"
+                  f" is stale (state what shipped) or the citation is forward-looking (say so in the header)")
+        # ⚠ NO `spec_done` guard here. Leaving one in would be A1's hole re-committed inside the arm
+        # written to close it — and it did exactly that to this release's OWN spec, which says
+        # "implemented … awaiting merge". A pending clause beside a shipped target IS the contradiction;
+        # a swept header (`Status: **SHIPPED (vX)**`) carries no pending clause, so this arm stays silent
+        # on it without needing the guard.
+        elif _tgt and _pending:
+            err(f"{spec.name}: the header states a pre-shipping status ({stated[:90]!r}) while naming "
+                f"\"Target release: v{_tgt[0]}\" — a release that ALREADY SHIPPED (CHANGELOG §v{_tgt[0]}). No "
+                f"citation is needed for this arm: a target that has landed is stale by definition.")
     return checked
 
 

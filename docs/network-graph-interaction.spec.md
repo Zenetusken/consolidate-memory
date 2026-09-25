@@ -1,9 +1,13 @@
 # The summary graph's closed loop (0.4.27 spec)
 
 **Design-of-record for the network map's selection, navigation and escape.**
-Status: implemented, mutation-verified, gates green — pending merge. Reverses the interaction
-surface shipped by `b665ffc` (v0.4.18), which deleted three wirings and left the map a closed
-loop.
+**Status: SHIPPED (v0.4.27)** — verified against `CHANGELOG.md` §v0.4.27, which names this spec. ⚠ The retired line stated a done-state AND an UNFINISHED one — ⚠ the two words of this very annotation would themselves match the detector, so it is worded around its own vocabulary; that contradiction release's A1 arm was written for.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM:
+>
+> Status: implemented, mutation-verified, gates green — pending merge. Reverses the interaction
+> surface shipped by `b665ffc` (v0.4.18), which deleted three wirings and left the map a closed
+> loop.
 
 Citations here are **greppable anchors**, not `file:line` — the v0.4.25 rule. Quote the anchor
 into a grep and it resolves; line numbers rot within a release.

@@ -81,10 +81,14 @@
 > are **two different operands and never comparable.** That alone explains a hash disagreement that
 > looks like a content disagreement; **state the convention whenever a hash is quoted.**
 
-**Status: revised for review.** Target release: **v0.4.41 (patch)** — it adds no `CycleRecord`
-field, removes and renames no flag, and leaves legacy records rendering (§4, Contract impact). It
-makes `--persist` exit **5** on a stamp it currently accepts; that exit is already the documented
-arm for that state (§2.1).
+**Status: SHIPPED (v0.4.41)** — verified against `CHANGELOG.md` §v0.4.41, which names this spec. ⚠ This arm needed no citation: the header named a TARGET RELEASE that had already shipped.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status: revised for review.** Target release: **v0.4.41 (patch)** — it adds no `CycleRecord`
+> field, removes and renames no flag, and leaves legacy records rendering (§4, Contract impact). It
+> makes `--persist` exit **5** on a stamp it currently accepts; that exit is already the documented
+> arm for that state (§2.1).
 
 This spec closes the defect class that produced the 2026-09-21 cycle incident: **the persist
 identity is a coordinate the record does not own.** One repair is load-bearing (§2.1); the rest are
