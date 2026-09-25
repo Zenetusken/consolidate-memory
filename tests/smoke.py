@@ -95,6 +95,28 @@ def _ens59(*a: Any, **k: Any) -> "tuple[Any, Any]":
         return ("<raised %s>" % type(_e59).__name__, "%s: %s" % (type(_e59).__name__, _e59))
 
 
+def _ms61(name: str, *a: Any, **k: Any) -> Any:
+    """A `memory_status` symbol called so that "it does not exist yet" and "its signature changed"
+    are VALUES rather than a crashed run.
+
+    ⚠ Same class as `_ens59` above, and it caught THIS pin set before it shipped. The v0.4.61 pins
+    call `_index_after_prune` (the fix ADDS it) and pass `pointer_line_texts=` (the fix ADDS that
+    parameter). On the PRE-FIX tree neither exists, so an unguarded call raises
+    `AttributeError`/`TypeError` at MODULE SCOPE: the run ends with NO TOTALS LINE, D6 never runs,
+    and every check after it is lost — a CRASH where a red belongs. MEASURED the first time these
+    pins were run against `bb63015`, which is why the guard is here rather than in a later fix.
+    ⚠ RETURNED, never swallowed: every caller asserts on the value, so the pin still REDDENS.
+    """
+    import memory_status as _ms61m
+    fn = getattr(_ms61m, name, None)
+    if fn is None:
+        return "<absent:%s>" % name
+    try:
+        return fn(*a, **k)
+    except Exception as _e61:                       # noqa: BLE001 — a raise is a RESULT here
+        return "<raised %s>" % type(_e61).__name__
+
+
 def _enroll_personal(project_dir: Path) -> None:
     """ADR 008: --pull/--promote require enrollment. Tests that exercise pull must enroll."""
     import store_context as _sc_e
@@ -4896,11 +4918,17 @@ with _tfB.TemporaryDirectory() as _tdB:
     _stB = _homeB / ".claude" / "projects" / ms.slug_for(_projB) / "memory"; _stB.mkdir(parents=True)
     (_stB / "f.md").write_text("---\nname: f\nmetadata:\n  node_type: memory\n  type: project\n---\nbody\n",
                                encoding="utf-8")
+    # v0.4.61 (RC-1): a SECOND fact whose stem matches `_TRACKER_RE` and IS indexed, so the staged
+    # B_trackers stage has a real member. Without it "the stages exist" and "the stages are POPULATED"
+    # are the same observation, and a generator that emitted four empty keys would pass.
+    (_stB / "roadmap.md").write_text(
+        "---\nname: roadmap\nmetadata:\n  node_type: memory\n  type: project\n---\nbody\n", encoding="utf-8")
     _oldHomeB = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_homeB)
     try:
         def _ctxAt(tokens: int) -> dict:
-            (_stB / "MEMORY.md").write_text("# Memory Index\n- [f](f.md) — " + "h" * (tokens * 4),
-                                            encoding="utf-8")
+            (_stB / "MEMORY.md").write_text(
+                "# Memory Index\n- [f](f.md) — " + "h" * (tokens * 4) + "\n- [roadmap](roadmap.md) — cue\n",
+                encoding="utf-8")
             return ms.build_context(_projB)
         _amberB = _ctxAt(1600)["remediation"]
         check("v0.1.66 seed: over-TARGET-under-ceiling → required True (target gate UNTOUCHED) · over_ceiling False",
@@ -4917,6 +4945,74 @@ with _tfB.TemporaryDirectory() as _tdB:
               _sjB["remediation"].get("standing_justified") is True
               and _sjB["remediation"].get("required") is False
               and _sjB["remediation"].get("over_ceiling") is True)
+
+        # ── v0.4.61 (RC-1): the ceiling's INSTRUMENT is standing-justify-independent too ──
+        # ⚠ TWO layers, and a pin on either ALONE passes on the other's tree: the GENERATOR must build the
+        # stages on this path (pre-fix the suppressed branch returned a dict carrying no `stages` key at all,
+        # so the ceiling line had nothing to point at), and the RENDERER must reach them (pre-fix
+        # `_remediation_section` returned from the suppression branch before the staging loop). The v0.1.66
+        # comment hardened the ceiling LINE against suppression and left the stages behind it.
+        # ⚠ The VERDICT stays suppressed: `required` must remain False, or the fix would trade a hidden
+        # instrument for an activated gate.
+        check("v0.4.61 RC-1 (PIN): an over-ceiling STANDING-JUSTIFIED store still gets its four stages BUILT (pre-fix `stages` is absent, so `--triage` printed 'shrink to receive' over an empty space that reads as 'nothing is prunable')",
+              set((_sjB["remediation"].get("stages") or {})) == {"A_orphans", "B_trackers", "C_dated_oversized", "R_referenced"}
+              and _sjB["remediation"].get("required") is False)
+        _stgB = (_sjB["remediation"].get("stages") or {}).get("B_trackers") or []
+        check("v0.4.61 RC-1 (PIN): …and a tracker-named fact is actually STAGED in them — POPULATED, not merely PRESENT, which a generator emitting four empty keys would satisfy",
+              [c["stem"] for c in _stgB] == ["roadmap"])
+        _sjLinesB = ms._remediation_section((_sjB["remediation"]))
+        check("v0.4.61 RC-1 (PIN): …and the RENDERER reaches them, on the same record (the two halves are one repair: stages built but unrendered is the same silence)",
+              any("tracker/status" in ln for ln in _sjLinesB))
+        check("v0.4.61 RC-1 (CONTROL): a suppressed store UNDER the ceiling keeps the short form — `stages` absent is not an error, and every already-archived record must render exactly as it did",
+              len(ms._remediation_section(({"required": False, "standing_justified": True,
+                                                        "baseline_facts": 9, "current_facts": 9,
+                                                        "index_tokens": 2000, "budget": 1500,
+                                                        "over_ceiling": False}))) == 1)
+
+        # ── v0.4.61 (RC-1), SECOND LAYER: the record → dashboard relay ──
+        # ⚠ The pins above cover `build_context` and `memory_status._remediation_section`. They do NOT
+        # cover the layer BELOW them, and that is MEASURED rather than assumed: disabling the
+        # `seed_record` relay AND `render_dashboard`'s branch with an `and False` on each guard leaves
+        # the whole suite GREEN at 2343 passed / 0 failed — not one of the eight checks above moves.
+        # They are a SECOND renderer for one contract, and the surface a user actually reads is the
+        # dashboard, so the repair one layer up did not reach it. These two close that gap.
+        _seedB61 = ms.seed_record(_sjB)
+        check("v0.4.61 RC-1 (PIN, layer 2): `seed_record`'s SUPPRESSED arm RELAYS the triage operands — without the relay the record carries no candidate count and the dashboard has nothing to state (under the measured mutation this reddens and NO other check does)",
+              _seedB61["remediation"].get("candidates_surfaced") is not None
+              and _seedB61["remediation"].get("reaches_budget") is False
+              and _seedB61["remediation"].get("required") is False)
+        _outB61 = rd.render(_seedB61)
+        check("v0.4.61 RC-1 (PIN, layer 2): the DASHBOARD prints the ceiling's REMEDY for a suppressed over-ceiling record — the end-user surface CLAUDE.md names by name, and the one a fix one layer down does not reach",
+              any("candidate(s) surfaced" in _ln for _ln in _outB61.splitlines())
+              and any("prune-safe-THEN-standing-justify" in _ln for _ln in _outB61.splitlines()))
+
+        # ── v0.4.61 (RC-2): `projected_index` is MEASURED, and it is the quantity its declaration names ──
+        # The `Remediation` TypedDict has always declared "est index tokens after evicting the candidates";
+        # the implementation computed `keep_core * _LEAN_HOOK_TOK`, a different quantity, at a constant
+        # measured at roughly half the writer. `reaches_budget` keys a RENDERED remedy, so the two disagreeing
+        # printed advice the store could not follow.
+        # ⚠ EVERY call here goes through `_ms61`, because on the PRE-FIX tree `_index_after_prune` is
+        # absent and `remediation_triage` has no `pointer_line_texts` parameter. Unguarded, either
+        # raises at module scope and takes the whole run with it (no totals line, D6 never reached) —
+        # the crash-class this repo has now met five times. `_ms61` returns the fault as a VALUE.
+        check("v0.4.61 RC-2 (PIN): `projected_index` = the index MINUS the evicted candidates' own pointer lines — the declaration's quantity, measured from the index itself (pre-fix: the symbol does not exist, so this reports NOTHING-CALLED rather than a green)",
+              _ms61("_index_after_prune", 2000, [{"stem": "a"}, {"stem": "b"}], {"a": "x" * 50, "b": "x" * 60}) == 1972)
+        check("v0.4.61 RC-2 (PIN): an UNMEASURABLE line set frees NOTHING — the pessimistic direction, so a store whose index could not be scanned is never told a prune will reach budget",
+              _ms61("_index_after_prune", 2000, [{"stem": "a"}], None) == 2000
+              and _ms61("_index_after_prune", 2000, [{"stem": "a"}], {}) == 2000)
+        check("v0.4.61 RC-2 (PIN): the modelled constant is RETIRED, not retuned — re-introducing the model IS the defect returning",
+              not hasattr(ms, "_LEAN_HOOK_TOK"))
+        _factsB = [p for p in sorted(_stB.glob("*.md")) if p.name != "MEMORY.md"]
+        _trB = _ms61("remediation_triage", _factsB, {"f", "roadmap"}, 2000, 0, budget=1500,
+                     reference_stems=set(), pointer_line_texts={"roadmap": "- [roadmap](roadmap.md) — cue"})
+        # ⚠ Both conjuncts are the point, and BOTH flip on the pre-fix tree: the model computed
+        # `keep_core(1) * 30 = 30 ≤ 1500`, so it reported `reaches_budget: True` for a store whose real
+        # post-prune index is 1992 — it printed the `prune` remedy, which is the remedy the D5 clause exists
+        # to replace with prune-THEN-justify. `isinstance` first: pre-fix `_ms61` returns a STRING, and
+        # `.get` on a string would itself crash the run.
+        check("v0.4.61 RC-2 (PIN): the triage routes the MEASURED relief into the projection, and `reaches_budget` follows from it (pre-fix: 30 / True — a budget the store cannot reach, reported as reachable)",
+              isinstance(_trB, dict) and _trB.get("projected_index") == 1992
+              and _trB.get("reaches_budget") is False)
         _seedB = ms.seed_record(_sjB)
         check("v0.1.66 seed_record: over_ceiling relayed through the SJ branch + ceiling_tokens on budget.index",
               _seedB["remediation"]["over_ceiling"] is True
@@ -23122,6 +23218,71 @@ check("v0.4.40 pin (the CONTROL for the check above: the same check FIRES on a m
       "which is the gap it was written to close): "
       f"⚠ {_psdbmsg40}", _psdb40)
 
+# --- v0.4.61 RC-4: a spec's STATUS WORD is now read by a gate --------------------------------
+# `LIVE_DOCS` is a VERSION-CURRENCY set; a spec's STATUS was in NO set, so a drafting-era header
+# survived every check — four did, for months, with the whole suite green, and the survey that
+# followed found 14. Nothing ever REVISITS a spec header once the arc closes. That is
+# `gate-coverage-is-its-match-set`: a gate proves only what its matcher can see.
+# ⚠ TWO ARMS, and they are not copies of one. The live arm is the VACUITY FLOOR: a glob that stops
+# matching reads `0 status lines` and prints exactly as green as a check that examined the tree.
+# The firing arm is the DISCRIMINATION. Both ride the `ROOT`-repoint trap the v0.4.40 pin above
+# documents — `PLUGIN`/`DOCS` are bound at import and do NOT move — so a repoint that no-opped
+# would read the LIVE corpus, which is swept and clean, and go GREEN rather than proving nothing.
+try:
+    _spsroot61 = _dl40.ROOT                     # the live tree, captured before anything moves
+    _spsn61 = len(_dl40.errors)
+    _spslive61 = _dl40.check_spec_status()
+    _spsliveerr61 = len(_dl40.errors) - _spsn61
+    del _dl40.errors[_spsn61:]
+    _spsa61 = _spslive61 >= 1 and _spsliveerr61 == 0
+    _spsamsg61 = f"live tree: {_spslive61} status line(s) checked, {_spsliveerr61} error(s)"
+
+    _spstmp61 = Path(_tfpsd40.mkdtemp(prefix="smoke-spec-status-"))
+    try:                                        # ── the firing arm, on a two-file tree ────────
+        (_spstmp61 / "docs").mkdir(parents=True)
+        _spsstale61 = _spstmp61 / "docs" / "stale.spec.md"
+        _spsstale61.write_text("# Stale spec\n\n**Status: draft for adversarial review.**\n",
+                               encoding="utf-8")
+        (_spstmp61 / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [0.1.0] — 2026-01-01\n\nshipped per docs/stale.spec.md\n",
+            encoding="utf-8")
+        _dl40.ROOT = _spstmp61
+        _spsn61b = len(_dl40.errors)
+        _dl40.check_spec_status()
+        _spserr61 = _dl40.errors[_spsn61b:]
+        del _dl40.errors[_spsn61b:]
+        _spsb61 = (len(_spserr61) == 1 and "stale.spec.md" in _spserr61[0]
+                   and "v0.1.0" in _spserr61[0])
+        # ── the CONTROL arm: the SAME fixture with its header stating what shipped stays GREEN.
+        # Without it the firing arm above is satisfied by a check that reds on every spec
+        # unconditionally — the blanket refusal this repo keeps having to kill.
+        _spsstale61.write_text("# Stale spec\n\n**Status: SHIPPED (v0.1.0)** — verified.\n",
+                               encoding="utf-8")
+        _spsn61c = len(_dl40.errors)
+        _dl40.check_spec_status()
+        _spscerr61 = len(_dl40.errors) - _spsn61c
+        del _dl40.errors[_spsn61c:]
+        _spsc61 = _spscerr61 == 0
+    finally:
+        _dl40.ROOT = _spsroot61                 # restored even if the arm itself blew up
+        _shpsd40.rmtree(_spstmp61, ignore_errors=True)
+    _spsbmsg61 = (f"firing arm: errors={len(_spserr61)} — {' '.join(_spserr61)[:150]} · "
+                  f"control arm: errors={_spscerr61}")
+except Exception as _spsx61:                    # a broken gate is RED, not a traceback
+    _spsa61 = _spsb61 = _spsc61 = False
+    _spsamsg61 = _spsbmsg61 = f"could not exercise it: {type(_spsx61).__name__}: {_spsx61}"
+
+check("v0.4.61 RC-4 pin (PIN — a spec's STATUS WORD is read AT ALL; pre-fix this fails by ABSENCE, "
+      "the committed validator has no `check_spec_status`, so the assertion can only have been "
+      f"satisfied by the function it is about): ⚠ {_spsamsg61}", _spsa61)
+check("v0.4.61 RC-4 pin (the FIRING arm: a header still saying 'draft' while CHANGELOG names the "
+      "spec inside a `## [X.Y.Z]` release section is RED, naming both the file and the release): "
+      f"⚠ {_spsbmsg61}", _spsb61)
+check("v0.4.61 RC-4 pin (the CONTROL for the arm above: the SAME fixture with its header stating "
+      "what shipped stays GREEN, so that arm is not satisfied by a check that reds on every spec "
+      "unconditionally. ⚠ It reds on the PRE-FIX tree too, by ABSENCE — paired with its sibling, "
+      f"which is the shape the v0.4.40 pin above established): ⚠ {_spsbmsg61}", _spsc61)
+
 # --- v0.4.41 R1: the timestamp fill must not mint a coordinate that never existed ------------
 # `reconcile_marker` copies the state file's `timestamp` into a record whose own is empty. Before
 # R1a that copy was UNCONDITIONAL, so a pass that had not re-stamped took the PREVIOUS cycle's time
@@ -26026,6 +26187,30 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     A ledger whose terms do not sum to its total is the
                                        #     defect; a ledger that sums and misattributes is the
                                        #     same defect with a green light.
+                            + 13       # v0.4.61 — ASSERTED SUPPORT (docs/asserted-support.spec.md).
+                                       #     RC-1 LAYER 2, 2 checks: the record→dashboard relay and
+                                       #     the dashboard's rendering of it — ADDED after a review
+                                       #     mutation measured that disabling BOTH left the suite
+                                       #     green at 2343/0, i.e. the first four RC-1 checks cover
+                                       #     `build_context` + `_remediation_section` and
+                                       #     NOTHING covered the end-user surface.
+                                       #     RC-4, 3 checks: the vacuity floor (a spec status word
+                                       #     is read at all), the firing arm, and its CONTROL —
+                                       #     which reds pre-fix by ABSENCE, the shape the v0.4.40
+                                       #     pin established for this validator.
+                                       #     RC-1, 4 checks: 3 PINs + 1 CONTROL — the ceiling's
+                                       #     STAGES are standing-justify-independent at BOTH layers
+                                       #     (the generator builds them on the suppressed path, the
+                                       #     renderer reaches them); a pin on either layer ALONE
+                                       #     passes on the other's tree. The CONTROL is the suppressed
+                                       #     store UNDER the ceiling, whose short form must not change,
+                                       #     so every already-archived record renders as it did.
+                                       #     RC-2, 4 checks: 3 PINs (the measured projection, the
+                                       #     pessimistic unreadable arm, the retired constant) + the
+                                       #     triage end-to-end. ⚠ BOTH conjuncts of that last one flip
+                                       #     pre-fix: the model computed 30 / `reaches_budget` True for
+                                       #     a store whose real post-prune index is 1992 — the
+                                       #     remedy-SELECTING field reading the wrong answer.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

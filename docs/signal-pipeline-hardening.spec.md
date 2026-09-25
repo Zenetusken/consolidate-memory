@@ -4,10 +4,14 @@
 > that commit — `git show ceaccc0:<path>` — and **never against the working tree**, which has moved
 > them.
 
-**Status:** DRAFT (gated, "fix everything" arc — the user's v0.1.51 live-run logs showed ~one lingering
-defect per recent release).
-**Bump:** PATCH (all backward-compatible — `--json` schema unchanged, new flag is additive, SKILL prose;
-legacy cycle records still render, existing installs keep working).
+**Status: SHIPPED (v0.1.53)** — verified against `CHANGELOG.md` §v0.1.53, which names this spec.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status:** DRAFT (gated, "fix everything" arc — the user's v0.1.51 live-run logs showed ~one lingering
+> defect per recent release).
+> **Bump:** PATCH (all backward-compatible — `--json` schema unchanged, new flag is additive, SKILL prose;
+> legacy cycle records still render, existing installs keep working).
 
 ## Ground truth (measured on job-applicator's real transcript, the screenshot window)
 

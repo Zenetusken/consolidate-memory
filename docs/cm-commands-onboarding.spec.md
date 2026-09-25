@@ -1,7 +1,11 @@
 # cm commands — the cross-project onboarding surface (v0.4.8 spec)
 
-**Design-of-record for the five UX verbs + one beacon line.** Status: draft for
-advisor pass → adversarial review-to-zero → implementation.
+**Status: SHIPPED (v0.4.8)** — verified against `CHANGELOG.md` §v0.4.8, which names this spec.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Design-of-record for the five UX verbs + one beacon line.** Status: draft for
+> advisor pass → adversarial review-to-zero → implementation.
 
 ## 1. Context (measured, 2026-09-04)
 

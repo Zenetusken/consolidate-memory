@@ -744,8 +744,11 @@ HOOK_TOKEN_WARN = 60            # est tok per index POINTER line above which the
 # diagnostics (distinct messages, distinct call sites) but shared one knob — split it so
 # the two can diverge without re-naming the canonical constant everywhere.
 LOCAL_HOOK_TOKEN_WARN = HOOK_TOKEN_WARN
-                                # Measured (2026-07-04): fleet median ≈48-57 tok/line, the triage's
-                                # lean model 30; the offenders (116/141 tok) were status-content-in-
+                                # Measured (2026-07-04): fleet median ≈48-57 tok/line, and the triage's
+                                # lean model — ⚠ DELETED at v0.4.61 as the WRONG QUANTITY, not a badly-
+                                # tuned value; cited here only as the historical median WITNESS, because
+                                # a reader following this calibration would find no such model in the
+                                # tree; the offenders (116/141 tok) were status-content-in-
                                 # the-hook — 2 lines = 17% of the whole budget. Detected here (report
                                 # + seed, v0.1.63); linted at write time in sync_global (v0.1.66).
 
@@ -1650,7 +1653,12 @@ _MIRROR_DOMINATED = 0.5        # mirror share of the index above which the lever
 AUDIT_WINDOW = "phase0..phase5"  # v0.4.34 (E4): the pass's observation span — ONE site, because it is both
 #                               the .mutation-log.jsonl row's field AND the record's audit.window (which
 #                               `class Audit` and SKILL.md declared and no producer emitted until v0.4.34).
-_LEAN_HOOK_TOK = 30            # est tokens/pointer for a lean re-index of the keep core (the projected_index target)
+# v0.4.61 (RC-2): `_LEAN_HOOK_TOK = 30` stood here — "est tokens/pointer for a lean re-index of the keep
+# core". It was REMOVED rather than retuned, because it was the wrong QUANTITY, not merely a bad value: it
+# modelled the keep core at an assumed lean cost, while `projected_index` declares "est index tokens after
+# evicting the candidates". The store's own archive had already measured the constant at roughly half the
+# writer (58.3 tok/pointer over a 35-row keep core, against 30), and `reaches_budget` keys a RENDERED
+# remedy — so the miscalibration printed advice the store could not follow. See `_index_after_prune`.
 _STANDING_JUSTIFY_DELTA = 10   # v0.1.21: a standing-justified over-budget gate re-FIRES once the store grows by this
                                # many facts past the justified baseline (the delta-detector) — keeps the v0.1.18 teeth
 _STANDING_JUSTIFY_TOKEN_FACTOR = 1.25   # v0.1.23 (D6): ALSO re-fire when index tokens exceed the justified baseline
@@ -1769,9 +1777,62 @@ def classify_store_doc(path: Path) -> str:
     return "archive" if _is_archive_index_text(rest) else "fact"
 
 
+def pointer_lines_by_stem(index_text: str) -> dict:
+    """v0.4.61 (RC-2): every pointer line's TEXT, keyed by the stem it links to.
+
+    ⚠ ONE definition deliberately. This walk had THREE call sites after the RC-2 fix — `build_context`,
+    and an inline copy in `tests/simulate_accumulation.py` that asserts ABOUT the producer. A change to
+    `_LINK_RE`'s grouping or to the first-match-wins `setdefault` rule would silently diverge them, and
+    the sim would keep passing while measuring a different rule than the code it exists to check — the
+    single-enumerator lesson this repo already carries. The sim now calls this."""
+    out: dict = {}
+    for ln in index_text.splitlines():
+        m = _LINK_RE.search(ln)
+        if m:
+            out.setdefault(m.group(1), ln)
+    return out
+
+
+def _index_after_prune(index_tokens: int, indexed_candidates: list,
+                       pointer_line_texts: "dict | None") -> int:
+    """v0.4.61 (RC-2): the index size AFTER EVICTING THE CANDIDATES — the quantity
+    `Remediation.projected_index` has declared since v0.1.18 ("est index tokens after evicting the
+    candidates"), and the one `reaches_budget` keys the rendered D5 remedy on.
+
+    ⚠ This REPLACES `keep_core * _LEAN_HOOK_TOK`, which computed a different quantity — the keep core
+    re-indexed at an assumed lean cost — so the implementation never matched its own declaration. The
+    two disagree by ~2x (the constant read 30 against the 58.3 tok/pointer this store's own archive
+    recorded), and because `reaches_budget` SELECTS A REMEDY rather than merely reporting a number
+    (`render_dashboard.py`, the D5 branch), the miscalibration printed the wrong advice.
+
+    PURE. Only INDEXED candidates free index tokens: the A_orphans stage is unindexed by construction
+    (0 relief, as its label already says), and R_referenced is unindexed-but-reachable — a lean rebuild
+    RE-INDEXES it rather than pruning it, so it is not relief either.
+
+    ⚠ **BOTH arms move in the PESSIMISTIC direction**, which is the whole point of the function on a
+    gate: a store we could not measure must never be told that a prune will reach budget.
+    - `pointer_line_texts` missing (an absent or unreadable index), or missing a stem → that candidate
+      frees nothing → `projected_index` stays high → `reaches_budget` False.
+    - ⚠ The relief is `est_tokens` over the JOINED evicted lines, NOT the sum of per-line estimates.
+      ⚠ **The first draft justified this with a rounding bound — "summing N of them over-counts by up to
+      (N-1)/4" — and that bound is ARITHMETICALLY WRONG.** Measured with the shipped `est_tokens`
+      (ceil(chars/4)): 8 one-character lines sum to 8 against a joined 4, an over-count of 4 where the
+      claimed bound is 1.75; and for lengths ≡ 0 mod 4 the sum wastes nothing at all while the join adds
+      N−1 newline characters, so the JOINED form counts MORE. The choice stands, for a different and
+      stated reason: the joined form is the SAME MEASURE the index total was taken with, so the
+      subtraction is like-for-like rather than between two differently-rounded quantities. ⚠ It is
+      therefore the CONSISTENT arm, not a guaranteed-pessimistic one — the missing-index arm below is
+      that, and this docstring no longer claims the property for both."""
+    _texts = [t for c in indexed_candidates if (t := (pointer_line_texts or {}).get(c["stem"]))]
+    if not _texts:
+        return index_tokens
+    return max(0, index_tokens - est_tokens("\n".join(_texts)))
+
+
 def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
                        mirror_index_tokens: int, budget: int = INDEX_TOKEN_BUDGET,
-                       reference_stems: set | None = None) -> dict:
+                       reference_stems: set | None = None,
+                       pointer_line_texts: "dict | None" = None) -> dict:
     """PURE: for an OVER-budget store, rank LOCAL prune candidates into cost-ordered STAGES + route the lever.
     Returns {} when the index is under budget (no false alarm on a healthy store). Heuristics RANK/surface;
     they NEVER decide durability (empirics: name/date mis-classifies) — the model judges content, the user
@@ -1821,6 +1882,7 @@ def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
         stage.sort(key=lambda c: -c["body_tokens"])
     cands = A + B + C                        # R is NOT a safe-evict candidate (referenced elsewhere) — surfaced separately
     lever = "gc" if share > _MIRROR_DOMINATED else ("prune" if cands else "justify")
+    _projected_index = _index_after_prune(index_tokens, B + C, pointer_line_texts)
     return {
         "required": True, "lever": lever,
         # `mirror_share` is the OPERAND, not a display value — unrounded, so a consumer re-testing
@@ -1829,10 +1891,11 @@ def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
         "candidates": len(cands), "keep_core": keep, "referenced": len(R),
         "stages": {"A_orphans": A, "B_trackers": B, "C_dated_oversized": C, "R_referenced": R},
         "projected_recall": sum(c["body_tokens"] for c in cands),
-        "projected_index": keep * _LEAN_HOOK_TOK,   # est lean re-index of the keep core (incl. R, re-indexed)
+        # v0.4.61 (RC-2): the projection is MEASURED, not modelled — see `_index_after_prune`.
+        "projected_index": _projected_index,
         # D5 (v0.1.21): can a full prune even reach budget? If not, the lever is prune-the-safe-THEN-standing-justify
         # the residual — not a clean achievable "prune" (mature stores: keep core alone often exceeds budget).
-        "reaches_budget": keep * _LEAN_HOOK_TOK <= budget,
+        "reaches_budget": _projected_index <= budget,
     }
 
 
@@ -3603,9 +3666,16 @@ def build_context(project_dir: Path) -> dict:
     # STANDING-JUSTIFIED suppresses ONLY when BOTH axes are within bound: fact-count ≤ baseline+Δ AND index tokens
     # ≤ baseline_tokens × FACTOR. Either axis growing (or no valid baseline) re-FIRES the gate (fail-open) — so
     # token bloat with flat fact-count no longer hides (D6), while genuine earned density stays suppressed.
-    if (index_lb[2] > INDEX_TOKEN_BUDGET
-            and _sj_baseline is not None and len(fact_files) <= _sj_baseline + _STANDING_JUSTIFY_DELTA
-            and _sj_tokens is not None and index_lb[2] <= int(_sj_tokens * _STANDING_JUSTIFY_TOKEN_FACTOR)):
+    _sj_suppressed = (index_lb[2] > INDEX_TOKEN_BUDGET
+                      and _sj_baseline is not None and len(fact_files) <= _sj_baseline + _STANDING_JUSTIFY_DELTA
+                      and _sj_tokens is not None and index_lb[2] <= int(_sj_tokens * _STANDING_JUSTIFY_TOKEN_FACTOR))
+    # v0.4.61 (RC-1): the HARD CEILING, hoisted above the branch. ⚠ It is a PURE MOVE — the ceiling stays
+    # a sibling signal and must NOT enter the `required`/standing-justify computation above, exactly as the
+    # assignment below the branch has always required. Hoisting the BOOLEAN changes the branch's shape, not
+    # that rule. It is hoisted because the ONE state the suppression must not hide is this one: the ceiling
+    # line is standing-justify-INDEPENDENT by design, and its REMEDY must be too (see `_remediation_section`).
+    _over_ceiling = index_lb[2] > INDEX_CEILING_TOKENS
+    if (_sj_suppressed and not _over_ceiling):
         remediation = {"required": False, "standing_justified": True, "baseline_facts": _sj_baseline,
                        "index_tokens": index_lb[2], "budget": INDEX_TOKEN_BUDGET, "candidates": 0,
                        "current_facts": len(fact_files)}
@@ -3618,8 +3688,14 @@ def build_context(project_dir: Path) -> dict:
             except OSError:
                 continue
         _idx_text = index_path.read_text(encoding="utf-8", errors="replace") if index_path.exists() else ""
-        _mirror_idx = [ln for ln in _idx_text.splitlines()
-                       if (m := _LINK_RE.search(ln)) and m.group(1) in mirror_stems]
+        # v0.4.61 (RC-2): the pointer lines, by stem — the operand `projected_index` needs to mean
+        # "after evicting the candidates". ⚠ ONE walk collecting BOTH consumers (the mirror subset and
+        # the per-stem line TEXT): two comprehensions over the same `splitlines()` list is the
+        # two-enumerations shape this file already has a lesson about, and the first cut did exactly
+        # that. The TEXT is carried, not a per-line token count, so `_index_after_prune` can take one
+        # `est_tokens` over the joined block — see its docstring for why that direction matters.
+        _line_text = pointer_lines_by_stem(_idx_text)
+        _mirror_idx = [_ln for _stem, _ln in _line_text.items() if _stem in mirror_stems]
         # C2 (v0.1.18.x): gather reference_stems from the OTHER always-loaded surfaces so a fact reachable
         # there is NOT mis-flagged as a safe-evict orphan. Two match modes (Gate-1 #5): archive-index docs →
         # link-targets; CLAUDE.md prose → bare-stem substring.
@@ -3663,14 +3739,26 @@ def build_context(project_dir: Path) -> dict:
             except OSError:
                 continue
         remediation = remediation_triage(fact_files, index_names, index_lb[2],
-                                         est_tokens("\n".join(_mirror_idx)), reference_stems=ref_stems)
+                                         est_tokens("\n".join(_mirror_idx)), reference_stems=ref_stems,
+                                         pointer_line_texts=_line_text)
+        # v0.4.61 (RC-1): reached with `_sj_suppressed` when the index is over the HARD CEILING while the
+        # target gate is standing-justified. The expensive block above ran for exactly one reason — the
+        # ceiling line's stages are its remedy, and before this the suppressed branch never built them, so
+        # an operator was told "shrink to receive" with no candidates (an ABSENCE that reads as the verdict
+        # "nothing is prunable"). The STAGES come from the triage; the VERDICT stays the suppression's, so
+        # `required` is restored and the standing state re-stamped — otherwise the lever and `reaches_budget`
+        # would speak for a gate that is not active.
+        if _sj_suppressed:
+            remediation.update({"required": False, "standing_justified": True,
+                                "baseline_facts": _sj_baseline, "index_tokens": index_lb[2],
+                                "budget": INDEX_TOKEN_BUDGET, "current_facts": len(fact_files)})
     # v0.1.66 (Phase B): the hard-ceiling flag — a SIBLING assignment, deliberately OUTSIDE both branches
     # above so it never enters the `required`/standing-justify computation (the sibling-signal design the
     # 3-lens spec-review gate mandated; docs/index-usage-and-budget-ladder.spec.md §Phase B). Any store over
     # the ceiling is necessarily over the target (3840 > 1500 est tok), so `remediation` is always non-empty
     # when this could be True; a healthy (under-target) store carries no remediation block and no key.
     if remediation:
-        remediation["over_ceiling"] = index_lb[2] > INDEX_CEILING_TOKENS
+        remediation["over_ceiling"] = _over_ceiling
 
     # v0.1.37 (+v0.1.52): the no-op SELF-HEAL maintenance signal. Resolves dangling against local ∪ the
     # global canonical (a stem GLOB only — still cheap on the always-run Phase-0 path, NOT a dependency
@@ -4080,6 +4168,28 @@ def seed_record(ctx: dict) -> CycleRecord:
         record["remediation"] = {"required": False, "standing_justified": True,
                                  "baseline_facts": rem.get("baseline_facts", 0),
                                  "over_ceiling": bool(rem.get("over_ceiling"))}
+        # v0.4.61 (RC-1): ⚠ THE SUPPRESSION DOES NOT COVER THE CEILING'S INSTRUMENT. `build_context`
+        # builds the triage exactly when over_ceiling (the ceiling is standing-justify-INDEPENDENT),
+        # but this relay dropped it — so the DASHBOARD, which CLAUDE.md names as the end-user
+        # deliverable, kept printing "shrink to receive" over an empty space: the same "nothing is
+        # prunable" verdict the v0.4.61 repair removed one layer up. ⚠ Relay only what the triage
+        # actually supplied, so a SUPPRESSION WITHOUT an over-ceiling store keeps the lightweight
+        # form and every already-archived record renders exactly as it did.
+        if "stages" in rem:
+            record["remediation"].update({
+                "lever": rem.get("lever", ""),
+                "candidates_surfaced": rem.get("candidates", 0),
+                "projected_index": rem.get("projected_index", 0),
+                "projected_recall": rem.get("projected_recall", 0),
+                "reaches_budget": rem.get("reaches_budget", True),
+            })
+            # ⚠ v0.4.34 (E1)'s rule, honoured HERE too — the first cut of this relay broke it with
+            # `rem.get("mirror_share", 0.0)`, a default asserting "not mirror-dominated" for a share
+            # nobody computed, while the sibling arm below deliberately leaves the key ABSENT. The two
+            # arms stated opposite policies for one field in one function.
+            if (isinstance(rem.get("mirror_share"), (int, float))
+                    and not isinstance(rem["mirror_share"], bool)):
+                record["remediation"]["mirror_share"] = float(rem["mirror_share"])
     elif rem:
         record["remediation"] = {
             "required": rem["required"], "lever": rem["lever"],
@@ -5006,33 +5116,47 @@ def _remediation_section(rem: dict) -> list:
     if rem.get("standing_justified"):
         cur, base = rem.get("current_facts"), rem.get("baseline_facts", 0)
         grew = f"+{cur - base}" if isinstance(cur, int) else "?"
-        return [_ui.kv("REMEDIATION", _ui.c(
+        out = [_ui.kv("REMEDIATION", _ui.c(
             f"✓ over budget ({rem.get('index_tokens', '?')}/{rem.get('budget', INDEX_TOKEN_BUDGET)} tok) but "
-            f"STANDING-JUSTIFIED · {cur} facts vs baseline {base} ({grew}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts or on index-token bloat)", "green"))] \
-            + ([_ceil_line] if _ceil_line else [])
-    out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
-                                       f"— GATE active · lever {rem['lever'].upper()}", "red"))]
-    if _ceil_line:
-        out.append(_ceil_line)
+            f"STANDING-JUSTIFIED · {cur} facts vs baseline {base} ({grew}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts or on index-token bloat)", "green"))]
+        if _ceil_line:
+            out.append(_ceil_line)
+        # v0.4.61 (RC-1): the ceiling is standing-justify-INDEPENDENT, and so is its REMEDY. The suppression
+        # suppressed the whole triage; the ceiling LINE was deliberately hardened against it (above) but the
+        # STAGES below were not — so an over-ceiling store was told "shrink to receive" and shown nothing,
+        # and an empty candidate list reads as the verdict "nothing is prunable". The generator builds stages
+        # exactly when over_ceiling, so when they are present, fall through and render them.
+        # ⚠ `stages` ABSENT keeps the pre-v0.4.61 behaviour (and keeps every already-archived record rendering
+        # exactly as it did): the suppression still short-circuits when the generator had nothing to add.
+        if not rem.get("stages"):
+            return out
+    else:
+        out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
+                                           f"— GATE active · lever {rem['lever'].upper()}", "red"))]
+        if _ceil_line:
+            out.append(_ceil_line)
     # D8 (v0.1.21): lead with the INDEX-RELIEF stages (B/C move the gated index); R = de-link-first; A = disk-only LAST.
     for key, label in (("B_trackers", "tracker/status (transient)"),
                        ("C_dated_oversized", "dated/oversized (content-review — heuristic ranks, you JUDGE)")):
-        items = rem["stages"].get(key, [])
+        items = (rem.get("stages") or {}).get(key, [])
         if items:
             top = ", ".join(c["stem"] for c in items[:4]) + (f" +{len(items) - 4} more" if len(items) > 4 else "")
             out.append(_ui.li(f"{len(items):>2} {label}: " + _ui.c(top, "dim"), indent=4, bullet="↓", bullet_color="yellow"))
-    referenced = rem["stages"].get("R_referenced", [])
+    referenced = (rem.get("stages") or {}).get("R_referenced", [])
     if referenced:
         rtop = ", ".join(c["stem"] for c in referenced[:4]) + (f" +{len(referenced) - 4} more" if len(referenced) > 4 else "")
         out.append(_ui.li(f"{len(referenced):>2} referenced in CLAUDE.md/archive/wikilinks — NOT safe to evict; de-link FIRST: "
                           + _ui.c(rtop, "dim"), indent=4, bullet="⚠", bullet_color="red"))
-    orphans = rem["stages"].get("A_orphans", [])
+    orphans = (rem.get("stages") or {}).get("A_orphans", [])
     if orphans:
         otop = ", ".join(c["stem"] for c in orphans[:4]) + (f" +{len(orphans) - 4} more" if len(orphans) > 4 else "")
         out.append(_ui.li(f"{len(orphans):>2} TRUE orphans (disk hygiene — 0 index relief; evict / re-index): "
                           + _ui.c(otop, "dim"), indent=4, bullet="·"))
     # F (v0.1.18.x): the GATED quantity is INDEX-POINTER tokens; recall body-disk is a SEPARATE axis.
-    out.append(_ui.li(f"keep core {rem['keep_core']} · projected index relief ≈{rem['projected_index']}/{rem['budget']} tok "
+    # v0.4.61 (RC-2): `projected_index` now MEANS what it declares — the index after evicting the candidates —
+    # so it is labelled as that. The old label said "relief" and printed `keep_core × _LEAN_HOOK_TOK`, a
+    # different quantity; the number was never a relief and the label described the one it was not.
+    out.append(_ui.li(f"keep core {rem['keep_core']} · projected index after a full prune ≈{rem['projected_index']}/{rem['budget']} tok "
                       f"(pointers) · recall body-hygiene −≈{rem['projected_recall']} tok (SEPARATE disk axis)",
                       indent=4, bullet="→", bullet_color="cyan"))
     # D5 (v0.1.21): if a full prune can't reach budget, it's prune-the-safe-THEN-standing-justify the residual.

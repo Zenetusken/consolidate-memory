@@ -1017,7 +1017,7 @@ def closure_reachability(ctx: Ctx) -> list[Result]:
             out.append(_R("closure_reachability", "CHK-PRUNE-REACH", "PRUNE lever reaches budget",
                           "MED", "PASS",
                           "lever=prune & reaches_budget ⇒ the prune is genuinely achievable",
-                          "reaches_budget=True", "the projected lean re-index lands within budget",
+                          "reaches_budget=True", "the projected index after evicting the candidates lands within budget",
                           "remediation", "D5"))
         else:
             out.append(_R("closure_reachability", "CHK-PRUNE-REACH", "PRUNE lever reachability",

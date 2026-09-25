@@ -177,6 +177,12 @@ def _kv(label: str, value: str) -> str:
     return f"  {_c(f'{label:<10}', 'bold')}{_ui.wrap(value, hang=12, width=W)}"
 
 
+# v0.4.61 (RC-1): ONE home for the D5 remedy sentence. It now renders from TWO branches — the
+# gate-active one, and the SUPPRESSED one whose ceiling line has no other way to name a remedy — and a
+# sentence copied into two places is the divergence class this repo keeps closing.
+_D5_REMEDY = ("prune can't reach budget → prune-safe-THEN-standing-justify the residual (earned density)")
+
+
 def _num(x: object) -> float:
     """Coerce a model-authored cycle-record value to a number. The record is produced
     upstream (by the model), so a budget field may arrive as a string like '10' or be
@@ -1034,6 +1040,28 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         out.append(f"    {_c('✓', 'green')} density justified at baseline {_g(rem.get('baseline_facts', 0))} facts — gate suppressed until +Δ facts or index-token bloat")
         if _ceil_ln:
             out.append(_ceil_ln)
+        # v0.4.61 (RC-1): ⚠ THE CEILING IS STANDING-JUSTIFY-INDEPENDENT, AND SO IS ITS INSTRUMENT.
+        # The line above was hardened against the suppression long ago; the triage behind it was not,
+        # so this branch printed "shrink to receive" and NOTHING else — and an empty candidate list
+        # reads as the verdict "nothing is prunable". The producer relays the triage operands exactly
+        # when the store is over the ceiling; render them here. ⚠ `candidates_surfaced` absent keeps
+        # the short form, so a merely-suppressed store and every archived record are unchanged.
+        if _recorded(rem, "candidates_surfaced"):
+            _cj = _num(rem.get("candidates_surfaced", 0))
+            out.append("    " + _c(f"{_g(_cj)} candidate(s) surfaced · lever "
+                                   f"{str(rem.get('lever') or '-').upper()} · "
+                                   + (f"projected index ≈{_g(_num(rem.get('projected_index', 0)))} tok"
+                                      if _recorded(rem, "projected_index")
+                                      else "projected index: not recorded"), "dim"))
+            # v0.4.61 (review): ⚠ THE D5 REMEDY IS KEYED ON THE LEVER, NOT ONLY ON THE OPERAND — exactly
+            # as `memory_status._remediation_section` keys it. Gating on `reaches_budget is False` ALONE
+            # printed "prune can't reach budget → prune-then-justify" directly beneath a line reporting
+            # `lever JUSTIFY · 0 candidate(s) surfaced`: two renderers of one record disagreeing three
+            # lines apart, and the panel contradicting itself. RC-2 makes `reaches_budget` False whenever
+            # the candidates cannot free nearly the whole index — the common mature-store case — so this
+            # was newly reachable, not hypothetical.
+            if str(rem.get("lever") or "") == "prune" and rem.get("reaches_budget") is False:
+                out.append("    " + _c(_D5_REMEDY, "dim"))
     elif rem and rem.get("required"):
         # v0.1.36: gate on `required`, NOT mere presence — a healthy record may carry remediation={required:false}
         # (the schema default), which must NOT render an over-budget block (it did pre-v0.1.36: `elif rem:`). The
@@ -1154,7 +1182,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         # is gated on the lean path NOT having resolved (v0.4.34): remedy and ✓ are one decision, and
         # emitting both put a sanction beside a SUCCESS (18 of 324 states).
         if rem.get("reaches_budget") is False and not resolved_by_lean:
-            out.append("    " + _c("prune can't reach budget → prune-safe-THEN-standing-justify the residual (earned density)", "dim"))
+            out.append("    " + _c(_D5_REMEDY, "dim"))
         if resolved_by_lean:
             out.append("    " + _c("✓ gate resolved by rebuild-lean — index back under budget, no eviction needed", "green"))
         elif not acted and not pending and not mirror_dominated and rem.get("reaches_budget") is not False:

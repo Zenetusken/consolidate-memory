@@ -4,9 +4,13 @@
 > that commit — `git show b63b474:<path>` — and **never against the working tree**, which has moved
 > them.
 
-**Status: revision 11 — for adversarial review** (2427 lines; revision 10 read 2266, revision 9 read
-1965, revision 8 read 1941, revision 6 read 1657). Target release: **v0.4.30 (patch)** — a repair to
-fields that were always meant to be measured; no schema, flag, or install-contract change.
+**Status: SHIPPED (v0.4.30)** — verified against `CHANGELOG.md` §v0.4.30, which names this spec.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status: revision 11 — for adversarial review** (2427 lines; revision 10 read 2266, revision 9 read
+> 1965, revision 8 read 1941, revision 6 read 1657). Target release: **v0.4.30 (patch)** — a repair to
+> fields that were always meant to be measured; no schema, flag, or install-contract change.
 
 This spec closes the record-honesty class the 2026-09-14 audit found: **a cycle record's post-state
 was never owned by anything.** It is the second of three staged cycles; Cycle A (dream-teeth

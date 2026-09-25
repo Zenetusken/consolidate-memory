@@ -1,8 +1,12 @@
 # Defrag flow-signal + emoji index — design-of-record
 
-**Status: draft → advisor → review-to-zero → implementation.**
-Target release: **v0.4.23 (patch)** — two measured defects from the 2026-09-07 dream
-session's footnotes, each root-caused at its source with a discriminating pin.
+**Status: SHIPPED (v0.4.23)** — verified against `CHANGELOG.md` §v0.4.23, which names this spec.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status: draft → advisor → review-to-zero → implementation.**
+> Target release: **v0.4.23 (patch)** — two measured defects from the 2026-09-07 dream
+> session's footnotes, each root-caused at its source with a discriminating pin.
 
 ## §1 The two defects (each root-caused)
 

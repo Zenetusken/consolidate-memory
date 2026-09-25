@@ -4,8 +4,7 @@
 Status: **SHIPPED (v0.4.11, 2026-09-05)** — all three of §1's gaps have shipped code
 (`cm group delete`, the `--repoint` re-confirm affordance, the per-recipient pull-side
 recreation guard, the re-sourced frozen GC). ⚠ The drafting-era status line survived this long
-because NOTHING reads a spec's status: the version statements live in the LIVE_DOCS set and a
-spec's own header is not in it.
+because **no gate read a spec's status WORD**: the version statements live in the LIVE_DOCS set, which is a *currency* axis, and a spec's status word was in no matcher. `tests/docs_links.check_spec_status` (v0.4.61) now reads the status WORD.
 
 ## 1. Context (measured, 2026-09-04; amend-5 — + R-N1a) final)
 

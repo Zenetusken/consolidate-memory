@@ -878,6 +878,134 @@ def check_preview() -> None:
         # which is why nothing is re-added here.
 
 
+# v0.4.61 (RC-4): the matcher must not assume a header LEADs with its status word.
+# ⚠ The first draft was `^\s*[>*_\-]*\s*\**\s*status…` — anchored on `status` starting the line — and
+# a review lens measured the cost: `docs/cm-commands-onboarding.spec.md:3` reads
+# `**Design-of-record for the five UX verbs…** Status: draft for advisor pass → …` and was NAMED in
+# CHANGELOG §0.4.8, so a stale, release-named drafting line survived the very sweep written to catch
+# it. A gate whose matcher assumes a SPELLING has a blind spot proportional to the spelling.
+# `.*?` (lazy, no DOTALL) matches the minimal prefix on the line, so the word may sit anywhere in it.
+_SPEC_STATUS_LINE = re.compile(r"(?im)^.*?\bstatus\b[^\n]*")
+# ⚠ …and a window, not a line 1. Two specs state their status further down a header the v0.4.61 sweep
+# itself lengthened, and two state it as a title (`— spec DRAFT`), which carries no `status` word at
+# all. Both were invisible to a 14-line, `status`-only search.
+_SPEC_STATUS_WINDOW = 40
+_SPEC_TITLE_DRAFT = re.compile(r"(?i)\bdraft\b")
+# ⚠ `_SPEC_DONE` must be NEGATION-AWARE, and both predicates must see the SAME string. The first draft
+# matched DONE over `line[:60]` while PRE saw the whole line — two predicates over two strings — and
+# DONE was negation-blind, so `awaiting approval; nothing shipped yet` and `drafted, unimplemented`
+# were both EXEMPTED by the very words that state the defect. A silent false negative on a coverage
+# gate is the failure this repo has a standing lesson about.
+_SPEC_PRE_SHIPPING = re.compile(
+    r"draft|awaiting|pending|→\s*implementation|for adversarial review|proposed v|"
+    r"amend-\d+ folded|review-to-zero|unimplemented|nothing shipped", re.I)
+_SPEC_DONE = re.compile(r"\b(?:SHIPPED|shipped|implemented|implementation complete)\b", re.I)
+# ⚠ NEGATION IS CHECKED BY DISTANCE, NOT BY A LOOKBEHIND. The first cut was fixed-width
+# (`(?<!un)(?<!not )(?<!nothing )(?<!never )`), and that is DISTANCE-anchored: in
+# `**Status: draft — not yet shipped.**` the token is preceded by `yet `, not `not `, so the guard
+# passed and a genuinely stale header was EXEMPTED BY THE WORDS STATING ITS DEFECT. MEASURED against
+# the shipped regexes, along with `draft (hasn't shipped yet)` and `awaiting approval; not yet
+# implemented` — only the exact spellings the earlier review round happened to quote were caught.
+_SPEC_NEGATED = re.compile(
+    r"(?i)(?:\bnot\b|\bno\b|\bnever\b|\bnothing\b|\byet\b|\bun\b|\bun$|without"
+    r"|hasn['\u2019]?t|haven['\u2019]?t|isn['\u2019]?t|doesn['\u2019]?t|has yet to)")
+# ⚠ `['\u2019]` — the straight AND the typographic apostrophe, the same idiom `_KEEP_RE` already uses.
+# A contraction the reader types with a curly quote is the same negation; matching only `'` is a
+# spelling-blindness of exactly the kind this gate exists to avoid.
+_SPEC_NEG_WINDOW = 24      # chars of lookback searched for a negation
+
+
+def spec_done(stated: str) -> bool:
+    """True when the statement ASSERTS shipping — i.e. a DONE token with no negation just before it.
+
+    ⚠ A FUNCTION, not a single lookbehind: the negation may be separated from the token by any number
+    of words (`not yet shipped`, `has not been implemented`), and a fixed-width guard cannot express
+    that. See the note on `_SPEC_NEGATED` for the measurement that forced this."""
+    for m in _SPEC_DONE.finditer(stated):
+        if not _SPEC_NEGATED.search(stated[max(0, m.start() - _SPEC_NEG_WINDOW):m.start()]):
+            return True
+    return False
+_RELEASE_SECTION = re.compile(r"^##\s*\[(\d+\.\d+\.\d+)\]", re.M)
+
+
+def release_sections(ch: str) -> "list[tuple[str, str]]":
+    """`(version, body)` for every `## [X.Y.Z]` release section in the CHANGELOG.
+
+    `re.split` with a capturing group yields `[preamble, v1, body1, v2, body2, …]`, so the pairs walk
+    every other index — the bodies are the section TEXT, which is what a citation search must see."""
+    parts = _RELEASE_SECTION.split(ch)
+    return [(parts[i], parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
+
+
+def check_spec_status() -> int:
+    """v0.4.61 (RC-4): a `docs/*.spec.md` whose header still states a DRAFTING-era state while
+    CHANGELOG.md names that file inside a `## [X.Y.Z]` release section.
+
+    ⚠ WHY THIS EXISTS. `LIVE_DOCS` is a VERSION-CURRENCY set — membership means "this doc's version
+    statement goes stale when a release lands". A spec's STATUS is a different axis and was in NO
+    set, so a drafting-era line could survive every check: four headers did, for months, with the
+    whole suite green, and the census that followed found SIXTEEN pre-shipping headers, 14 of them
+    release-named (docs/asserted-support.spec.md §RC-4) — and the first matcher saw only 13 of the
+    14, which is this docstring’s own lesson turned on it. Nothing ever REVISITS a spec header once
+    the arc closes. That is `gate-coverage-is-its-match-set` — a gate proves only what its
+    matcher can see.
+
+    ⚠ THE RULE IS VERSIONED ON PURPOSE. Its first form was "cited ANYWHERE in CHANGELOG", and that
+    measurement was CIRCULAR: the same signal was both the rule's input and the evidence that the
+    work had landed. Restricting the citation to text inside a `## [X.Y.Z]` section makes the signal
+    independent, and the corpus's legitimately-unreleased specs drop out on their own — TWO of them
+    (`0.4.5-issue-closeout.spec.md`, `track-c-ci-docs-hygiene.spec.md`). ⚠ This said "one" until a review
+    lens counted them; a gate whose own account of its blind spot understates it by half is the lesson
+    in the paragraph above, applied to the paragraph itself.
+
+    ⚠ HONEST LIMIT, stated rather than buried: a release section could cite a spec FORWARD ("staged
+    for a later release"), which would fire on a legitimately-open spec. The message names both
+    readings, and the remedy — update the header — is correct under either. A gate with a stated
+    ceiling, not a proof.
+
+    Returns the number of spec status lines EXAMINED, for the ✓ line's denominator: without it a
+    scan that stopped finding status lines would print exactly as green as one examining everything.
+    """
+    sections = release_sections(read("CHANGELOG.md"))
+    checked = 0
+    for spec in sorted((ROOT / "docs").glob("*.spec.md")):
+        lines = spec.read_text(encoding="utf-8", errors="replace").splitlines()
+        m = _SPEC_STATUS_LINE.search("\n".join(lines[:_SPEC_STATUS_WINDOW]))
+        if m:
+            # ⚠ THE STATEMENT, NOT THE LINE. The matcher LOCATES the status over a 40-line window but
+            # `[^\n]*` captures only to the end of that one line — so a status that WRAPS was judged on
+            # its first line alone. MEASURED: `**Status: all three lenses have signed off; the code is` /
+            # `awaiting merge.**` yielded a first line with no PRE token, and the gate stayed silent on
+            # a pre-shipping, release-named spec. The release's own design-of-record was the live
+            # instance (`awaiting merge` on line 4, which no predicate saw). The statement is the
+            # matched line plus its continuation up to a blank line, capped.
+            _ix = next((k for k, ln in enumerate(lines[:_SPEC_STATUS_WINDOW])
+                        if _SPEC_STATUS_LINE.match(ln)), None)
+            _jx = _ix
+            # ⚠ `_ix is not None` is a conjunct of the GUARD, not just of the ternary below: without it
+            # mypy cannot narrow `_ix` and `(_jx - _ix)` is an int-minus-optional.
+            while (_ix is not None and _jx is not None and _jx < len(lines)
+                   and lines[_jx].strip() and (_jx - _ix) < 3):
+                _jx += 1
+            stated = " ".join(ln.strip() for ln in lines[_ix:_jx]) if _ix is not None else m.group(0).strip()
+        else:
+            # The title-only form (`# … — spec DRAFT`) states a status with no `status` word at all.
+            stated = lines[0].strip() if lines and _SPEC_TITLE_DRAFT.search(lines[0]) else ""
+        if not stated:
+            continue
+        checked += 1
+        # ⚠ ONE string for BOTH predicates. The first draft matched DONE over a 60-char slice while PRE
+        # saw the whole line, so the two tests were about different text.
+        if not _SPEC_PRE_SHIPPING.search(stated) or spec_done(stated):
+            continue
+        named = [v for v, body in sections if spec.name in body]
+        if named:
+            err(f"{spec.name}: the header still states a pre-shipping status ({stated[:90]!r}) while "
+                f"CHANGELOG.md names this file in the v{named[0]} release section — the header is "
+                f"stale (state what shipped) or the citation is forward-looking (say so in the header)")
+    return checked
+
+
 def main() -> int:
     check_badge()
     check_links()
@@ -889,6 +1017,7 @@ def main() -> int:
     dated_eligible, dated_checked = check_version_statements()
     plugin_rows = check_plugin_table()
     status_headers = check_plugin_status_docs()
+    spec_status = check_spec_status()
     check_preview()
     if errors:
         print("✗ documentation gate FAILED:")
@@ -913,6 +1042,7 @@ def main() -> int:
           f"{dated_checked} of {dated_eligible} dated statements checked, "
           f"{plugin_rows} plugin-table rows, "
           f"{status_headers} plugin STATUS headers, "
+          f"{spec_status} spec status lines, "
           f"{len(DOCS)} files link-checked, "
           f"{len(REQUIRED_IN_README)} required strings unbroken, anchors balanced, "
           "preview current)")
