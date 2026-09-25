@@ -5,6 +5,59 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.62] — 2026-09-25
+
+**Patch — corrections to v0.4.61, found by its own review round after it shipped.** Every one is an
+instance of the class v0.4.61 was about: a surface asserting more than its operands support.
+
+### The figurable number
+
+v0.4.61's entry, its `SKILL.md` summary and its design-of-record all reported the RC-2 projection as
+**`1940 → False`**. The PIN asserts **1992**, and 1992 is what the fixture produces (a 29-char evicted
+line → `est_tokens` 8; 2000 − 8 = 1992). 1940 was the value from the RETIRED per-line-sum relief,
+carried forward when the pin was updated. ⚠ A release whose thesis is *asserted support* shipped an
+unreproducible figure on three surfaces — and the figure was contradicted by the pin the surfaces cite.
+
+### The gate read the wrong line
+
+`_SPEC_STATUS_LINE` took the FIRST line in its window containing the word `status` — which can be a
+PROSE MENTION above the real declaration. MEASURED on `docs/1.0-preflight.spec.md`: it matched line 5
+(`… call reads. Status per item: ✓ certified …`) and never the `**STATUS (2026-09-24): …**` at line 8
+that `LIVE_DOCS` reads — so the gate counted the file as EXAMINED while inspecting a sentence, and
+rewriting line 8 to DRAFT would have left it green. The matcher now ranks a DECLARATION above a mention.
+
+⚠ **That fix moved the census a THIRD time, and the third move is the interesting one.** The count went
+13 (line-anchored) → 14 (word anywhere) → **13** (declaration ranked first), because the widened form
+had been reading `env-preflight.spec.md`'s first line and missing the “Shipped in v0.4.16” four lines
+below it. **One of the 14 sweeps was therefore unnecessary** — `env-preflight` was never stale. Nothing
+was lost (its drafting-era text is preserved verbatim), and the count is now stated with the instrument
+that produced it. A gate's number is a property of its matcher.
+
+### Three more, each a claim its operand could not carry
+
+- The suppressed relay in `seed_record` used `.get(k, DEFAULT)`: `reaches_budget` defaulted **True** —
+  the OPTIMISTIC direction on the very field that SELECTS a rendered remedy, which is RC-2's own thesis
+  re-committed inside RC-2's own relay — and the counts defaulted 0. Now **presence-gated per key**, so
+  a value the triage never supplied is absent rather than asserted. (The `mirror_share` half of this
+  was fixed in the same round; the rest was not.)
+- `_remediation_section`'s new fall-through gated on `stages` while `render_dashboard` gates on
+  `candidates_surfaced` — two renderers of one block disagreeing about what “the triage ran” means, and
+  the tail's hard subscripts (`rem['keep_core']` et al.) would `KeyError` on a record-shaped dict. One
+  predicate now opens the block, and the tail is presence-gated so it stops where its data stops.
+- A code comment justified the relay as serving “the DASHBOARD, which CLAUDE.md names as the end-user
+  deliverable”. **CLAUDE.md makes no such claim**: the artifact SKILL.md Phase 5 points an END USER at
+  is `dashboards/index.html`. Corrected there and in the entry.
+
+⚠ **Standing lesson (new):** the same class bit this release's own MEASUREMENT twice — two throwaway
+scripts of mine re-implemented the gate's window-slice and disagreed with it (13 vs 14). **Measure with
+the instrument, not a copy of it**; the copy diverges exactly where the rule is subtle.
+
+### Measured
+
+- smoke **2345 passed, 0 failed**; the pre-fix tree with the same pins reads **2333 passed, 12 failed**.
+- `docs_links` green (51 status lines). manifests · sim · mypy 0 issues in 42 files.
+- 1343 browser checks; the committed preview regenerated.
+
 ## [0.4.61] — 2026-09-24
 
 **Patch — asserted support: four surfaces that asserted a verdict their operands did not support. ⚠ The
@@ -41,7 +94,9 @@ constant read 30 against the 58.3 tok/pointer this store's own archive had alrea
 advice the D5 clause exists to replace with prune-THEN-justify.
 
 MEASURED: the model computed `keep_core(1) × 30 = 30` → `reaches_budget True`; the measured computation
-gives **1940 → False**. They disagree on the verdict. `_LEAN_HOOK_TOK` is **deleted, not retuned** — the
+gives **1992 → False** (⚠ CORRECTED after release: this said 1940 — the value from the retired
+per-line-sum relief — while the PIN already asserted 1992. Caught by a late review lens that
+re-derived it from the fixture the entry cites rather than from the entry.) They disagree on the verdict. `_LEAN_HOOK_TOK` is **deleted, not retuned** — the
 relief is now the evicted candidates' own pointer-line costs, read from the index, and an unreadable index
 frees **nothing** (the pessimistic direction, so a store we could not scan is never told a prune will reach
 budget).
@@ -54,10 +109,12 @@ followed found **14**. `tests/docs_links.py` gains `check_spec_status` — a `do
 states a pre-shipping state while `CHANGELOG.md` names it inside a `## [X.Y.Z]` release section is a RED.
 ⚠ The rule is **versioned on purpose**: its first form ("cited anywhere in CHANGELOG") was **circular**,
 the same signal serving as the rule's input and as the evidence that the work had landed. It fires on
-exactly 14 — see the review round below, which widened the matcher after a lens measured a file it
-could not see.
+exactly 13 release-named, of 16 pre-shipping — ⚠ and this number moved TWICE, once per matcher fix, which
+is why it is stated with the instrument that produced it (see the review round below).
 
-The 14 headers are swept. ⚠ Two claims from the v0.4.60 checkpoint PR are corrected: its **commit message**
+14 headers are swept — ⚠ one more than the 13 the shipped matcher finds, because `env-preflight.spec.md`
+already said "Shipped in v0.4.16" and the narrower matcher could not read that far. Fixing the matcher
+changed the census; the extra sweep was harmless and nothing was lost. ⚠ Two claims from the v0.4.60 checkpoint PR are corrected: its **commit message**
 says FOUR where a census finds 14 — a commit message is immutable, so the correction lands on the readable
 surfaces — and **three** spec notes said *"nothing reads a spec's own header"*, where the true and narrower
 statement is that no gate read a spec's status **WORD** (`docs/1.0-preflight.spec.md` IS in `LIVE_DOCS`, and

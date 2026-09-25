@@ -885,7 +885,15 @@ def check_preview() -> None:
 # CHANGELOG §0.4.8, so a stale, release-named drafting line survived the very sweep written to catch
 # it. A gate whose matcher assumes a SPELLING has a blind spot proportional to the spelling.
 # `.*?` (lazy, no DOTALL) matches the minimal prefix on the line, so the word may sit anywhere in it.
-_SPEC_STATUS_LINE = re.compile(r"(?im)^.*?\bstatus\b[^\n]*")
+# ⚠ TWO SHAPES, RANKED. A bare `\bstatus\b` search takes the FIRST line that merely CONTAINS the
+# word — which can be a PROSE MENTION sitting above the real declaration. MEASURED on
+# `docs/1.0-preflight.spec.md`: it matched line 5 (`… call reads. Status per item: ✓ certified …`) and
+# never the `**STATUS (2026-09-24): …**` at line 8 that `LIVE_DOCS` reads — so the gate counted the
+# file as EXAMINED while inspecting a sentence, and rewriting line 8 to DRAFT would have left it
+# green. A declaration wins over a mention; a mention is still accepted, because a status stated
+# mid-sentence is a real shape (see `cm-commands-onboarding.spec.md`).
+_SPEC_STATUS_DECL = re.compile(r"(?im)^\s*[>*_\-]*\s*\**\s*status\b[^\n]*")
+_SPEC_STATUS_MENTION = re.compile(r"(?im)^.*?\bstatus\b[^\n]*")
 # ⚠ …and a window, not a line 1. Two specs state their status further down a header the v0.4.61 sweep
 # itself lengthened, and two state it as a title (`— spec DRAFT`), which carries no `status` word at
 # all. Both were invisible to a 14-line, `status`-only search.
@@ -944,10 +952,12 @@ def check_spec_status() -> int:
     ⚠ WHY THIS EXISTS. `LIVE_DOCS` is a VERSION-CURRENCY set — membership means "this doc's version
     statement goes stale when a release lands". A spec's STATUS is a different axis and was in NO
     set, so a drafting-era line could survive every check: four headers did, for months, with the
-    whole suite green, and the census that followed found SIXTEEN pre-shipping headers, 14 of them
-    release-named (docs/asserted-support.spec.md §RC-4) — and the first matcher saw only 13 of the
-    14, which is this docstring’s own lesson turned on it. Nothing ever REVISITS a spec header once
-    the arc closes. That is `gate-coverage-is-its-match-set` — a gate proves only what its
+    whole suite green, and the census that followed found SIXTEEN pre-shipping headers, 13 of them
+    release-named under THIS matcher (docs/asserted-support.spec.md §RC-4). ⚠ That count moved TWICE,
+    once per matcher fix — 13, then 14 when the word was searched anywhere on the line, then 13 again
+    when a DECLARATION was ranked above a prose mention — which is this docstring's own lesson turned
+    on it: a gate's NUMBER is a property of its matcher, and every fix to one must re-measure the other.
+    Nothing ever REVISITS a spec header once the arc closes. That is `gate-coverage-is-its-match-set` — a gate proves only what its
     matcher can see.
 
     ⚠ THE RULE IS VERSIONED ON PURPOSE. Its first form was "cited ANYWHERE in CHANGELOG", and that
@@ -970,7 +980,8 @@ def check_spec_status() -> int:
     checked = 0
     for spec in sorted((ROOT / "docs").glob("*.spec.md")):
         lines = spec.read_text(encoding="utf-8", errors="replace").splitlines()
-        m = _SPEC_STATUS_LINE.search("\n".join(lines[:_SPEC_STATUS_WINDOW]))
+        _win = "\n".join(lines[:_SPEC_STATUS_WINDOW])
+        m = _SPEC_STATUS_DECL.search(_win) or _SPEC_STATUS_MENTION.search(_win)
         if m:
             # ⚠ THE STATEMENT, NOT THE LINE. The matcher LOCATES the status over a 40-line window but
             # `[^\n]*` captures only to the end of that one line — so a status that WRAPS was judged on
@@ -980,7 +991,7 @@ def check_spec_status() -> int:
             # instance (`awaiting merge` on line 4, which no predicate saw). The statement is the
             # matched line plus its continuation up to a blank line, capped.
             _ix = next((k for k, ln in enumerate(lines[:_SPEC_STATUS_WINDOW])
-                        if _SPEC_STATUS_LINE.match(ln)), None)
+                        if _SPEC_STATUS_DECL.match(ln) or _SPEC_STATUS_MENTION.match(ln)), None)
             _jx = _ix
             # ⚠ `_ix is not None` is a conjunct of the GUARD, not just of the ternary below: without it
             # mypy cannot narrow `_ix` and `(_jx - _ix)` is an int-minus-optional.
