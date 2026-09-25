@@ -89,7 +89,11 @@ docstring says so.
 
 ### Measured
 
-- `tests/smoke.py` **2364 passed / 0 failed**. On a **FULL COPY** of the pre-fix tree with only
+- `tests/smoke.py` **2365 passed / 0 failed** — ⚠ **CORRECTED at v0.4.65.** This line said **2364**,
+  because the figure was written after the release's first commit and this entry's own review round
+  then ADDED O5, taking the suite to 2365 — the number was never re-read after the edit that moved it.
+  Re-measured on the released revision `435ccb5`: **2365 passed, 0 failed**. A count belongs to the
+  revision it was measured on, and this one was carried. On a **FULL COPY** of the pre-fix tree with only
   `docs_links.py` restored — `git checkout -f`, **markers verified at 0 BEFORE measuring** (the void-run
   defect recorded at v0.4.63) — **2362 / 2**, the two reds being exactly the two new pins: O1 (the
   provenance boundary) and O2 (the preamble bound). Both assert **silence**, so they redden pre-fix **by
