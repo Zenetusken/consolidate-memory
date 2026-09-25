@@ -5,6 +5,44 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.65] — 2026-09-25
+
+**Patch — the findings the v0.4.64 review agents were holding, and a released figure that was wrong.**
+
+The v0.4.64 review fan-out lost six agents' findings to a **delivery budget**: the harness caps a whole
+agent drain at **16,000 characters SHARED** across every agent completing together, and caps each string
+inside a structured result at **256**. Six agents finished within six minutes and the first one's payload
+consumed the pot. Re-queried with file-based delivery — full findings to disk, a three-field reply — they
+returned in full: **six agents, six replies, all under 350 characters, zero truncation.**
+
+### Fixed
+
+- ⚠ **A performance regression v0.4.64 introduced.** `_spec_header_end` collapsed to a `min` of three
+  `next(...)` calls — an idiom a review lens suggested, adopted after proving equivalence **by result**.
+  By result it was identical. By **cost** it was not: both scans ran unbounded, so a spec whose heading
+  sits at line 8 still had every line searched for a provenance note. MEASURED: **15,074** provenance
+  searches over the corpus against **968** bounded — in a gate that runs in CI, against specs up to
+  **3,646** lines. Both scans are now bounded; **0 of 58 results differ**.
+- ⚠ **The released v0.4.64 entry understated its own suite by one** — it said 2364 where `435ccb5`
+  reports **2365**. The figure was written before the review round that ADDED a check, and never re-read.
+- **A check that added no coverage**: the "O3 control" was **byte-identical to the v0.4.63 A4 pin's
+  fixture**. Removed, and the D6 constant re-bumped.
+- **Eight claims** in the v0.4.64 prose that outran their operands — including one sentence that flipped
+  **three times**, where both of my versions *and* a reviewer's "correction" were wrong because all three
+  measured a **neighbour** of the operand the claim turns on (`_pending` is False for every spec in the
+  arm's population; the `named` citation set was irrelevant to it).
+
+### ⚠ Recorded, not closed
+
+Mutation testing found **five behaviours no check witnesses** — the suite stays green with each one
+changed: unbinding the status **window** (only the *target scan*'s use of the region is pinned);
+the boundary's **side** (off-by-one on the note term); the **cap** term (deleting it, or 120 → 10⁹);
+the two-arm **`elif`** → `if`; and re-adding the `spec_done` guard the source forbids. **Two thirds of
+what v0.4.64 changed is unwitnessed.** Named here rather than left as an implication that something
+covers it.
+
+Measured: `tests/smoke.py` **2364 / 0** · `docs_links` **52** spec status lines · `mypy` 0 in 42 files.
+
 ## [0.4.64] — 2026-09-25
 
 **Patch — the target arm's OPERAND, and three claims its code does not support.** All four were found by
@@ -31,12 +69,20 @@ specs** — the arm was reading preserved *history* as the header's own target f
 dropped its `>`, so the retired line's tail reads as ordinary text. (This entry first said all 12 were
 "inside the blockquote", which a review lens measured false. The case is also the design's own
 argument: a boundary anchored on `>` prefixes would MISS it, which is why it is anchored on the
-provenance NOTE.) It fires on none today — but ⚠ **not** for the reason this entry first
-gave (`_pending`), which a review lens refuted by measurement. MEASURED: **all 5** specs in the arm's
-region-population are **already cited** in a `## [X.Y.Z]` section, so the CITATION arm
-(`if _pending and named`) **preempts** this one (`elif _tgt and _pending`) for every one of them. The
-arm's zero is **STRUCTURAL — it is the `elif`** — and no `_pending` value could revive it. So the
-operand was wrong *and* the arm was doubly unreachable for what it was built for.
+provenance NOTE.) It fires on none today because **`_pending` is False** for every one of them —
+headers the sweep already corrected to `SHIPPED (vX)`, so no arm has anything to catch. The first
+draft of this entry said that, and it was RIGHT.
+
+⚠ **AND THIS SENTENCE FLIPPED THREE TIMES — that is the real finding here.** (2) A review lens
+reported the opposite: *"all 5 are already cited, so the CITATION arm preempts this one; the zero is
+STRUCTURAL, it is the `elif`"* — and it was adopted into this entry. It is **false**: `if _pending and
+named` needs `_pending` TOO, so a cited-but-settled header preempts nothing. The lens measured
+**citedness**, observed a correlated fact, and mis-attributed the cause. (3) A second lens measured
+the operand that actually decides it — `_pending` is **False for all 5** — restoring the first draft.
+⚠ **I propagated (2) having checked `named` and never `_pending`** — the *same* incomplete operand as
+the finding I adopted. That is `a-reviewers-correction-is-an-unaudited-claim`, committed twice against
+the very claim this release is about. The lesson is not "trust the third measurement": it is
+**measure the operand the claim turns on** — and both of us measured a neighbour of it.
 
 ⚠ **AND THE CAUSALITY, which is the sharper finding.** The operand was **correct when the arm was
 authored**. At `f0a4b75` — the commit before it — `docs/asserted-support.spec.md:7` read
@@ -45,7 +91,9 @@ that header in the same commit, moving that exact line into the `>` blockquote. 
 arrival **for its own two motivating instances**: `_targets` is now empty for both, and no `_pending`
 value can revive them. **The sweep moved the lines the arm reads.** A repair can invalidate its own
 instrument, and here it did so within a single commit — which is why the arm's remaining population
-(5, asserted by a new CONTROL) is a *different* population from the one that justified building it.
+(5 — ⚠ **a measurement, not a mechanically-asserted figure**; an earlier draft of this entry said
+"asserted by a new CONTROL", which no check does — see the note on the CONTROL below) is a *different*
+population from the one that justified building it.
 
 After the fix the arm keeps a live region-population of **5** (17 = 12 + 5). ⚠ **That 5 is a prose
 figure with no mechanical guard** — an earlier draft of this entry said "asserted rather than assumed"
@@ -63,12 +111,14 @@ docstring says so.
   are named *"NOWHERE in CHANGELOG.md — the citation OPERAND hides them, not the matcher"*. True when
   written (`24e2ea8`); **false one commit later**, when `e0a8970` — a **descendant** of that commit — swept
   the headers and added both citations. All 17 target-bearing specs are named there and the arm fires on
-  **zero**. The repair invalidated its own diagnosis. Corrected on **SIX** surfaces, two of them
-  user-visible (the pin's own check **label** and the SKILL blurb), each now stating the fact
-  historically — the rationale is kept, not deleted. ⚠ **This sentence said "five" in the first
-  pass, and MISSED one** — `smoke.py`'s A4 comment, three lines above the call it annotates, sat
-  uncorrected while the release note claimed the claim was corrected. So the note asserting the
-  repair was itself over-claiming: the same defect, one layer up, caught by the review round.
+  **zero**. The repair invalidated its own diagnosis. Corrected on every surface it appears on —
+  **enumerated, not counted**, because the count has been wrong twice: its own clause in this entry,
+  the A5 clause beside it, `docs_links.py`'s `_SPEC_TARGET_RELEASE` comment, `smoke.py`'s A4
+  pin-block comment, that pin's **check label** (user-visible), and the SKILL blurb above. Two are
+  user-visible; each now states the fact historically, and the rationale is kept, not deleted.
+  ⚠ **This sentence said "five" in the first pass and MISSED `smoke.py`'s A4 comment**, then said
+  "six" and was off again — the note asserting the repair was itself over-claiming, the same defect
+  one layer up. **A count is a claim; an enumeration is a list.**
 - **`:1004-1006` claimed a suppression never implemented** — *"an UNSHIPPED target anywhere in the preamble
   suppresses the arm"*. The code filters to targets that HAVE shipped, so a header naming both a shipped
   and an unshipped target **fires**. Corrected to match the code, keeping the gate recall-biased.
@@ -77,7 +127,11 @@ docstring says so.
 
 ### Measured
 
-- `tests/smoke.py` **2364 passed / 0 failed**. On a **FULL COPY** of the pre-fix tree with only
+- `tests/smoke.py` **2365 passed / 0 failed** — ⚠ **CORRECTED at v0.4.65.** This line said **2364**,
+  because the figure was written after the release's first commit and this entry's own review round
+  then ADDED O5, taking the suite to 2365 — the number was never re-read after the edit that moved it.
+  Re-measured on the released revision `435ccb5`: **2365 passed, 0 failed**. A count belongs to the
+  revision it was measured on, and this one was carried. On a **FULL COPY** of the pre-fix tree with only
   `docs_links.py` restored — `git checkout -f`, **markers verified at 0 BEFORE measuring** (the void-run
   defect recorded at v0.4.63) — **2362 / 2**, the two reds being exactly the two new pins: O1 (the
   provenance boundary) and O2 (the preamble bound). Both assert **silence**, so they redden pre-fix **by
@@ -91,8 +145,14 @@ docstring says so.
   excludes, because `_cut2` truncates at the provenance phrase and keeps whatever precedes it on
   that line. It is a GUARD, not a pin.
 - `tests/docs_links.py` green at **52** spec status lines — **unchanged**, measured before the edit and
-  re-measured after rather than carried. (A mid-line provenance note would have made the line-index cut
-  stricter than the char-index cut it replaces; none exists.)
+  re-measured after rather than carried. ⚠ **CORRECTED at v0.4.65:** this line said *"a mid-line
+  provenance note would have made the line-index cut stricter than the char-index cut it replaces;
+  none exists"* — and **"none exists" is false as measured: 26 specs carry a provenance phrase with a
+  prefix, 4 of them with a non-markup prefix.** The shape is *established*, not absent. The
+  denominator holds at 52 for a narrower reason: none of those 26 pairs the note with a declaration on
+  the SAME line, which is the condition that would actually drop a spec. Recorded rather than quietly
+  re-worded, because "the thing that would break this does not exist" is the claim most worth
+  measuring and this one was not.
 - `validate_manifests` · `simulate_accumulation` · `mypy` 0 issues in 42 files.
 
 ⚠ **Two of the four defects have no observable** — both are comment corrections — so they carry no pin.
