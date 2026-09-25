@@ -63,7 +63,9 @@ The operator correctly read this as "something is wrong in the system or the ass
   lever cascade (archive → KEEP-veto; gc → all canonicals content-fit; prune → nothing safely evictable)
   **terminates in `justify` every time**. The 2026-07-04T04:43 record shows the endpoint: script triage
   routed `gc` (mirror share 61% > `_MIRROR_DOMINATED`) and projected `reaches_budget=True` (keep_core ×
-  `_LEAN_HOOK_TOK` ≈ 720 ≤ 1500), yet the recorded block says `justify` / `reaches_budget=false` — the
+  `_LEAN_HOOK_TOK` ≈ 720 ≤ 1500 — ⚠ **that model was RETIRED at v0.4.61**: `projected_index` is now
+  the index after EVICTING THE CANDIDATES, measured from the index's own pointer lines, so this
+  record's projection would be computed differently today; the field's DECLARATION never changed), yet the recorded block says `justify` / `reaches_budget=false` — the
   merit-framed judgment overrode the script's own projection.
 - **The over-target state already costs knowledge.** The M1 auto-hold (`sync_global.py:1593`, keyed to
   `INDEX_TOKEN_BUDGET`) has withheld 2 relevant globals (`no-failure-masking-fallbacks` [user-global],

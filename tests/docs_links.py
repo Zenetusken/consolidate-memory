@@ -878,11 +878,30 @@ def check_preview() -> None:
         # which is why nothing is re-added here.
 
 
-_SPEC_STATUS_LINE = re.compile(r"^\s*[>*_\-]*\s*\**\s*status[^\n]*", re.I | re.M)
+# v0.4.61 (RC-4): the matcher must not assume a header LEADs with its status word.
+# ⚠ The first draft was `^\s*[>*_\-]*\s*\**\s*status…` — anchored on `status` starting the line — and
+# a review lens measured the cost: `docs/cm-commands-onboarding.spec.md:3` reads
+# `**Design-of-record for the five UX verbs…** Status: draft for advisor pass → …` and was NAMED in
+# CHANGELOG §0.4.8, so a stale, release-named drafting line survived the very sweep written to catch
+# it. A gate whose matcher assumes a SPELLING has a blind spot proportional to the spelling.
+# `.*?` (lazy, no DOTALL) matches the minimal prefix on the line, so the word may sit anywhere in it.
+_SPEC_STATUS_LINE = re.compile(r"(?im)^.*?\bstatus\b[^\n]*")
+# ⚠ …and a window, not a line 1. Two specs state their status further down a header the v0.4.61 sweep
+# itself lengthened, and two state it as a title (`— spec DRAFT`), which carries no `status` word at
+# all. Both were invisible to a 14-line, `status`-only search.
+_SPEC_STATUS_WINDOW = 40
+_SPEC_TITLE_DRAFT = re.compile(r"(?i)\bdraft\b")
+# ⚠ `_SPEC_DONE` must be NEGATION-AWARE, and both predicates must see the SAME string. The first draft
+# matched DONE over `line[:60]` while PRE saw the whole line — two predicates over two strings — and
+# DONE was negation-blind, so `awaiting approval; nothing shipped yet` and `drafted, unimplemented`
+# were both EXEMPTED by the very words that state the defect. A silent false negative on a coverage
+# gate is the failure this repo has a standing lesson about.
 _SPEC_PRE_SHIPPING = re.compile(
-    r"draft|awaiting|→\s*implementation|for adversarial review|pending merge|proposed v|"
-    r"amend-\d+ folded|review-to-zero", re.I)
-_SPEC_DONE = re.compile(r"SHIPPED|shipped|implemented|implementation complete", re.I)
+    r"draft|awaiting|pending|→\s*implementation|for adversarial review|proposed v|"
+    r"amend-\d+ folded|review-to-zero|unimplemented|nothing shipped", re.I)
+_SPEC_DONE = re.compile(
+    r"(?<!un)(?<!not )(?<!nothing )(?<!never )\b(?:SHIPPED|shipped|implemented|implementation"
+    r" complete)\b", re.I)
 _RELEASE_SECTION = re.compile(r"^##\s*\[(\d+\.\d+\.\d+)\]", re.M)
 
 
@@ -922,19 +941,25 @@ def check_spec_status() -> int:
     sections = release_sections(read("CHANGELOG.md"))
     checked = 0
     for spec in sorted((ROOT / "docs").glob("*.spec.md")):
-        head = "\n".join(spec.read_text(encoding="utf-8", errors="replace").splitlines()[:14])
-        m = _SPEC_STATUS_LINE.search(head)
-        if not m:
+        lines = spec.read_text(encoding="utf-8", errors="replace").splitlines()
+        m = _SPEC_STATUS_LINE.search("\n".join(lines[:_SPEC_STATUS_WINDOW]))
+        if m:
+            stated = m.group(0).strip()
+        else:
+            # The title-only form (`# … — spec DRAFT`) states a status with no `status` word at all.
+            stated = lines[0].strip() if lines and _SPEC_TITLE_DRAFT.search(lines[0]) else ""
+        if not stated:
             continue
         checked += 1
-        line = m.group(0).strip()
-        if not _SPEC_PRE_SHIPPING.search(line) or _SPEC_DONE.search(line[:60]):
+        # ⚠ ONE string for BOTH predicates. The first draft matched DONE over a 60-char slice while PRE
+        # saw the whole line, so the two tests were about different text.
+        if not _SPEC_PRE_SHIPPING.search(stated) or _SPEC_DONE.search(stated):
             continue
         named = [v for v, body in sections if spec.name in body]
         if named:
-            err(f"{spec.name}: the header still reads {line[:90]!r} while CHANGELOG.md names this "
-                f"file in the v{named[0]} release section — the header is stale (state what shipped) "
-                f"or the citation is forward-looking (say so in the header)")
+            err(f"{spec.name}: the header still states a pre-shipping status ({stated[:90]!r}) while "
+                f"CHANGELOG.md names this file in the v{named[0]} release section — the header is "
+                f"stale (state what shipped) or the citation is forward-looking (say so in the header)")
     return checked
 
 

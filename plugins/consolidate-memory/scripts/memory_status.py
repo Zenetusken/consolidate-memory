@@ -1775,7 +1775,7 @@ def classify_store_doc(path: Path) -> str:
 
 
 def _index_after_prune(index_tokens: int, indexed_candidates: list,
-                       pointer_line_tokens: "dict | None") -> int:
+                       pointer_line_texts: "dict | None") -> int:
     """v0.4.61 (RC-2): the index size AFTER EVICTING THE CANDIDATES — the quantity
     `Remediation.projected_index` has declared since v0.1.18 ("est index tokens after evicting the
     candidates"), and the one `reaches_budget` keys the rendered D5 remedy on.
@@ -1788,18 +1788,27 @@ def _index_after_prune(index_tokens: int, indexed_candidates: list,
 
     PURE. Only INDEXED candidates free index tokens: the A_orphans stage is unindexed by construction
     (0 relief, as its label already says), and R_referenced is unindexed-but-reachable — a lean rebuild
-    RE-INDEXES it rather than pruning it, so it is not relief either. ⚠ `pointer_line_tokens` missing
-    (an absent or unreadable index) or missing a stem contributes 0 — the PESSIMISTIC direction, so a
-    store we could not measure is never told that a prune will reach budget."""
-    _line = pointer_line_tokens or {}
-    relief = sum(int(_line.get(c["stem"], 0)) for c in indexed_candidates)
-    return max(0, index_tokens - relief)
+    RE-INDEXES it rather than pruning it, so it is not relief either.
+
+    ⚠ **BOTH arms move in the PESSIMISTIC direction**, which is the whole point of the function on a
+    gate: a store we could not measure must never be told that a prune will reach budget.
+    - `pointer_line_texts` missing (an absent or unreadable index), or missing a stem → that candidate
+      frees nothing → `projected_index` stays high → `reaches_budget` False.
+    - ⚠ The relief is `est_tokens` over the JOINED evicted lines, NOT the sum of per-line estimates.
+      `est_tokens` rounds up PER CALL, so summing N of them over-counts by up to (N-1)/4 tokens and
+      would subtract more than the lines hold — an OPTIMISTIC bias, the wrong direction for the D5
+      remedy boundary. The joined form carries exactly one rounding, the same measure the index total
+      was taken with, so the subtraction is like-for-like."""
+    _texts = [t for c in indexed_candidates if (t := (pointer_line_texts or {}).get(c["stem"]))]
+    if not _texts:
+        return index_tokens
+    return max(0, index_tokens - est_tokens("\n".join(_texts)))
 
 
 def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
                        mirror_index_tokens: int, budget: int = INDEX_TOKEN_BUDGET,
                        reference_stems: set | None = None,
-                       pointer_line_tokens: "dict | None" = None) -> dict:
+                       pointer_line_texts: "dict | None" = None) -> dict:
     """PURE: for an OVER-budget store, rank LOCAL prune candidates into cost-ordered STAGES + route the lever.
     Returns {} when the index is under budget (no false alarm on a healthy store). Heuristics RANK/surface;
     they NEVER decide durability (empirics: name/date mis-classifies) — the model judges content, the user
@@ -1849,7 +1858,7 @@ def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
         stage.sort(key=lambda c: -c["body_tokens"])
     cands = A + B + C                        # R is NOT a safe-evict candidate (referenced elsewhere) — surfaced separately
     lever = "gc" if share > _MIRROR_DOMINATED else ("prune" if cands else "justify")
-    _projected_index = _index_after_prune(index_tokens, B + C, pointer_line_tokens)
+    _projected_index = _index_after_prune(index_tokens, B + C, pointer_line_texts)
     return {
         "required": True, "lever": lever,
         # `mirror_share` is the OPERAND, not a display value — unrounded, so a consumer re-testing
@@ -3655,16 +3664,20 @@ def build_context(project_dir: Path) -> dict:
             except OSError:
                 continue
         _idx_text = index_path.read_text(encoding="utf-8", errors="replace") if index_path.exists() else ""
-        _mirror_idx = [ln for ln in _idx_text.splitlines()
-                       if (m := _LINK_RE.search(ln)) and m.group(1) in mirror_stems]
-        # v0.4.61 (RC-2): each pointer line's OWN cost, keyed by stem — the operand `projected_index`
-        # needs to mean "after evicting the candidates". Accumulated from a second pass over the same
-        # `splitlines()` list (the text is already in memory); there is ONE index parse, not two.
-        _line_tok: dict = {}
+        # v0.4.61 (RC-2): the pointer lines, by stem — the operand `projected_index` needs to mean
+        # "after evicting the candidates". ⚠ ONE walk collecting BOTH consumers (the mirror subset and
+        # the per-stem line TEXT): two comprehensions over the same `splitlines()` list is the
+        # two-enumerations shape this file already has a lesson about, and the first cut did exactly
+        # that. The TEXT is carried, not a per-line token count, so `_index_after_prune` can take one
+        # `est_tokens` over the joined block — see its docstring for why that direction matters.
+        _mirror_idx: list = []
+        _line_text: dict = {}
         for _ln in _idx_text.splitlines():
             _lm = _LINK_RE.search(_ln)
             if _lm:
-                _line_tok.setdefault(_lm.group(1), est_tokens(_ln))
+                _line_text.setdefault(_lm.group(1), _ln)
+                if _lm.group(1) in mirror_stems:
+                    _mirror_idx.append(_ln)
         # C2 (v0.1.18.x): gather reference_stems from the OTHER always-loaded surfaces so a fact reachable
         # there is NOT mis-flagged as a safe-evict orphan. Two match modes (Gate-1 #5): archive-index docs →
         # link-targets; CLAUDE.md prose → bare-stem substring.
@@ -3709,7 +3722,7 @@ def build_context(project_dir: Path) -> dict:
                 continue
         remediation = remediation_triage(fact_files, index_names, index_lb[2],
                                          est_tokens("\n".join(_mirror_idx)), reference_stems=ref_stems,
-                                         pointer_line_tokens=_line_tok)
+                                         pointer_line_texts=_line_text)
         # v0.4.61 (RC-1): reached with `_sj_suppressed` when the index is over the HARD CEILING while the
         # target gate is standing-justified. The expensive block above ran for exactly one reason — the
         # ceiling line's stages are its remedy, and before this the suppressed branch never built them, so
@@ -4137,6 +4150,22 @@ def seed_record(ctx: dict) -> CycleRecord:
         record["remediation"] = {"required": False, "standing_justified": True,
                                  "baseline_facts": rem.get("baseline_facts", 0),
                                  "over_ceiling": bool(rem.get("over_ceiling"))}
+        # v0.4.61 (RC-1): ⚠ THE SUPPRESSION DOES NOT COVER THE CEILING'S INSTRUMENT. `build_context`
+        # builds the triage exactly when over_ceiling (the ceiling is standing-justify-INDEPENDENT),
+        # but this relay dropped it — so the DASHBOARD, which CLAUDE.md names as the end-user
+        # deliverable, kept printing "shrink to receive" over an empty space: the same "nothing is
+        # prunable" verdict the v0.4.61 repair removed one layer up. ⚠ Relay only what the triage
+        # actually supplied, so a SUPPRESSION WITHOUT an over-ceiling store keeps the lightweight
+        # form and every already-archived record renders exactly as it did.
+        if "stages" in rem:
+            record["remediation"].update({
+                "lever": rem.get("lever", ""),
+                "candidates_surfaced": rem.get("candidates", 0),
+                "projected_index": rem.get("projected_index", 0),
+                "projected_recall": rem.get("projected_recall", 0),
+                "reaches_budget": rem.get("reaches_budget", True),
+                "mirror_share": rem.get("mirror_share", 0.0),
+            })
     elif rem:
         record["remediation"] = {
             "required": rem["required"], "lever": rem["lever"],
@@ -5085,16 +5114,16 @@ def _remediation_section(rem: dict) -> list:
     # D8 (v0.1.21): lead with the INDEX-RELIEF stages (B/C move the gated index); R = de-link-first; A = disk-only LAST.
     for key, label in (("B_trackers", "tracker/status (transient)"),
                        ("C_dated_oversized", "dated/oversized (content-review — heuristic ranks, you JUDGE)")):
-        items = rem["stages"].get(key, [])
+        items = (rem.get("stages") or {}).get(key, [])
         if items:
             top = ", ".join(c["stem"] for c in items[:4]) + (f" +{len(items) - 4} more" if len(items) > 4 else "")
             out.append(_ui.li(f"{len(items):>2} {label}: " + _ui.c(top, "dim"), indent=4, bullet="↓", bullet_color="yellow"))
-    referenced = rem["stages"].get("R_referenced", [])
+    referenced = (rem.get("stages") or {}).get("R_referenced", [])
     if referenced:
         rtop = ", ".join(c["stem"] for c in referenced[:4]) + (f" +{len(referenced) - 4} more" if len(referenced) > 4 else "")
         out.append(_ui.li(f"{len(referenced):>2} referenced in CLAUDE.md/archive/wikilinks — NOT safe to evict; de-link FIRST: "
                           + _ui.c(rtop, "dim"), indent=4, bullet="⚠", bullet_color="red"))
-    orphans = rem["stages"].get("A_orphans", [])
+    orphans = (rem.get("stages") or {}).get("A_orphans", [])
     if orphans:
         otop = ", ".join(c["stem"] for c in orphans[:4]) + (f" +{len(orphans) - 4} more" if len(orphans) > 4 else "")
         out.append(_ui.li(f"{len(orphans):>2} TRUE orphans (disk hygiene — 0 index relief; evict / re-index): "

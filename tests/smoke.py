@@ -100,7 +100,7 @@ def _ms61(name: str, *a: Any, **k: Any) -> Any:
     are VALUES rather than a crashed run.
 
     ⚠ Same class as `_ens59` above, and it caught THIS pin set before it shipped. The v0.4.61 pins
-    call `_index_after_prune` (the fix ADDS it) and pass `pointer_line_tokens=` (the fix ADDS that
+    call `_index_after_prune` (the fix ADDS it) and pass `pointer_line_texts=` (the fix ADDS that
     parameter). On the PRE-FIX tree neither exists, so an unguarded call raises
     `AttributeError`/`TypeError` at MODULE SCOPE: the run ends with NO TOTALS LINE, D6 never runs,
     and every check after it is lost — a CRASH where a red belongs. MEASURED the first time these
@@ -4975,11 +4975,11 @@ with _tfB.TemporaryDirectory() as _tdB:
         # measured at roughly half the writer. `reaches_budget` keys a RENDERED remedy, so the two disagreeing
         # printed advice the store could not follow.
         # ⚠ EVERY call here goes through `_ms61`, because on the PRE-FIX tree `_index_after_prune` is
-        # absent and `remediation_triage` has no `pointer_line_tokens` parameter. Unguarded, either
+        # absent and `remediation_triage` has no `pointer_line_texts` parameter. Unguarded, either
         # raises at module scope and takes the whole run with it (no totals line, D6 never reached) —
         # the crash-class this repo has now met five times. `_ms61` returns the fault as a VALUE.
         check("v0.4.61 RC-2 (PIN): `projected_index` = the index MINUS the evicted candidates' own pointer lines — the declaration's quantity, measured from the index itself (pre-fix: the symbol does not exist, so this reports NOTHING-CALLED rather than a green)",
-              _ms61("_index_after_prune", 2000, [{"stem": "a"}, {"stem": "b"}], {"a": 50, "b": 60}) == 1890)
+              _ms61("_index_after_prune", 2000, [{"stem": "a"}, {"stem": "b"}], {"a": "x" * 50, "b": "x" * 60}) == 1972)
         check("v0.4.61 RC-2 (PIN): an UNMEASURABLE line set frees NOTHING — the pessimistic direction, so a store whose index could not be scanned is never told a prune will reach budget",
               _ms61("_index_after_prune", 2000, [{"stem": "a"}], None) == 2000
               and _ms61("_index_after_prune", 2000, [{"stem": "a"}], {}) == 2000)
@@ -4987,14 +4987,14 @@ with _tfB.TemporaryDirectory() as _tdB:
               not hasattr(ms, "_LEAN_HOOK_TOK"))
         _factsB = [p for p in sorted(_stB.glob("*.md")) if p.name != "MEMORY.md"]
         _trB = _ms61("remediation_triage", _factsB, {"f", "roadmap"}, 2000, 0, budget=1500,
-                     reference_stems=set(), pointer_line_tokens={"f": 40, "roadmap": 60})
+                     reference_stems=set(), pointer_line_texts={"roadmap": "- [roadmap](roadmap.md) — cue"})
         # ⚠ Both conjuncts are the point, and BOTH flip on the pre-fix tree: the model computed
         # `keep_core(1) * 30 = 30 ≤ 1500`, so it reported `reaches_budget: True` for a store whose real
-        # post-prune index is 1940 — it printed the `prune` remedy, which is the remedy the D5 clause exists
+        # post-prune index is 1992 — it printed the `prune` remedy, which is the remedy the D5 clause exists
         # to replace with prune-THEN-justify. `isinstance` first: pre-fix `_ms61` returns a STRING, and
         # `.get` on a string would itself crash the run.
         check("v0.4.61 RC-2 (PIN): the triage routes the MEASURED relief into the projection, and `reaches_budget` follows from it (pre-fix: 30 / True — a budget the store cannot reach, reported as reachable)",
-              isinstance(_trB, dict) and _trB.get("projected_index") == 1940
+              isinstance(_trB, dict) and _trB.get("projected_index") == 1992
               and _trB.get("reaches_budget") is False)
         _seedB = ms.seed_record(_sjB)
         check("v0.1.66 seed_record: over_ceiling relayed through the SJ branch + ceiling_tokens on budget.index",
@@ -23201,6 +23201,71 @@ check("v0.4.40 pin (the CONTROL for the check above: the same check FIRES on a m
       "which is the gap it was written to close): "
       f"⚠ {_psdbmsg40}", _psdb40)
 
+# --- v0.4.61 RC-4: a spec's STATUS WORD is now read by a gate --------------------------------
+# `LIVE_DOCS` is a VERSION-CURRENCY set; a spec's STATUS was in NO set, so a drafting-era header
+# survived every check — four did, for months, with the whole suite green, and the survey that
+# followed found 14. Nothing ever REVISITS a spec header once the arc closes. That is
+# `gate-coverage-is-its-match-set`: a gate proves only what its matcher can see.
+# ⚠ TWO ARMS, and they are not copies of one. The live arm is the VACUITY FLOOR: a glob that stops
+# matching reads `0 status lines` and prints exactly as green as a check that examined the tree.
+# The firing arm is the DISCRIMINATION. Both ride the `ROOT`-repoint trap the v0.4.40 pin above
+# documents — `PLUGIN`/`DOCS` are bound at import and do NOT move — so a repoint that no-opped
+# would read the LIVE corpus, which is swept and clean, and go GREEN rather than proving nothing.
+try:
+    _spsroot61 = _dl40.ROOT                     # the live tree, captured before anything moves
+    _spsn61 = len(_dl40.errors)
+    _spslive61 = _dl40.check_spec_status()
+    _spsliveerr61 = len(_dl40.errors) - _spsn61
+    del _dl40.errors[_spsn61:]
+    _spsa61 = _spslive61 >= 1 and _spsliveerr61 == 0
+    _spsamsg61 = f"live tree: {_spslive61} status line(s) checked, {_spsliveerr61} error(s)"
+
+    _spstmp61 = Path(_tfpsd40.mkdtemp(prefix="smoke-spec-status-"))
+    try:                                        # ── the firing arm, on a two-file tree ────────
+        (_spstmp61 / "docs").mkdir(parents=True)
+        _spsstale61 = _spstmp61 / "docs" / "stale.spec.md"
+        _spsstale61.write_text("# Stale spec\n\n**Status: draft for adversarial review.**\n",
+                               encoding="utf-8")
+        (_spstmp61 / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [0.1.0] — 2026-01-01\n\nshipped per docs/stale.spec.md\n",
+            encoding="utf-8")
+        _dl40.ROOT = _spstmp61
+        _spsn61b = len(_dl40.errors)
+        _dl40.check_spec_status()
+        _spserr61 = _dl40.errors[_spsn61b:]
+        del _dl40.errors[_spsn61b:]
+        _spsb61 = (len(_spserr61) == 1 and "stale.spec.md" in _spserr61[0]
+                   and "v0.1.0" in _spserr61[0])
+        # ── the CONTROL arm: the SAME fixture with its header stating what shipped stays GREEN.
+        # Without it the firing arm above is satisfied by a check that reds on every spec
+        # unconditionally — the blanket refusal this repo keeps having to kill.
+        _spsstale61.write_text("# Stale spec\n\n**Status: SHIPPED (v0.1.0)** — verified.\n",
+                               encoding="utf-8")
+        _spsn61c = len(_dl40.errors)
+        _dl40.check_spec_status()
+        _spscerr61 = len(_dl40.errors) - _spsn61c
+        del _dl40.errors[_spsn61c:]
+        _spsc61 = _spscerr61 == 0
+    finally:
+        _dl40.ROOT = _spsroot61                 # restored even if the arm itself blew up
+        _shpsd40.rmtree(_spstmp61, ignore_errors=True)
+    _spsbmsg61 = (f"firing arm: errors={len(_spserr61)} — {' '.join(_spserr61)[:150]} · "
+                  f"control arm: errors={_spscerr61}")
+except Exception as _spsx61:                    # a broken gate is RED, not a traceback
+    _spsa61 = _spsb61 = _spsc61 = False
+    _spsamsg61 = _spsbmsg61 = f"could not exercise it: {type(_spsx61).__name__}: {_spsx61}"
+
+check("v0.4.61 RC-4 pin (PIN — a spec's STATUS WORD is read AT ALL; pre-fix this fails by ABSENCE, "
+      "the committed validator has no `check_spec_status`, so the assertion can only have been "
+      f"satisfied by the function it is about): ⚠ {_spsamsg61}", _spsa61)
+check("v0.4.61 RC-4 pin (the FIRING arm: a header still saying 'draft' while CHANGELOG names the "
+      "spec inside a `## [X.Y.Z]` release section is RED, naming both the file and the release): "
+      f"⚠ {_spsbmsg61}", _spsb61)
+check("v0.4.61 RC-4 pin (the CONTROL for the arm above: the SAME fixture with its header stating "
+      "what shipped stays GREEN, so that arm is not satisfied by a check that reds on every spec "
+      "unconditionally. ⚠ It reds on the PRE-FIX tree too, by ABSENCE — paired with its sibling, "
+      f"which is the shape the v0.4.40 pin above established): ⚠ {_spsbmsg61}", _spsc61)
+
 # --- v0.4.41 R1: the timestamp fill must not mint a coordinate that never existed ------------
 # `reconcile_marker` copies the state file's `timestamp` into a record whose own is empty. Before
 # R1a that copy was UNCONDITIONAL, so a pass that had not re-stamped took the PREVIOUS cycle's time
@@ -26105,7 +26170,11 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     A ledger whose terms do not sum to its total is the
                                        #     defect; a ledger that sums and misattributes is the
                                        #     same defect with a green light.
-                            + 8        # v0.4.61 — ASSERTED SUPPORT (docs/asserted-support.spec.md).
+                            + 11       # v0.4.61 — ASSERTED SUPPORT (docs/asserted-support.spec.md).
+                                       #     RC-4, 3 checks: the vacuity floor (a spec status word
+                                       #     is read at all), the firing arm, and its CONTROL —
+                                       #     which reds pre-fix by ABSENCE, the shape the v0.4.40
+                                       #     pin established for this validator.
                                        #     RC-1, 4 checks: 3 PINs + 1 CONTROL — the ceiling's
                                        #     STAGES are standing-justify-independent at BOTH layers
                                        #     (the generator builds them on the suppressed path, the
@@ -26117,7 +26186,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     pessimistic unreadable arm, the retired constant) + the
                                        #     triage end-to-end. ⚠ BOTH conjuncts of that last one flip
                                        #     pre-fix: the model computed 30 / `reaches_budget` True for
-                                       #     a store whose real post-prune index is 1940 — the
+                                       #     a store whose real post-prune index is 1992 — the
                                        #     remedy-SELECTING field reading the wrong answer.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)

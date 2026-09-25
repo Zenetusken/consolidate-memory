@@ -1,10 +1,12 @@
 # Defect sweep — design-of-record
 
 **Status: SHIPPED (v0.4.21)** — verified against `CHANGELOG.md` §v0.4.21, which names this spec.
-> Drafting-era line, never revisited after the arc closed: Status: amend-2 folded (review-to-zero) → implementation.
-> (The class is now gated — `tests/docs_links.check_spec_status`.)
-Target release: **v0.4.21 (patch)** — six measured defects from the 2026-09-06 dream session,
-each root-caused at its source with a discriminating pin.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status: amend-2 folded (review-to-zero) → implementation.**
+> Target release: **v0.4.21 (patch)** — six measured defects from the 2026-09-06 dream session,
+> each root-caused at its source with a discriminating pin.
 
 ## §1 The six defects (each root-caused)
 

@@ -1,9 +1,11 @@
 # Dream narration teeth — design-of-record
 
 **Status: SHIPPED (v0.4.19)** — verified against `CHANGELOG.md` §v0.4.19, which names this spec.
-> Drafting-era line, never revisited after the arc closed: Status: amend-3 folded (re-review round 2) → final re-review → implementation.
-> (The class is now gated — `tests/docs_links.check_spec_status`.)
-Target release: **v0.4.19 (patch)** — additive detector + additive beta-oracle family; legacy records render.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status: amend-3 folded (re-review round 2) → final re-review → implementation.**
+> Target release: **v0.4.19 (patch)** — additive detector + additive beta-oracle family; legacy records render.
 
 ## §1 Context (measured)
 

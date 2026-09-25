@@ -764,12 +764,12 @@ def run() -> None:
         # them. ⚠ It used to assert the modelled `keep_core × _LEAN_HOOK_TOK` ("a projected lean rebuild
         # under budget"), which promised a hook compression the writer never performs; the assertion's
         # INTENT survives, its operand changes from a model to a measurement.
-        line_tok: dict = {}
+        line_text: dict = {}
         for _ln in (bl / "MEMORY.md").read_text(encoding="utf-8").splitlines():
             _m = ms._LINK_RE.search(_ln)
             if _m:
-                line_tok.setdefault(_m.group(1), ms.est_tokens(_ln))
-        tri = ms.remediation_triage(facts, idx_names, idx_tok, mir_tok, pointer_line_tokens=line_tok)
+                line_text.setdefault(_m.group(1), _ln)
+        tri = ms.remediation_triage(facts, idx_names, idx_tok, mir_tok, pointer_line_texts=line_text)
         st = tri.get("stages", {})
         over = idx_tok > ms.INDEX_TOKEN_BUDGET
         members_ok = (len(st.get("A_orphans", [])) == len(orphans)

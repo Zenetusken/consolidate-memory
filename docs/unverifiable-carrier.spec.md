@@ -5,10 +5,12 @@
 > them.
 
 **Status: SHIPPED (v0.4.22)** — verified against `CHANGELOG.md` §v0.4.22, which names this spec.
-> Drafting-era line, never revisited after the arc closed: Status: review-to-zero CLEAN (amend-2 verified) → implementation.
-> (The class is now gated — `tests/docs_links.check_spec_status`.)
-Target release: **v0.4.22 (patch)** — one measured defect from the 2026-09-06 dream
-session, root-caused at its source with a discriminating pin per layer.
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status: review-to-zero CLEAN (amend-2 verified) → implementation.**
+> Target release: **v0.4.22 (patch)** — one measured defect from the 2026-09-06 dream
+> session, root-caused at its source with a discriminating pin per layer.
 
 ## §1 The defect (root-caused, four layers)
 

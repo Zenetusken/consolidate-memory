@@ -1,6 +1,7 @@
 # Asserted support — design-of-record
 
-**Status: implemented on `arc-0.4.61-dream-defects` — awaiting `/code-review` and the PR.** Base
+**Status: implemented and REVIEWED (one round, 11 findings, 6 substantive ones patched — see §The
+review round in the CHANGELOG entry) on `arc-0.4.61-dream-defects` — awaiting merge.** Base
 revision `bb63015` (main @ v0.4.60). Target release **v0.4.61 (patch)** — every change is additive or a
 correction; no install/marketplace/schema contract moves.
 
@@ -29,12 +30,18 @@ the absence is a reader, and a drafting-era line reads as current.
 |---|---|---|
 | RC-1 | `memory_status.py` — the SJ branch + `_remediation_section` | the hard ceiling's relief candidates become computable while standing-justified |
 | RC-2 | `memory_status.py` — `remediation_triage` | `projected_index` / `reaches_budget` become the quantity their declarations name |
-| RC-3 | `CHANGELOG.md` + four `docs/*.spec.md` headers | two claims corrected to what a stated matcher measures |
+| RC-3 | the v0.4.60 checkpoint PR's claims (commit message + THREE spec notes) | two claims corrected to what a stated matcher measures |
 | RC-4 | `tests/docs_links.py` + 13 `docs/*.spec.md` headers | a gate over spec status lines, then the sweep it finds |
 
 Out of scope: `seed` (a canonical whose deletion the auto-mode classifier denied as an unrequested
-irreversible delete — it needs the user to name it); the index's own over-ceiling position (measured
-below, and there is no lesson-free relief).
+irreversible delete — it needs the user to name it).
+
+⚠ **A correction to this section's own first draft, kept rather than quietly edited.** It read *"the
+index's own over-ceiling position (measured below, and there is no lesson-free relief)"* — and **RC-1's
+repair disproves it**: with the stages visible, the ceiling IS locally satisfiable (a full prune frees
+3991 → 3587 tok). The clause inherited the dream's conclusion, and that conclusion was produced by the
+defect this spec exists to fix. A spec that silently adopted the finding it refutes would be the same
+error one level up.
 
 ## RC-1 — the ceiling's instrument is suppressed with the gate
 
@@ -59,9 +66,14 @@ path that had deliberately removed the instrument.
 this preserves). Then, when `over_ceiling` holds, build the stages regardless of the suppression, and have
 `_remediation_section` render them under the ceiling line.
 
-⚠ **One builder, not two.** The staging computation moves into a single helper called from both branches —
-this repo has a standing lesson about a rule copied into N places (roadmap: "reimplementation-pin"). A
-second copy is the divergence class the v0.4.59 arc closed twice.
+⚠ **One builder, not two — and this paragraph's first draft named a mechanism that was NOT shipped.**
+It said the staging computation "moves into a single helper called from both branches". What was done is
+narrower and better: the branch guard was widened to `_sj_suppressed and not _over_ceiling`, so the ONE
+EXISTING builder runs on the ceiling path too and the verdict is re-stamped after it. **No helper was
+added.** The outcome this paragraph demanded is honoured; the mechanism it named is not — and a reader
+checking the spec against the code would have found no such helper, which is the same class this document
+is about. (None is needed: the staging block is not a duplicated rule here, it is one block reached by two
+guards — which is what "one builder" was asking for.)
 
 ⚠ **Why the cost is acceptable.** The staging scan reads every fact body. It is skipped today on the
 *healthy* path (under budget, where `remediation_triage` short-circuits to `{}`). This change skips it on
@@ -108,7 +120,7 @@ the next reader finds why it is gone rather than re-deriving it.
 ⚠ **Measured on both trees, on the v0.4.61 fixture** (the RC-2 triage pin in `tests/smoke.py`): with two
 facts, one of them indexed and tracker-named, the model computed `keep_core(1) × 30 = 30` → `reaches_budget
 True`; the measured computation yields 1940 → `False`. They disagree on the VERDICT — the field that
-selects the rendered remedy. Pre-fix the suite reads `2333 passed, 7 failed`; post-fix `2340 passed, 0`.
+selects the rendered remedy. Pre-fix the suite reads `2333 passed, 10 failed`; post-fix `2343 passed, 0` (the count includes the three RC-4 pins below).
 
 ⚠ **And the fix rewrote THIS DREAM'S OWN CONCLUSION.** With the stages finally visible (RC-1), `--triage`
 on the live store reports **2 tracker/status + 6 dated/oversized** candidates, and a full prune frees
@@ -158,14 +170,24 @@ release. The class is `gate-coverage-is-its-match-set`: a gate proves only what 
 
 **The measured rule.** A `docs/*.spec.md` file whose header states a pre-shipping state **while
 CHANGELOG.md names that file inside a `## [X.Y.Z]` release section** is a contradiction. Measured on the
-live corpus (57 specs, 163 release sections):
+**re-measured after a review lens falsified the first census.** That matcher was anchored on `status`
+STARTING a line, so `docs/cm-commands-onboarding.spec.md:3` — `**Design-of-record for the five UX verbs…**
+Status: draft…`, named in CHANGELOG §0.4.8 — was invisible to it, and two specs stating a status as a
+TITLE (`— spec DRAFT`) carried no `status` word to find at all. Widened to the word anywhere in the first
+40 lines plus the title form:
 
 | population | count | fires? |
 |---|---|---|
-| header states a pre-shipping state, named in a release section | **13** | **yes** |
-| header states a pre-shipping state, in no release section | 1 | no |
-| header states done/implemented (the control) | 30 | no — all 30 are release-named, and the rule does not constrain them |
-| no status line at all | 13 | no |
+| header states a pre-shipping state, named in a release section | **14** | **yes** |
+| header states a pre-shipping state, in no release section | 2 | no — the rule cannot adjudicate them |
+| header states done/implemented (the control) | 30 | no — all release-named; the rule does not constrain them |
+
+Corpus at this revision: **58 specs, 164 release sections**. ⚠ The first draft said 57/163 — true only
+before this spec and its `## [0.4.61]` entry joined the globs it measures.
+
+⚠ **And 14 is a FLOOR, not a ceiling.** The two unadjudicable headers are stale in the same way; the rule
+simply has no versioned citation to contradict them. A gate's denominator is its matcher's reach — which
+is the sentence immediately above, applied to this gate.
 
 ⚠ **Why the release-section requirement, and not "cited somewhere in CHANGELOG".** The first form of this
 rule was measured as "referenced anywhere in CHANGELOG" and fired on 13 of 14 with 0 control failures —
@@ -201,6 +223,10 @@ each citing the release that names it.
   "projected index relief", which this spec updates to name what it now is.
 - **RC-4's rule can fire on a forward-looking citation.** Stated in the message; the remedy is the same
   either way. If it ever fires wrongly, the fix is to narrow the rule, never to silence the check.
-- **The index stays over its ceiling.** 3991 > 3840 with no lesson-free relief: 0 archive candidates, the
-  demotion trio counter-justified, GC not routed (mirror share 30%), nothing dead, and the only lever —
-  merging near-duplicate pointers — is a content decision for the user. Recorded, not patched here.
+- ⚠ **The index's over-ceiling position — CORRECTED, because this bullet's first draft asserted exactly
+  what RC-2 retracts.** It read *"3991 > 3840 with no lesson-free relief"*. With RC-1's stages visible, a
+  full prune of the **2 tracker/status + 6 dated/oversized** candidates frees **3991 → 3587 tok, under the
+  3840 ceiling** — the ceiling IS locally satisfiable, and the residual over-TARGET density is what needs
+  a standing-justification. Its numbers moved once RC-2 landed too, since `projected_index` is now the
+  measured quantity rather than the modelled one. What remains a user decision is the deeper lever:
+  merging near-duplicate pointers (the pin/observable cluster is 8 pointers, ≈400 tok).

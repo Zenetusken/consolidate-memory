@@ -7,11 +7,13 @@
 > against, never the state it produced.
 
 **Status: SHIPPED (v0.1.55)** — verified against `CHANGELOG.md` §v0.1.55, which names this spec.
-> Drafting-era line, never revisited after the arc closed: Status: draft → spec-review (design+prose lens, impl lens) → implement.
-> (The class is now gated — `tests/docs_links.check_spec_status`.)
-**Scope:** arc 2 of the 2026-07-01 directive ("The distill does nothing or is poorly
-implemented"). LOCAL detection quality + capture + instruction only — the cross-project
-tier and the persisted cross-dream tally stay DEFERRED per the standing plan; the
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status:** draft → spec-review (design+prose lens, impl lens) → implement.
+> **Scope:** arc 2 of the 2026-07-01 directive ("The distill does nothing or is poorly
+> implemented"). LOCAL detection quality + capture + instruction only — the cross-project
+> tier and the persisted cross-dream tally stay DEFERRED per the standing plan; the
 report-then-apply / never-auto-writes safety is untouched and out of scope for change.
 
 ## 1 · Problem (measured, 2026-07-02, on this repo's live corpus)

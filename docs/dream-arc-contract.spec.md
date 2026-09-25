@@ -1,9 +1,11 @@
 # The dream-arc contract — sleep → dream beats → wake (v0.1.54)
 
 **Status: SHIPPED (v0.4.1)** — verified against `CHANGELOG.md` §v0.4.1, which names this spec.
-> Drafting-era line, never revisited after the arc closed: Status: spec-review round 1 (design lens) resolved → awaiting impl-lens findings → prose gate → implement.
-> (The class is now gated — `tests/docs_links.check_spec_status`.)
-**Scope:** the dream-persona feature only (arc 1 of the 2026-07-01 directive; distill is arc 2, separately specced).
+
+> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM (the class is now gated by `tests/docs_links.check_spec_status`):
+>
+> **Status:** spec-review round 1 (design lens) resolved → awaiting impl-lens findings → prose gate → implement.
+> **Scope:** the dream-persona feature only (arc 1 of the 2026-07-01 directive; distill is arc 2, separately specced).
 
 ## 1 · Problem (measured)
 

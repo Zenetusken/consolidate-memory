@@ -54,18 +54,56 @@ followed found **14**. `tests/docs_links.py` gains `check_spec_status` — a `do
 states a pre-shipping state while `CHANGELOG.md` names it inside a `## [X.Y.Z]` release section is a RED.
 ⚠ The rule is **versioned on purpose**: its first form ("cited anywhere in CHANGELOG") was **circular**,
 the same signal serving as the rule's input and as the evidence that the work had landed. It fires on
-exactly 13 with 0 control failures, and the 14th drops out on its own.
+exactly 14 — see the review round below, which widened the matcher after a lens measured a file it
+could not see.
 
-The 13 headers are swept. ⚠ Two claims from the v0.4.60 checkpoint PR are corrected: its **commit message**
+The 14 headers are swept. ⚠ Two claims from the v0.4.60 checkpoint PR are corrected: its **commit message**
 says FOUR where a census finds 14 — a commit message is immutable, so the correction lands on the readable
 surfaces — and **three** spec notes said *"nothing reads a spec's own header"*, where the true and narrower
 statement is that no gate read a spec's status **WORD** (`docs/1.0-preflight.spec.md` IS in `LIVE_DOCS`, and
 its status line IS read, for a version token).
 
+### ⚠ The review round — six findings against this fix, all patched
+
+A `/code-review` over the committed revision produced 11 findings. The substantive ones are fixed here,
+and each is an instance of the class this entry is about.
+
+1. ⚠ **RC-1 stopped at the live-ctx layer.** `seed_record`'s standing-justified arm relayed no `stages`
+   and no `candidates_surfaced`, and `render_dashboard` guards its OWN renderer on that key — so the
+   DASHBOARD, which `CLAUDE.md` names as the end-user deliverable, still printed *"shrink to receive"*
+   over an empty space. The repair one layer down never reached the surface a user reads. Both halves are
+   wired now, and the D5 remedy sentence is hoisted to ONE constant because it renders from two branches.
+2. ⚠ **The new gate's matcher was narrower than its own claim.** `_SPEC_STATUS_LINE` was anchored on
+   `status` STARTING a line, so `docs/cm-commands-onboarding.spec.md:3` — status mid-line, NAMED in
+   CHANGELOG §0.4.8 — was invisible, and two specs that state a status as a TITLE had no `status` word
+   to find at all. The census is **16 pre-shipping headers, 14 release-named** (not 13), and 14 are swept.
+3. ⚠ **…and `_SPEC_DONE` was negation-blind**, matched over a 60-char slice while PRE saw the whole line.
+   *"awaiting approval; nothing shipped yet"* and *"drafted, unimplemented"* were exempted by the very
+   words stating the defect — a silent false negative on a coverage gate. Both predicates now see ONE string.
+4. ⚠ **The first sweep DELETED content.** It truncated each drafting-era status line at 120 chars, and
+   `fleet-topology-ui.spec.md`'s carried a stated residual-risk disclosure (*"pixel-identical rests on
+   string-presence pins over unexecuted JS…"*) — absent from the tree until a lens re-read it against
+   `main`. The sweep now preserves the region VERBATIM as a blockquote.
+5. ⚠ **`projected_index`'s relief summed per-line `est_tokens`.** That function rounds up PER CALL, so N
+   summed estimates exceed the block they describe — an OPTIMISTIC bias on the one operand that selects
+   the D5 remedy, and the opposite of the direction the docstring promised. The relief is now one
+   `est_tokens` over the JOINED evicted lines, the same measure the index total was taken with.
+6. **Hygiene:** the pointer-line scan was a second walk of the same list (now one pass feeding both
+   consumers); the `stages` guard added to the suppressed arm was not mirrored on the gate-active arm,
+   which still subscripted `rem["stages"]`; and consumer prose in
+   `docs/index-usage-and-budget-ladder.spec.md` and the beta oracle still described the retired model.
+
+⚠ **And two the review did not have to make, because this release's own design-of-record made them
+against itself:** its Risks block carried the PRE-fix draft of the ceiling conclusion, and a *"One
+builder, not two"* paragraph described a helper that was never added. Both are corrected in place with
+the correction visible rather than silently edited.
+
 ### Measured
 
-- smoke **2340 passed, 0 failed** (was 2332; +8 checks). Pre-fix tree, same pins: **2333 passed, 7 failed**
-  — every new PIN red, the CONTROL green on BOTH trees, totals line present and D6 reached.
+- smoke **2343 passed, 0 failed** (was 2332; +11 checks). Pre-fix tree, same pins: **2333 passed, 10
+  failed** — every new PIN red, the RC-1 CONTROL green on BOTH trees, totals line present and D6 reached.
+  ⚠ The RC-4 arm pair reds on BOTH trees BY ABSENCE (`check_spec_status` does not exist pre-fix) — the
+  shape the v0.4.40 pin established for this validator, stated rather than glossed as a control.
 - `docs_links` green, with **45 spec status lines** now in its denominator; pre-sweep it was RED on 13.
 - ⚠ The new pins route through a new `_ms61` helper because two symbols they call **do not exist pre-fix**
   (`_index_after_prune`, and `remediation_triage`'s `pointer_line_tokens=`). Unguarded they raised at
