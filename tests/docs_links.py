@@ -994,56 +994,27 @@ def _spec_header_end(lines: "list[str]") -> int:
     """v0.4.64: the index ending a spec's HEADER REGION — the first `## ` heading, the preamble cap,
     or the sweep's provenance note, whichever comes first.
 
-    ⚠ ONE derivation, for EVERY reader of the header. `_SPEC_PROVENANCE_QUOTE` was consulted by the
-    status LOCATOR (inside `_spec_status_line`) and by the STATEMENT join (in `check_spec_status`) —
-    and the target-release scan added at v0.4.63, a **third reader of the same field**, had no cut at
-    all. MEASURED: **most** target-bearing specs carry their version ONLY inside the preserved
-    drafting-era blockquote, so that arm was reading preserved HISTORY as the header's own target for
-    most of its population (it fires on none today only because every swept header also clears
-    `_pending` — the operand was wrong, not yet the verdict). ⚠ The exact corpus count lives in
-    `check_spec_status`'s target-scan comment and in the v0.4.64 CHANGELOG entry — NOT here: it is a
-    property of `docs/`, and a copy in a docstring is one more place to miss when the corpus moves.
-
-    ⚠ **The causality, which is the sharper half.** The operand was CORRECT when the arm was authored.
-    At `f0a4b75`, `docs/asserted-support.spec.md:7` read its target in the LIVE header; `24e2ea8` — the
-    commit that ADDED the arm — swept that header in the same commit and moved the line into the `>`
-    blockquote. So the arm was dead on arrival for its own two motivating instances: `_targets` is now
-    empty for both and no `_pending` value revives them. **The sweep moved the lines the arm reads.**
-
     **A boundary is a property of the FIELD, not of the reader that happened to observe the defect.**
-    This file has now paid for that twice: v0.4.62 bounded the locator and left the statement join
-    reading raw lines; v0.4.63 bounded both and left the target scan reading raw lines.
+    Every reader of a header takes `lines[:_spec_header_end(lines)]`. Before this helper three readers
+    each computed their own bound — and the target-release scan had none — so one header was read in
+    three different regions.
 
-    ⚠ The DERIVATION is what matters, not a census of who calls it — that is the callers' business,
-    and a list here would rot on the next reader added. ⚠ Two readers *additionally* re-apply the cut
-    and they are **not** equivalent: `_spec_status_line`'s cut is a no-op on a bounded window
-    (MEASURED: 0 of the 26 note-carrying specs), but the statement JOIN's `_jx` walk is bounded by
-    `len(lines)` rather than by this region, so it still crosses it — MEASURED on **4 of 58** — which
-    makes `_cut2` there **load-bearing, not vestigial**. ⚠ An earlier version of this docstring
-    claimed both were no-ops; that was FALSE, and it was the same class as the defect this helper
-    exists to fix — a claim its operand did not support.
+    ⚠ The note must be a **BLOCKQUOTE** line. The sweep writes its own correction sentence into the
+    LIVE header (*"⚠ The drafting-era status survived because no gate re-read it"*), so matching the
+    phrase alone cut **four** live specs at the sweep's feedback instead of at the quote — regions
+    ending at lines 3/3/9/5 rather than at their `## ` headings 5/5/11/8. **That is v0.4.63's own
+    lesson — the sweep writes prose into the header the gate reads — broken by the sweep that
+    recorded it.**
 
-    ⚠ KNOWN ASYMMETRY, recorded rather than left implicit: this is a **LINE-index** cut, while the
-    cuts it replaces were **CHARACTER-index**. They diverge when a declaration and a provenance
-    phrase share a line — the line cut drops the whole line, so such a header goes `checked` 1 → 0
-    and simply stops being examined. That is a SILENT false negative, which is this repo's own
-    "a dropped check is silent" lesson. MEASURED: **0** live instances today, but the shape is
-    established in this corpus — **4** lines carry a provenance phrase preceded by NON-MARKUP text
-    (`asserted-support.spec.md:31`, `body-defragmentation.spec.md:4`,
-    `completion-driven-archiving.spec.md:4`, `group-lifecycle-completion.spec.md:6`), and 26 carry a
-    phrase with some prefix. ⚠ An earlier version of this paragraph said "5 mid-line provenance
-    matches" — an unreproducible figure carried from a peer's report without measuring it, which is
-    this repo's own `a-reviewers-correction-is-an-unaudited-claim`. A spec that pairs a declaration
-    with such a line would vanish from the denominator with nothing to say so; `checked` is the tell.
+    ⚠ The two downstream cuts (`_spec_status_line`'s, and the statement join's `_cut2`) are
+    **load-bearing, not defensive**: because the region now runs *past* that live correction sentence,
+    they are what remove it from the window and the statement. MEASURED: `_cut2` fires on 4 specs.
 
-    ⚠ **DISCLOSED, NOT GUARDED — and the pin it suggests is deliberately refused.** A review lens
-    reproduced the divergence (`checked` 1 → 0 with no error, on a fixture pairing a declaration with
-    a same-line provenance phrase) and proposed pinning the `checked` denominator. It is refused for
-    the reason this file's own release note gives: an equality on `checked` reddens on every
-    legitimate corpus change, which is why `smoke.py` asserts `>= 1` — a FLOOR — and not the number.
-    The mechanical half that WOULD be sound is a structural cross-check (does the line-cut region
-    drop a declaration the char-cut region kept?), not a frozen figure. Recorded here as a residual
-    with its remedy named, rather than left as an implication that something guards it.
+    ⚠ KNOWN ASYMMETRY: this is a **LINE-index** cut where the cuts it replaces were **CHARACTER-index**.
+    They diverge when a declaration shares a line with a provenance phrase — the whole line drops, so
+    the spec goes `checked` 1 → 0 and stops being examined, SILENTLY. MEASURED: 0 live instances, but
+    4 lines carry a phrase after non-markup text, so the shape exists. **`checked` is the tell** —
+    re-measure it whenever this region changes.
 
     ⚠ The heading predicate `ln.startswith("## ")` now lives HERE and nowhere else: the arms consume
     this helper rather than computing their own bound, so the drift this comment used to warn about

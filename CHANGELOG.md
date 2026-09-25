@@ -5,6 +5,30 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.67] — 2026-09-25
+
+**Patch — the comment density cut.** No behaviour change: smoke stays **2365 / 0** and `docs_links`
+stays **52**, measured identical rather than assumed.
+
+⚠ **The framing matters, because the obvious one is wrong.** *"An earlier draft said X"* is this
+repo's **house idiom** for recording why a check is shaped as it is — a dozen pre-existing sites use
+it, and they are not the problem. What was wrong was **density**: the v0.4.61–66 blocks carried a
+self-correction on nearly every sentence, where the house form is reserved for decisions worth
+keeping. The worst offenders were a **53-line docstring over a 5-line body** (now 22) and a
+**12-line tombstone for a deleted check** (now 3).
+
+**Removed:** ~46 lines of narration the CHANGELOG already carries — the blow-by-blow of how each
+correction was arrived at, and every "an earlier version of this line said…" whose fact is already
+stated in the release notes.
+
+**Kept:** every measured figure, every PIN / CONTROL / GUARD label, the invariant each helper
+enforces, and every correction the CHANGELOG does **not** already carry.
+
+⚠ **Not finished.** Nine sites still carry the dense form, mostly in shipped check **labels** where
+the string is output rather than commentary. Recorded, not implied.
+
+Measured: `tests/smoke.py` **2365 / 0** · `docs_links` **52**, 0 errors · `mypy` 0 in 42.
+
 ## [0.4.66] — 2026-09-25
 
 **Patch — the boundary anchored on a phrase the sweep itself writes into the live header.**
