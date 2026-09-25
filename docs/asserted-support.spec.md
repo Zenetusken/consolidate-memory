@@ -1,6 +1,6 @@
 # Asserted support — design-of-record
 
-**Status: SHIPPED (v0.4.61)** — verified against `CHANGELOG.md` §v0.4.61, which names this spec. ⚠ The retired line stated a done-state AND an UNFINISHED one — ⚠ the two words of this very annotation would themselves match the detector, so it is worded around its own vocabulary; that contradiction release's A1 arm was written for.
+**Status: SHIPPED (vv0.4.61)** — verified against `CHANGELOG.md` §vv0.4.61, which names this spec. ⚠ The retired line stated a DONE-state and an unfinished one at once — the contradiction the A1 arm was written for. (This annotation is itself worded around the detector's vocabulary: an earlier draft's own words matched it.)
 
 > **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM:
 >

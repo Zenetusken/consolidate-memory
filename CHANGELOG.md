@@ -5,6 +5,115 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.63] — 2026-09-25
+
+**Patch — the recorded-open docket, closed.** Items earlier cycles wrote down rather than fixed, plus four
+holes the status gate this cycle shipped turns out to have had all along.
+
+### The gate's four holes (`tests/docs_links.py` → `check_spec_status`)
+
+`check_spec_status` shipped at v0.4.61 and was corrected twice at v0.4.62. It had four more.
+
+- **A1 — DONE-WINS**, and the live instance is this release's own predecessor. The classifier EXEMPTED any
+  statement containing a done-token, so a header asserting BOTH states passed:
+  `docs/asserted-support.spec.md` read *"implemented and REVIEWED … awaiting merge"* and **survived two
+  merges**, because "implemented" excused it. `spec_done` now only SELECTS THE MESSAGE. ⚠ Positional ranking
+  ("last clause wins") was simulated and **MEASURED producing a false negative**, because
+  `network-graph-interaction`'s unfinished clause is followed by a later shipped one.
+- **A2 — the mention fallback** now requires the LABEL shape (`status` + colon). Measured: the
+  deletion-mutation leaks drop 7 → 1 while keeping the mid-sentence declaration it exists for. And the
+  provenance note now bounds the **statement join** too, not only the locator — v0.4.62 applied it to one
+  and left the other, so the correction text the sweep itself writes was parsed as a header's own status.
+- **A3 — four headers stated a vetting state the alternative list never matched**: *"revised for review"*,
+  *"design-of-record"*, *"ready to ship"*. Widened **with** A4, because the target-release arm is what keeps
+  a spec legitimately aiming at a FUTURE release silent. ⚠ `draft` is no longer a bare alternative: with it
+  bare, `index-usage-and-budget-ladder` fired on prose (*"a code-review-skill gate on the draft"*) for a
+  header whose status is *"Phase A/B/C SHIPPED"* — it now needs a CLAIM CONTEXT.
+- **A4 — the arm that needs NO CITATION.** Two live instances are named **NOWHERE** in CHANGELOG.md, so
+  every matcher fix left them silent: **the citation OPERAND hid them, not the matcher.** A header naming
+  `Target release: vX.Y.Z` where vX.Y.Z already shipped is decidable without one. ⚠ Its first cut carried a
+  `spec_done` guard — **A1's hole re-committed inside the arm written to close it.**
+- **A5 — the search region is the PREAMBLE** (before the first `## ` heading), not a fixed 40 lines:
+  `marker-coordinate-truth.spec.md` declares its status at line 84 and its header runs to 93.
+
+⚠ And the statement cap went **3 → 6**: at three lines, `asserted-support`'s wrapped *"awaiting merge"* fell
+outside the join and the header read as settled — the very instance A1 exists for.
+
+**8 headers swept**, each preserving its retired line VERBATIM. `docs_links` examined **51 → 52**.
+
+### ⚠ A new lesson, measured FOUR times while implementing this
+
+**The sweep writes prose INTO the header the gate reads, so its own annotation must be written around the
+detector's vocabulary.** *"a pending one"* and *"a design-of-record sentence"* both became findings against
+the matcher that had just been widened — the second against the vocabulary added in the same session. An
+audit for it is recorded; re-run it after every sweep.
+
+### Measured
+
+- smoke **2360 passed, 0 failed** (was 2345; +15 checks). Pre-fix tree (`f0a4b75` + the SAME suite):
+  **2353 passed, 7 failed** — the seven pins red (A1·A2·A3·A4·A5·B3·B4), each for the reason it
+  names, with **all six CONTROLS green on BOTH trees** and B2's guard green on both, as its label says.
+- `docs_links` green at **52** status lines; **12 required strings across 2 files** (was 7, README-only).
+  manifests v0.4.63 · sim · mypy 0 issues in 42 files.
+- ⚠ **A measured-once-then-corrected near-miss, recorded because it is the class this release is
+  about:** the first both-tree run reported the pins GREEN pre-fix. The pre-fix build had used
+  `git checkout origin/main` on a copy carrying the branch's uncommitted edits — it printed **"Aborting"**
+  and left the tree unchanged, so both sides were the same tree. Re-done with `-f` and the markers
+  verified at 0 before measuring.
+
+### Workstream B — the recorded code items
+
+- **B1 — the `_served` type hole, wider than the record said.** `facts_manifest` now raises a named
+  `UnclassifiedReason(AssertionError)` **at all three sites** (`_mint`, `_served`, `_miss`) — the
+  type-agnostic pin shape sat at `_mint`'s check too, so naming the class at one site would have left the
+  hole live at the weakest. A subclass keeps every `except AssertionError` working. Measured on three
+  isolated trees: post-fix green; the recorded `ValueError` mutation **RED** (the old pin was green on it);
+  pre-fix RED without crashing. ⚠ It is a **GUARD, not a PIN** by this repo's rule — its pre-fix red is
+  still KEY-ABSENCE — and it is labelled so.
+- **B2 — `try_acquire` is genuinely not closable, and the recorded reason was incomplete.** *"Cannot be
+  closed without reintroducing the `blocking=` keyword"* names ONE design's cost. The blocker is the
+  **signature**: `acquire`'s body *waits*, so every route through the override pays — wait; or pass a
+  parameter the override may not declare (`TypeError` at *its* call site); or probe/release/re-enter, which
+  makes "never waits" false in a race window that is separately pinned. The one design that does not route
+  through it (detect an acquire-only override and raise) is named and **refused**, because it would refuse
+  a logging-only override at a site the subclass never declared — trading a silent skip for a wrong
+  refusal. **Zero behaviour change**; the caveat now sits on the method its caller reads, and a GUARD is
+  reported that witnesses the bypass by mutation.
+- **B3 — the census was 8, not 5, and the record contradicted itself.** Its own paragraph reads "4 parsers /
+  8 silently-accepted choices" and then "The remaining four (`cm journal` ×3, `cm group` ×2)" — 3+2=5
+  against its own total of 8. Decomposed by `(parser, subcommand, ignored-positional)`: `data` 9 (one guard
+  covers all nine) · `local` 2 · `canonical` 1 (all guarded since v0.4.57) · `journal` **3** ·
+  `group` **5** — `project` is read by `add`/`remove` ONLY, so `create`/`delete`/`show`/`list` drop it, and
+  `list` drops `name_or_group` too. **8 were unguarded.** ⚠ The record's *reason* for exempting them held and
+  was measured (plugin-data is global; `cmd_group` hardcodes its ctx) — so the guards rest on the class rule
+  the shipped ones state in their own comments, not on severity.
+  ⚠⚠ **AND THE METHOD IS THE FINDING.** The re-derivation's FIRST cut reproduced the recorded 5 exactly:
+  a census bug reading `('a','b') in cmd` instead of `cmd in ('a','b')` misread `if cmd in ("add","remove")`
+  as unconditional and attributed its `args.project` read to every still-live choice — out came "group ×2,
+  journal ×3", the record's figure to the digit. **A defect that lands on the number you were told is why
+  the number needed re-deriving at all.** The fixed instrument (argparse introspection + AST reachability,
+  descending into the wrapping `try:`, resolving `cmd = args.<x>_cmd` aliases) agrees on all 8, and does
+  NOT flag the three v0.4.57-guarded parsers — which is the sanity check that its notion of "closed" lines
+  up with the shipped guards.
+  ⚠ And its blind spot caught the author's own guard: the new `group` guard read both positionals through a
+  **variable key** (`getattr(args, k, None)` in a comprehension), which no static census can name, so the
+  post-fix audit reported 5 sites still open while the behaviour was correct. A guard written defensively in
+  a way the audit for its class cannot see is one that gets re-filed as open forever; it now reads literals.
+- **B4 — the wrapped-anchor class, live at a site the record never named.** The v0.4.57 item named
+  `CLAUDE.md:32-33` and **that span was never an instance of the class it cited** — measured contiguous at
+  v0.4.57, at v0.4.62 and today; the live one sat at `:20-21` the whole time. **The record's boundary was
+  read rather than measured.** That token is now one unbroken span, and `check_contiguity` gained an
+  explicit **per-file needle map** (never a glob) with new needles for `CLAUDE.md` — because re-using the
+  README's seven adds **zero** coverage there (0 of the 7 occur in that file, measured) and would have read
+  as coverage while being vacuous. `docs_links` reports **12 required strings across 2 files** (was 7,
+  README-only); a wrapped needle REDS the new arm and a deleted one REDS presence, partitioning cleanly.
+- **B5 — the unread binding, made to carry.** `_why_ov52` is now read in its check's predicate
+  (`and _why_ov52 == "oversize"`). Measured green on both trees, so it stays a GUARD — but it is UNIQUELY
+  discriminating: the mutation "rename the token AND declare it in `_ENSURE_REASONS`" leaves every producer
+  pin green and reddens this conjunct alone. The file's own precedent agrees — the sibling kill-switch
+  check reads `_why_ks == "kill-switch"`, with a comment saying why the structural pin cannot see it.
+
+
 ## [0.4.62] — 2026-09-25
 
 **Patch — corrections to v0.4.61, found by its own review round after it shipped.** Every one is an

@@ -29,9 +29,12 @@ Invariants:
 3. **Manual anchors are balanced.** The README uses explicit `<a id="…">` markers because
    GitHub's auto-slugifier handles emoji-prefixed headings badly, which means a typo can
    silently orphan a section (or a link) with no error anywhere.
-4. **The README keeps documenting the cross-project workflow** — the command names smoke.py
-   pins; a restructure that drops one is caught here rather than by a reader who follows a
-   command that no longer exists.
+4. **The strings a reader copies are present AND unbroken, per file** — the README's cross-project
+   workflow (the command names smoke.py pins) and `CLAUDE.md`'s install/validate path. A
+   restructure that drops one, or a reflow that splits one across a line break, is caught here
+   rather than by a reader who follows a command that no longer exists. ⚠ The file set is
+   `REQUIRED_STRINGS`, and each file brings its OWN needles: MEASURED, the README's set applied to
+   `CLAUDE.md` would match nothing at all, so a widened set is not a second file's coverage.
 5. **The theme table matches the shipped theme set, both ways** — a palette added to the
    toggle without a docs row, and a row left behind by a palette that no longer ships.
 6. **Every live doc's OPENING currency statement matches plugin.json.** Deliberately narrow, and
@@ -174,6 +177,41 @@ REQUIRED_IN_README = (
     "/cm-connect", "/cm-share", "/cm-sync", "/cm-network",
     "/cm-domain", "/cm-group", "docs/network-guide.md",
 )
+
+# ⚠ v0.4.63 — the SECOND file, and it carries its OWN needles rather than a wider README set.
+# MEASURED before the map existed: **0 of the README's 7 needles occur in this file at all**, so
+# re-running `check_contiguity` under a widened set would have examined a second file and found
+# nothing in it — a denominator that reads as coverage while testing nothing, this repo's standing
+# failure mode. What makes a file's entry real is the strings a reader COPIES out of THAT file, and
+# the failure mode is the same one: a command split across a line break is not copy-pasteable and
+# `grep -F` finds nothing. That is what put `CLAUDE.md` here — `` `claude plugin install `` and the
+# `consolidate-memory@zenetusken-plugins` token were split across lines 20–21, and the token move
+# that closed it is the fix this entry's arm reddened on (a guard that has never fired is not a
+# guard, which is the same standard the case table below is held to).
+# ⚠ The entry is checked for PRESENCE as well (`check_required_strings`), and that is not
+# decoration: without it the cheapest way to clear this arm's red would be DELETING the wrapped
+# command, which removes the documented install path and leaves the gate green — `a missing
+# statement is an error, not a skip`, the rule `check_version_statements` already states for its
+# own axis. The two functions iterate the SAME map, so their claimed partition holds per file.
+REQUIRED_IN_CLAUDE_MD = (
+    "/plugin marketplace add Zenetusken/consolidate-memory",
+    "/plugin install consolidate-memory@zenetusken-plugins",
+    "claude plugin marketplace add ./",
+    "claude plugin install consolidate-memory@zenetusken-plugins",
+    "claude plugin validate ./plugins/consolidate-memory --strict",
+)
+
+# file → (why the set exists, the strings a reader must be able to copy and find). An explicit MAP:
+# never a glob, and never one file's set reused for another's — see `REQUIRED_IN_CLAUDE_MD` for the
+# measurement. Membership is a judgment of the same kind `DOCS` and `LIVE_DOCS` carry (does this
+# file hand a reader a command?), NOT the closure of anything, and the next file that does joins by
+# bringing its own needles rather than by widening an existing set.
+REQUIRED_STRINGS = {
+    "README.md": ("smoke.py pins it as the documented cross-project workflow",
+                  REQUIRED_IN_README),
+    "CLAUDE.md": ("it is the install/validate path this file calls the one gotcha that matters",
+                  REQUIRED_IN_CLAUDE_MD),
+}
 
 # Docs that describe the CURRENT tree, so their opening version statement is a claim about
 # today and must track plugin.json. An explicit list, never a glob, because most version
@@ -364,7 +402,11 @@ def _ws_tolerant(needle: str) -> str:
 
 
 def check_required_strings() -> None:
-    """The cross-project workflow the README must keep documenting.
+    """Every string a reader must be able to FIND, per file — README's workflow, CLAUDE.md's installs.
+
+    Iterates `REQUIRED_STRINGS`, so the file set and the reason text are the map's, not this
+    function's — the README arm used to be the whole check, and the second file arrived with its
+    own needles rather than by widening the first file's.
 
     Presence is whitespace-TOLERANT: a mention broken across a line is still a mention, so this
     check's message ("no longer mentions") stays true of genuine absence only. Its companion
@@ -377,13 +419,14 @@ def check_required_strings() -> None:
     haystack, so both always spoke, and the absence line was factually FALSE for a wrapped
     string.
     """
-    readme = read("README.md")
-    for needle in REQUIRED_IN_README:
-        # Word-bounded, not a bare substring: renaming `/cm-network` to `/cm-network2`
-        # leaves a superset that CONTAINS the needle, so a containment test keeps passing
-        # while the documented command no longer exists. Found by mutation, not by review.
-        if not re.search(rf"(?<![\w/-]){_ws_tolerant(needle)}(?![\w-])", readme):
-            err(f"README.md no longer mentions {needle!r} (smoke.py pins it as the documented workflow)")
+    for rel, (_why, needles) in REQUIRED_STRINGS.items():
+        body = read(rel)
+        for needle in needles:
+            # Word-bounded, not a bare substring: renaming `/cm-network` to `/cm-network2`
+            # leaves a superset that CONTAINS the needle, so a containment test keeps passing
+            # while the documented command no longer exists. Found by mutation, not by review.
+            if not re.search(rf"(?<![\w/-]){_ws_tolerant(needle)}(?![\w-])", body):
+                err(f"{rel} no longer mentions {needle!r} ({_why})")
 
 
 def check_contiguity() -> None:
@@ -451,33 +494,52 @@ def check_contiguity() -> None:
     line end · broken by a stray space, plus two CONTROLS (a longer token, and genuine absence)
     that neither matcher may call a break.
 
-    ⚠ Scope, and the reason: the REGISTRY, not the corpus. `CLAUDE.md:32-33` is the measured
-    instance — it splits `` `claude plugin validate `` / `` ./plugins/consolidate-memory --strict` ``
-    — and it is deliberately OUT of scope. The reason is the GUEST POSTURE, not a read-only
-    property, and an earlier draft of this paragraph got it backwards: the two-CLAUDE.md rule
-    makes the USER-GLOBAL file (`~/.claude/CLAUDE.md`) the strictly-read-only one, and a bare
-    `CLAUDE.md` coordinate resolves to the PROJECT file — which is the guest-WRITABLE half, edited
-    report-then-apply with each change gated by the user. So a gate that reddens on it would demand
-    an edit this pass is not entitled to make UNILATERALLY, not one it may never make at all. The
-    instance is NAMED here rather than read, and the distinction matters because the two halves of
-    the rule take different remedies: one wants a proposal, the other wants silence.
+    ⚠ Scope, and why it moved at v0.4.63: the MAP, not the corpus. `CLAUDE.md`'s own entry now
+    carries the pair's arms — and the coordinate this paragraph used to NAME is NOT the instance
+    that put it there. The v0.4.57 record cited `CLAUDE.md:32-33` — `` `claude plugin validate ``
+    / `` ./plugins/consolidate-memory --strict` `` split across the break. ⚠ THAT SPAN IS CONTIGUOUS
+    TODAY, and it was contiguous at the tag that recorded it and at the tag before this one:
+    `git show v0.4.57:CLAUDE.md` puts the whole command on line 33, and so does `v0.4.62`. The
+    record named a coordinate that had already stopped being an instance, while the SAME class sat
+    live at `:20-21` of that very file (both tags split `claude plugin install` from its
+    `consolidate-memory@…` token) and stayed invisible because the boundary was read from the
+    record rather than re-measured — the docket's own lesson, on the file that records it. A stale
+    instance named instead of a census re-run is how a scope decision outlives its subject.
+    ⚠ The reason this paragraph gave for excluding the file is not overturned, it is SCOPED: it
+    rested on the GUEST POSTURE — the two-CLAUDE.md rule makes the USER-GLOBAL file
+    (`~/.claude/CLAUDE.md`) the strictly-read-only one, so a gate reddening on a bare `CLAUDE.md`
+    coordinate would demand an edit "this pass is not entitled to make UNILATERALLY". That is an
+    argument about who may EDIT a guest repo's file from inside a skill. This is a repo-local CI
+    gate that edits nothing: a red here is a report to the maintainer, on a file this repo authors
+    like every other doc the gate covers. So the boundary that survives is the one about the
+    GLOBAL file — nothing here reads, or may read, `~/.claude/CLAUDE.md`.
+    ⚠ And the boundary that remains is a MAP of two files, not the corpus: a third file joins by
+    bringing its own needles, and the widening trap is MEASURED in `REQUIRED_IN_CLAUDE_MD` (the
+    README's set has 0 occurrences here — a widened set would have examined a second file and seen
+    nothing in it). A per-needle census is still owed when an entry is added, and the README's is
+    above. `CLAUDE.md`'s five needles ALL carry whitespace inside, and EVERY occurrence of each is
+    delimited by a backtick on both sides — measured, one or two occurrences per needle — so the
+    second file inherits this limit rather than escaping it: a needle whose every boundary is
+    whitespace cannot be exercised by the live file, and the case table below is the only fixture
+    for that shape.
     """
-    readme = read("README.md")
-    for needle in REQUIRED_IN_README:
-        # STRICT: present unbroken. A real anchor — nothing to guard.
-        if re.search(rf"(?<![\w/-]){re.escape(needle)}(?![\w-])", readme):
-            continue
-        # Present-but-broken, or absent? `check_required_strings` now runs this SAME tolerant
-        # matcher, so its silence here means whitespace-inside and its speech means genuine
-        # absence — a true partition, measured across the case table in the docstring. The
-        # message must name what THIS predicate tests: whitespace. It previously asserted "a line
-        # break", which a stray space satisfies just as well, sending the reader to reflow a line
-        # that was never wrapped.
-        if re.search(rf"(?<![\w/-]){_ws_tolerant(needle)}(?![\w-])", readme):
-            err(f"README.md's required string {needle!r} is present only BROKEN by whitespace "
-                f"(a line break, or a stray space inside it) — it matches with the whitespace "
-                f"removed but not in the raw file, so `grep -F` finds nothing and it is not an "
-                f"anchor. Restore it as one unbroken token")
+    for rel, (_why, needles) in REQUIRED_STRINGS.items():
+        body = read(rel)
+        for needle in needles:
+            # STRICT: present unbroken. A real anchor — nothing to guard.
+            if re.search(rf"(?<![\w/-]){re.escape(needle)}(?![\w-])", body):
+                continue
+            # Present-but-broken, or absent? `check_required_strings` now runs this SAME tolerant
+            # matcher over the SAME map, so its silence here means whitespace-inside and its speech
+            # means genuine absence — a true partition per file, measured across the case table in
+            # the docstring. The message must name what THIS predicate tests: whitespace. It
+            # previously asserted "a line break", which a stray space satisfies just as well,
+            # sending the reader to reflow a line that was never wrapped.
+            if re.search(rf"(?<![\w/-]){_ws_tolerant(needle)}(?![\w-])", body):
+                err(f"{rel}'s required string {needle!r} is present only BROKEN by whitespace "
+                    f"(a line break, or a stray space inside it) — it matches with the whitespace "
+                    f"removed but not in the raw file, so `grep -F` finds nothing and it is not an "
+                    f"anchor. Restore it as one unbroken token")
 
     # The matcher pair carries its OWN case table, because the README fixture cannot reach every
     # shape the guard must handle — see the AMBIENT note in the docstring: every real needle here
@@ -1181,7 +1243,8 @@ def main() -> int:
           f"{status_headers} plugin STATUS headers, "
           f"{spec_status} spec status lines, "
           f"{len(DOCS)} files link-checked, "
-          f"{len(REQUIRED_IN_README)} required strings unbroken, anchors balanced, "
+          f"{sum(len(_n) for _, _n in REQUIRED_STRINGS.values())} required strings unbroken "
+          f"across {len(REQUIRED_STRINGS)} files, anchors balanced, "
           "preview current)")
     return 0
 

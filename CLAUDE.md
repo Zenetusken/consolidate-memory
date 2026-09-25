@@ -1,6 +1,6 @@
 # consolidate-memory — project conventions
 
-**v0.4.62.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
+**v0.4.63.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
 Claude Code's built-in Auto Dream (per-project consolidation), adding a governed cross-project store +
 verification against the live code. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -16,9 +16,9 @@ user-facing pitch and `plugins/consolidate-memory/skills/consolidate-memory/SKIL
 via **`${CLAUDE_PLUGIN_ROOT}`** — a variable that is **only set when the skill loads as
 a plugin**. So the old "symlink `skill/` into `~/.claude/skills`" model is dead: a bare
 user-skill copy would have an unset `${CLAUDE_PLUGIN_ROOT}` and every command would
-break. Dogfood by registering this repo as a local marketplace and installing the
-plugin: `claude plugin marketplace add ./` then `claude plugin install
-consolidate-memory@zenetusken-plugins`. **Run `python3 tests/smoke.py` after any change to `scripts/`.**
+break. Dogfood by registering this repo as a local marketplace and installing the plugin:
+`claude plugin marketplace add ./` then `claude plugin install consolidate-memory@zenetusken-plugins`.
+**Run `python3 tests/smoke.py` after any change to `scripts/`.**
 
 How edits take effect (once installed as a local-marketplace plugin):
 
