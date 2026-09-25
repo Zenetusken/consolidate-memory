@@ -23317,7 +23317,11 @@ try:
             # would pair with the pin for the wrong reason.
             _a1cck63, _a1ce63, _a1cm63 = _arm63(
                 "stale.spec.md", "# Stale spec\n\n**Status: vetting complete; SHIPPED in v0.1.0.**\n")
-            _a1c63 = not _a1ce63
+            # ⚠ v0.4.64: the conjunct the comment above has always CLAIMED (`checked == 1`) is now
+            # actually ASSERTED. It was bound as `_a1cck63` and dropped, so a control that reds by
+            # never being READ would have paired with the pin for the wrong reason — the very gap its
+            # own comment describes. GUARD, not a pin: green on both trees by construction.
+            _a1c63 = _a1cck63 == 1 and not _a1ce63
 
             # A2 — the MENTION LEAK. A spec whose only `status` occurrence is PROSE is not a
             # declaration: the fallback now requires the LABEL shape (`status` + colon). MEASURED
@@ -23344,17 +23348,25 @@ try:
                 "stale.spec.md", "# Stale spec\n\n**Status:** revised for review.\n")
             _a3p63 = len(_a3e63) == 1 and "stale.spec.md" in _a3e63[0]
 
-            # A4 — the rule that needs NO citation. `asserted-support.spec.md` and
-            # `marker-coordinate-truth.spec.md` are named NOWHERE in CHANGELOG.md, so every
-            # matcher fix left them silent: the citation OPERAND hid them, not the matcher. A
-            # header naming a target release that ALREADY SHIPPED is stale without one.
+            # A4 — the rule that needs NO citation. A header naming a target release that ALREADY
+            # SHIPPED is stale without one.
+            # ⚠ v0.4.64 CORRECTION — this comment is the SIXTH surface of a claim the release exists
+            # to correct, and the one the first pass MISSED (the release note said "five"), so the
+            # note that says it is corrected was itself false. It asserted that
+            # `asserted-support.spec.md` and `marker-coordinate-truth.spec.md` "are named NOWHERE in
+            # CHANGELOG.md, so every matcher fix left them silent: the citation OPERAND hid them, not
+            # the matcher." TRUE when written (`24e2ea8`), FALSE one commit later when `e0a8970` — a
+            # descendant — added both citations. MEASURED: **all 17** target-bearing specs are named
+            # in a `## [X.Y.Z]` section, so the arm fires on **zero** and is kept as future-proofing.
             # MEASURED: pre-fix errors=0 (no such arm existed); post-fix 1 — and `target.spec.md`
             # is deliberately NOT the file the release section names.
             _a4ck63, _a4e63, _a4pm63 = _arm63(
                 "target.spec.md",
                 "# Target spec\n\n**Status:** revised for review. Target release: "
                 "**v0.1.0 (patch)**\n")
-            _a4p63 = (len(_a4e63) == 1 and "target.spec.md" in _a4e63[0]
+            # ⚠ v0.4.64: asserts the DENOMINATOR too. `_a4ck63` was bound and never read, so this pin
+            # could have been satisfied by an arm that fired without ever examining the file.
+            _a4p63 = (_a4ck63 == 1 and len(_a4e63) == 1 and "target.spec.md" in _a4e63[0]
                       and "Target release: v0.1.0" in _a4e63[0])
             # …and TWO CONTROLS, both green on BOTH trees, because an arm that fires on any
             # `Target release:` would be satisfied by the pin above. (a) a target with no release
@@ -23390,11 +23402,65 @@ try:
                 "stale.spec.md",
                 "# Stale spec\n\n**Status:** awaiting merge.\n\n" + _fill63 + "\n")
             _a5c63 = _a5cck63 == 1 and len(_a5ce63) == 1
+
+            # ══ v0.4.64 — the target arm's OPERAND ══════════════════════════════════════════════
+            # A4's arm read raw `lines[:120]`: no provenance boundary and no preamble bound. It read
+            # the preserved drafting-era blockquote — MEASURED: most target-bearing specs carry
+            # their version ONLY there (the corpus count is in the CHANGELOG and beside the operand,
+            # not restated in every arm that cites it) — and up to 120 lines of BODY. Both now come from
+            # `_spec_header_end`. ⚠ The three v0.4.63 A4 fixtures are heading-free and provenance-free
+            # (their `Target release:` sits at index 2), so every existing outcome and every `checked`
+            # number is IDENTICAL across this change — verified by reading them, not assumed. That is
+            # exactly why these new arms are needed: the narrowing is un-pinned without them.
+            #
+            # PIN — the PROVENANCE BOUNDARY. The live declaration states a pending status; BELOW it
+            # sits the sweep's preserved quote, which names a target that HAS shipped. PRE-FIX the
+            # scan read the quote and fired on the header's own history; post-fix the region ends at
+            # the note and the arm is silent. MEASURED with the real matchers: pre-fix fires, post-fix
+            # silent. ⚠ Asserts SILENCE, so it is RED pre-fix and GREEN post — a PIN, not a control.
+            _o1ck64, _o1e64, _o1pm64 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status:** revised for review.\n\n"
+                "> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM:\n\n"
+                "> **Status: revised for review.** Target release: **v0.1.0 (patch)**\n")
+            # ⚠ asserts the DENOMINATOR too. Both pins below assert SILENCE, and an ABSENCE-shaped pin
+            # whose `checked` is unasserted is satisfied by a gate that simply stopped reading — the
+            # rule this file's own A2 pin states, and the same gap defect 4 closes in A1/A4. ⚠ Caught
+            # by an advisor pass AFTER the first commit: defect 4 was fixed in two places and
+            # re-committed here, in the commit that describes fixing it.
+            _o1p64 = _o1ck64 == 1 and not _o1e64
+            # PIN — the PREAMBLE BOUND. A clean pending header, then a `## ` heading, and the target in
+            # the BODY below it. PRE-FIX `lines[:120]` reached it and fired; post-fix the heading ends
+            # the region and the arm is silent. MEASURED: pre-fix fires, post-fix silent.
+            _o2ck64, _o2e64, _o2pm64 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status:** revised for review.\n\n## Body\n\n"
+                "Target release: **v0.1.0 (patch)**\n")
+            _o2p64 = _o2ck64 == 1 and not _o2e64
+            # CONTROL — the arm still FIRES on a shipped target named in the real PREAMBLE. Green on
+            # BOTH trees: without it, the two pins above are satisfied by a gate that simply stopped
+            # reading targets, which is the over-correction the narrowing invites.
+            _o3ck64, _o3e64, _o3pm64 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status:** revised for review. Target release: **v0.1.0 (patch)**\n")
+            _o3c64 = _o3ck64 == 1 and len(_o3e64) == 1 and "Target release: v0.1.0" in _o3e64[0]
+            # GUARD, NOT A PIN — the per-line `_ix` locator's new bound is a NO-OP. MEASURED PRE-FIX
+            # (the only informative direction — post-fix the bound forbids it by construction): **0 of
+            # the 26** note-carrying specs land at or after the note, so it cannot redden pre-fix and
+            # must not be called a pin. Kept as a regression guard for the day a spec puts
+            # the note ABOVE its declaration: the whole header then reads as history and the spec is
+            # correctly SKIPPED (examined 0), never read from the quote.
+            _o4ck64, _o4e64, _o4pm64 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n> Preserved verbatim:\n\n**Status:** revised for review.\n")
+            _o4g64 = _o4ck64 == 0 and not _o4e64
         except Exception as _x63:               # a broken gate is RED, not a traceback
             _a1p63 = _a1c63 = _a2p63 = _a2c63 = _a3p63 = _a4p63 = _a4f63 = _a4s63 = False
             _a5p63 = _a5c63 = False
+            _o1p64 = _o2p64 = _o3c64 = _o4g64 = False
             _a1pm63 = _a2pm63 = _a3pm63 = _a4pm63 = _a5pm63 = f"could not exercise it: {type(_x63).__name__}: {_x63}"
             _a1cm63 = _a2cm63 = _a4fm63 = _a4sm63 = _a5cm63 = _a1pm63
+            _o1pm64 = _o2pm64 = _o3pm64 = _o4pm64 = _a1pm63
     finally:
         _dl40.ROOT = _spsroot61                 # restored even if the arm itself blew up
         _shpsd40.rmtree(_spstmp61, ignore_errors=True)
@@ -23442,8 +23508,12 @@ check("v0.4.63 A3 pin (PIN — the WIDENED VOCABULARY reaches a header it could 
       f"⚠ {_a3pm63}", _a3p63)
 
 check("v0.4.63 A4 pin (PIN — the arm that needs NO citation: a header naming a target release that "
-      "ALREADY SHIPPED is stale by definition, and this is the only arm that can see a spec named "
-      "NOWHERE in CHANGELOG.md — the citation OPERAND hid the two live instances, not the matcher. "
+      "ALREADY SHIPPED is stale by definition, so this arm reaches a spec the citation rule cannot. "
+      "⚠ v0.4.64 CORRECTION to this label: it used to assert that the two live instances are named "
+      "NOWHERE in CHANGELOG.md — TRUE when the arm was written (`24e2ea8`), FALSE one commit later, "
+      "when `e0a8970` (a DESCENDANT) swept the headers and added both citations. Re-measured: all 17 "
+      "target-bearing specs are named there and this arm fires on 0, kept as future-proofing. The "
+      "same false claim is corrected in `docs_links.py` and in the v0.4.63 CHANGELOG entry. "
       f"MEASURED pre-fix 0 (no such arm existed), post-fix exactly 1): ⚠ {_a4pm63}", _a4p63)
 check("v0.4.63 A4 control (CONTROL — a target with NO release section is a spec legitimately aiming "
       "at the FUTURE and must stay silent, or the vocabulary widened WITH this arm would red every "
@@ -23460,6 +23530,33 @@ check("v0.4.63 A5 control (CONTROL — the SAME fixture with its declaration mov
       "nothing else changed, so it fires on BOTH trees: the window MOVED, the reading did not "
       "change. ⚠ A pin asserting a longer window is satisfied by a gate that fires on any long "
       f"file, and this arm is what says otherwise): ⚠ {_a5cm63}", _a5c63)
+
+check("v0.4.64 O1 pin (PIN — the target arm's OPERAND ends at the sweep's provenance note: a live "
+      "pending declaration ABOVE the preserved drafting-era quote, and the quote names a target that "
+      "ALREADY SHIPPED. PRE-FIX the scan read raw `lines[:120]`, found the quote, and fired on the "
+      "header's own HISTORY — MEASURED, most target-bearing specs carry their version ONLY inside "
+      "such a quote, so the arm was reading preserved history for most of its population (the exact "
+      "corpus count is in the CHANGELOG and beside the operand, not restated here). Post-fix the "
+      "region ends at the note and the arm is silent. ⚠ Asserts "
+      f"SILENCE: RED pre-fix, GREEN post. MEASURED pre-fix errors=1, post-fix 0): ⚠ {_o1pm64}", _o1p64)
+check("v0.4.64 O2 pin (PIN — the target arm's operand is the PREAMBLE, not 120 raw lines: a clean "
+      "pending header, then a `## ` heading, and the target in the BODY below it. PRE-FIX the bare "
+      "cap reached the body and fired; post-fix the heading ends the region. ⚠ The status arms have "
+      "always used `min(first '## ', cap)` — this arm used the bare cap, so the same file was read "
+      f"in two different regions. MEASURED pre-fix errors=1, post-fix 0): ⚠ {_o2pm64}", _o2p64)
+check("v0.4.64 O3 control (CONTROL — the arm still FIRES on a shipped target named in the real "
+      "PREAMBLE. Green on BOTH trees, and EXAMINED on both: without it the two pins above are "
+      "satisfied by a gate that simply stopped reading targets, which is the over-correction this "
+      "narrowing invites. ⚠ The narrowing leaves the arm a NON-EMPTY live population; the count is a "
+      f"property of the corpus and is measured in this release's CHANGELOG, not asserted here): "
+      f"⚠ {_o3pm64}", _o3c64)
+check("v0.4.64 O4 guard (GUARD, NOT a pin — a spec whose provenance note sits ABOVE its declaration "
+      "reads entirely as history: the spec is correctly SKIPPED (examined 0) and never read from the "
+      "quote. ⚠ This label is NARROWER than it first was, on a review lens's measurement: it claimed "
+      "to guard the per-line locator's region bound, and MUTATION shows it cannot — the locator's "
+      "`if m:` block never executes at examined 0, so reverting that bound leaves this GREEN. The "
+      "locator's bound is in fact unobservable by construction (`m` and `_ix` search the same "
+      f"region), so no check can witness it): ⚠ {_o4pm64}", _o4g64)
 
 # ── v0.4.63 (B4): the contiguity gate is PER-FILE now, and its needles are NEW ──────────────────
 # The v0.4.57 entry named `CLAUDE.md:32-33` as the wrapped-anchor instance and NOTED IT CLOSED — but a
@@ -26594,6 +26691,22 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     only docs_links.py + docs/ restored: pre-fix
                                        #     2350 passed / 5 failed (the five PINs, nothing else),
                                        #     post-fix 2355 passed / 0 failed.
+                            + 4        # v0.4.64 — the target arm's OPERAND (the provenance
+                                       #     boundary + the preamble bound). TWO PINs, both
+                                       #     asserting SILENCE post-fix and therefore RED
+                                       #     pre-fix — the arm read raw `lines[:120]`, so it
+                                       #     read the preserved drafting-era blockquote (12 of
+                                       #     the 17 target-bearing specs carry their version
+                                       #     ONLY there) and up to 120 lines of BODY. Plus ONE
+                                       #     CONTROL: the arm still FIRES on a shipped target
+                                       #     named in the real preamble, which is the guard
+                                       #     against the over-correction this narrowing invites.
+                                       #     Plus ONE GUARD — the per-line locator's new bound
+                                       #     is a NO-OP (MEASURED PRE-FIX: 0 of the 26
+                                       #     note-carrying specs land at or after the note), so
+                                       #     it cannot redden pre-fix
+                                       #     and is NOT a pin. ⚠ Two of the four are
+                                       #     deliberately not pins, and say so in their text.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

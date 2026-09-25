@@ -5,6 +5,100 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.64] — 2026-09-25
+
+**Patch — the target arm's OPERAND, and three claims its code does not support.** All four were found by
+the 2026-09-25 dream pass *verifying* v0.4.63's new status gate against the live tree, and every one is
+the class v0.4.63 was **about** — a surface asserting more than its operands support — re-committed
+inside the release that closed the class.
+
+### `tests/docs_links.py` — the operand
+
+`check_spec_status`'s target-release arm computed its set from raw `lines[:_SPEC_PREAMBLE_CAP]`. Two
+independent over-reaches lived on that one line:
+
+- **No provenance boundary.** `_SPEC_PROVENANCE_QUOTE` bounds the status *locator* and the *statement
+  join*; this **third reader of the same field** had no cut at all. v0.4.62's note says the provenance
+  note "now bounds the STATEMENT JOIN too, not only the locator" — the arm added at v0.4.63 was never
+  given one.
+- **No preamble bound.** The status arms use `min(first '## ', cap)`; this used the bare cap, so it read
+  up to 120 lines of **body**.
+
+⚠ **MEASURED on the live corpus: the region bound removes the target for 12 of the 17 target-bearing
+specs** — the arm was reading preserved *history* as the header's own target for most of its population.
+⚠ **Precisely: 11 of the 12 sit on `>`-marked lines of the blockquote; the 12th**
+(`env-preflight.spec.md:15`) **is an UNMARKED continuation of the same preserved sentence** — the wrap
+dropped its `>`, so the retired line's tail reads as ordinary text. (This entry first said all 12 were
+"inside the blockquote", which a review lens measured false. The case is also the design's own
+argument: a boundary anchored on `>` prefixes would MISS it, which is why it is anchored on the
+provenance NOTE.) It fires on none today — but ⚠ **not** for the reason this entry first
+gave (`_pending`), which a review lens refuted by measurement. MEASURED: **all 5** specs in the arm's
+region-population are **already cited** in a `## [X.Y.Z]` section, so the CITATION arm
+(`if _pending and named`) **preempts** this one (`elif _tgt and _pending`) for every one of them. The
+arm's zero is **STRUCTURAL — it is the `elif`** — and no `_pending` value could revive it. So the
+operand was wrong *and* the arm was doubly unreachable for what it was built for.
+
+⚠ **AND THE CAUSALITY, which is the sharper finding.** The operand was **correct when the arm was
+authored**. At `f0a4b75` — the commit before it — `docs/asserted-support.spec.md:7` read
+``Target release **v0.4.61 (patch)**`` **in the live header**. `24e2ea8` then added the arm *and* swept
+that header in the same commit, moving that exact line into the `>` blockquote. So the arm was dead on
+arrival **for its own two motivating instances**: `_targets` is now empty for both, and no `_pending`
+value can revive them. **The sweep moved the lines the arm reads.** A repair can invalidate its own
+instrument, and here it did so within a single commit — which is why the arm's remaining population
+(5, asserted by a new CONTROL) is a *different* population from the one that justified building it.
+
+After the fix the arm keeps a live region-population of **5** (17 = 12 + 5). ⚠ **That 5 is a prose
+figure with no mechanical guard** — an earlier draft of this entry said "asserted rather than assumed"
+and a review lens measured that false: the new CONTROL asserts a *fixture*, not the corpus count.
+Stated here as a dated measurement, which is what it is.
+
+The repair is **one derivation**: `_spec_header_end(lines)` bounds the heading, the cap and the note
+together, and all three readers take `lines[:that]`. **A boundary is a property of the FIELD, not of the
+reader that happened to observe the defect** — this file has now paid for that twice, and the helper's
+docstring says so.
+
+### Three more claims the code does not support
+
+- ⚠ **The arm's own rationale was false, in the present tense.** Two comments asserted the instance specs
+  are named *"NOWHERE in CHANGELOG.md — the citation OPERAND hides them, not the matcher"*. True when
+  written (`24e2ea8`); **false one commit later**, when `e0a8970` — a **descendant** of that commit — swept
+  the headers and added both citations. All 17 target-bearing specs are named there and the arm fires on
+  **zero**. The repair invalidated its own diagnosis. Corrected on **SIX** surfaces, two of them
+  user-visible (the pin's own check **label** and the SKILL blurb), each now stating the fact
+  historically — the rationale is kept, not deleted. ⚠ **This sentence said "five" in the first
+  pass, and MISSED one** — `smoke.py`'s A4 comment, three lines above the call it annotates, sat
+  uncorrected while the release note claimed the claim was corrected. So the note asserting the
+  repair was itself over-claiming: the same defect, one layer up, caught by the review round.
+- **`:1004-1006` claimed a suppression never implemented** — *"an UNSHIPPED target anywhere in the preamble
+  suppresses the arm"*. The code filters to targets that HAVE shipped, so a header naming both a shipped
+  and an unshipped target **fires**. Corrected to match the code, keeping the gate recall-biased.
+- **A control's comment claimed a conjunct its assertion omitted** (`checked == 1`), and the A4 pin bound
+  its denominator and never read it. Both now assert what they claim.
+
+### Measured
+
+- `tests/smoke.py` **2364 passed / 0 failed**. On a **FULL COPY** of the pre-fix tree with only
+  `docs_links.py` restored — `git checkout -f`, **markers verified at 0 BEFORE measuring** (the void-run
+  defect recorded at v0.4.63) — **2362 / 2**, the two reds being exactly the two new pins: O1 (the
+  provenance boundary) and O2 (the preamble bound). Both assert **silence**, so they redden pre-fix **by
+  VALUE**. The new CONTROL (the arm still fires on a shipped target in the real preamble) and the new
+  GUARD (the per-line locator's bound is a no-op — 0 of 52) are green on **both** trees, and are labelled
+  CONTROL and GUARD rather than pins.
+- ⚠ **The statement JOIN's region bound (added here after review) is a no-op on the live corpus too**
+  — **0 of the 26** note-carrying specs change behaviour, `checked` holds at 52 — but it closes a
+  *reachable* hole: pre-fix, a region ending `**Status:** SHIPPED (v0.1.0).` followed by a
+  provenance line carrying `awaiting review` **fired**, quoting a clause the region deliberately
+  excludes, because `_cut2` truncates at the provenance phrase and keeps whatever precedes it on
+  that line. It is a GUARD, not a pin.
+- `tests/docs_links.py` green at **52** spec status lines — **unchanged**, measured before the edit and
+  re-measured after rather than carried. (A mid-line provenance note would have made the line-index cut
+  stricter than the char-index cut it replaces; none exists.)
+- `validate_manifests` · `simulate_accumulation` · `mypy` 0 issues in 42 files.
+
+⚠ **Two of the four defects have no observable** — both are comment corrections — so they carry no pin.
+That is stated rather than papered over with an assertion that reads prose, which would rot in exactly the
+way the claims it tested did.
+
 ## [0.4.63] — 2026-09-25
 
 **Patch — the recorded-open docket, closed.** Items earlier cycles wrote down rather than fixed, plus FIVE
@@ -30,12 +124,22 @@ entries were wrong when recorded, which is the roadmap's standing warning earnin
   a spec legitimately aiming at a FUTURE release silent. ⚠ `draft` is no longer a bare alternative: with it
   bare, `index-usage-and-budget-ladder` fired on prose (*"a code-review-skill gate on the draft"*) for a
   header whose status is *"Phase A/B/C SHIPPED"* — it now needs a CLAIM CONTEXT.
-- **A4 — the arm that needs NO CITATION.** Two live instances are named **NOWHERE** in CHANGELOG.md, so
-  every matcher fix left them silent: **the citation OPERAND hid them, not the matcher.** A header naming
-  `Target release: vX.Y.Z` where vX.Y.Z already shipped is decidable without one. ⚠ Its first cut carried a
-  `spec_done` guard — **A1's hole re-committed inside the arm written to close it.**
+- **A4 — the arm that needs NO CITATION.** A header naming `Target release: vX.Y.Z` where vX.Y.Z already
+  shipped is decidable without one. ⚠ Its first cut carried a `spec_done` guard — **A1's hole
+  re-committed inside the arm written to close it.**
+  ⚠ **CORRECTED at v0.4.64 — two claims here were false as written.** This entry said the two instances
+  are named *"NOWHERE in CHANGELOG.md — the citation OPERAND hid them, not the matcher"*. That was TRUE
+  when the arm was written (`24e2ea8`) and **false one commit later**: `e0a8970` (a DESCENDANT) swept the
+  headers and added both citations. Re-measured: all 17 target-bearing specs are named there and the arm
+  fires on **zero**. Its OPERAND was also narrower than intended — it read raw `lines[:120]`, so **12 of
+  the 17** targets it saw came from the preserved drafting-era blockquote rather than the live header
+  (fixed in v0.4.64; the arm keeps 5 live specs). The text above is preserved as the reasoning of record,
+  not deleted.
 - **A5 — the search region is the PREAMBLE** (before the first `## ` heading), not a fixed 40 lines:
   `marker-coordinate-truth.spec.md` declares its status at line 84 and its header runs to 93.
+  ⚠ **CORRECTED at v0.4.64:** this was true of the STATUS reader only. A4's target scan was never
+  preamble-bounded — it used the bare 120-line cap — so "the search region is the PREAMBLE" described one
+  arm and was false of the other that shipped in the same release.
 
 ⚠ And the statement cap went **3 → 6**: at three lines, `asserted-support`'s wrapped *"awaiting merge"* fell
 outside the join and the header read as settled — the very instance A1 exists for.

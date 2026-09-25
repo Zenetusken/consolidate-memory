@@ -90,6 +90,14 @@ Invariants:
    omitted the gate — and invariant 6 above is the reason the axis was invisible in the first place
    (`LIVE_DOCS` is a CURRENCY set; a status was in no set). 16 pre-shipping headers were found and 14
    swept, and the count moved once per matcher fix — a gate's number is a property of its matcher.
+   ⚠ **v0.4.64: this entry names the gate's FIRST arm only.** `check_spec_status` has had a SECOND
+   since v0.4.63 — a header stating a pre-shipping status while naming a `Target release:` that has
+   **already shipped**, decided with NO citation. Recording it matters for the entry's own reason:
+   this index exists so the file does not omit a gate it operates, and an arm is a gate. Its operand
+   became the header REGION at v0.4.64 (first `## `, the cap, and the sweep's provenance note); before
+   that it read raw `lines[:120]` and was reading preserved history for most of the specs it saw,
+   including both of the two it was built for. (Corpus counts live in the CHANGELOG and in the
+   target-scan comment, not here.)
 
 Run:  python3 tests/docs_links.py   (exit 0 = clean)
 """
@@ -982,6 +990,68 @@ _SPEC_STATUS_MENTION = re.compile(r"(?im)^.*?\bstatus\b\s*\**:[^\n]*")
 _SPEC_PROVENANCE_QUOTE = re.compile(r"(?i)drafting-era|preserved verbatim")
 
 
+def _spec_header_end(lines: "list[str]") -> int:
+    """v0.4.64: the index ending a spec's HEADER REGION — the first `## ` heading, the preamble cap,
+    or the sweep's provenance note, whichever comes first.
+
+    ⚠ ONE derivation, for EVERY reader of the header. `_SPEC_PROVENANCE_QUOTE` was consulted by the
+    status LOCATOR (inside `_spec_status_line`) and by the STATEMENT join (in `check_spec_status`) —
+    and the target-release scan added at v0.4.63, a **third reader of the same field**, had no cut at
+    all. MEASURED: **most** target-bearing specs carry their version ONLY inside the preserved
+    drafting-era blockquote, so that arm was reading preserved HISTORY as the header's own target for
+    most of its population (it fires on none today only because every swept header also clears
+    `_pending` — the operand was wrong, not yet the verdict). ⚠ The exact corpus count lives in
+    `check_spec_status`'s target-scan comment and in the v0.4.64 CHANGELOG entry — NOT here: it is a
+    property of `docs/`, and a copy in a docstring is one more place to miss when the corpus moves.
+
+    ⚠ **The causality, which is the sharper half.** The operand was CORRECT when the arm was authored.
+    At `f0a4b75`, `docs/asserted-support.spec.md:7` read its target in the LIVE header; `24e2ea8` — the
+    commit that ADDED the arm — swept that header in the same commit and moved the line into the `>`
+    blockquote. So the arm was dead on arrival for its own two motivating instances: `_targets` is now
+    empty for both and no `_pending` value revives them. **The sweep moved the lines the arm reads.**
+
+    **A boundary is a property of the FIELD, not of the reader that happened to observe the defect.**
+    This file has now paid for that twice: v0.4.62 bounded the locator and left the statement join
+    reading raw lines; v0.4.63 bounded both and left the target scan reading raw lines.
+
+    ⚠ The DERIVATION is what matters, not a census of who calls it — that is the callers' business,
+    and a list here would rot on the next reader added. ⚠ Two readers *additionally* re-apply the cut
+    and they are **not** equivalent: `_spec_status_line`'s cut is a no-op on a bounded window
+    (MEASURED: 0 of the 26 note-carrying specs), but the statement JOIN's `_jx` walk is bounded by
+    `len(lines)` rather than by this region, so it still crosses it — MEASURED on **4 of 58** — which
+    makes `_cut2` there **load-bearing, not vestigial**. ⚠ An earlier version of this docstring
+    claimed both were no-ops; that was FALSE, and it was the same class as the defect this helper
+    exists to fix — a claim its operand did not support.
+
+    ⚠ KNOWN ASYMMETRY, recorded rather than left implicit: this is a **LINE-index** cut, while the
+    cuts it replaces were **CHARACTER-index**. They diverge when a declaration and a provenance
+    phrase share a line — the line cut drops the whole line, so such a header goes `checked` 1 → 0
+    and simply stops being examined. That is a SILENT false negative, which is this repo's own
+    "a dropped check is silent" lesson. MEASURED: **0** live instances today, but the shape is
+    established in this corpus — **4** lines carry a provenance phrase preceded by NON-MARKUP text
+    (`asserted-support.spec.md:31`, `body-defragmentation.spec.md:4`,
+    `completion-driven-archiving.spec.md:4`, `group-lifecycle-completion.spec.md:6`), and 26 carry a
+    phrase with some prefix. ⚠ An earlier version of this paragraph said "5 mid-line provenance
+    matches" — an unreproducible figure carried from a peer's report without measuring it, which is
+    this repo's own `a-reviewers-correction-is-an-unaudited-claim`. A spec that pairs a declaration
+    with such a line would vanish from the denominator with nothing to say so; `checked` is the tell.
+
+    ⚠ The heading predicate `ln.startswith("## ")` now lives HERE and nowhere else: the arms consume
+    this helper rather than computing their own bound, so the drift this comment used to warn about
+    ("a fresh regex here would let the two regions drift") can no longer occur. An earlier version
+    kept the predicate inline AND warned about a second site — a stale justification for its own
+    absence, which a review lens measured as vacuous (one executable `startswith("## ")` remains).
+    """
+    # ⚠ `min` of three INDEPENDENT first-hits, in the `next(…, default)` idiom this file already
+    # uses. Equivalent to searching for the note only *within* the already-bounded span: `min` gives
+    # the same answer because a note at or past the cap or the heading cannot lower the result.
+    return min(
+        next((k for k, ln in enumerate(lines) if ln.startswith("## ")), len(lines)),
+        next((k for k, ln in enumerate(lines) if _SPEC_PROVENANCE_QUOTE.search(ln)), len(lines)),
+        _SPEC_PREAMBLE_CAP,
+    )
+
+
 def _spec_status_line(window: str):
     """The status DECLARATION in a header window, or None.
 
@@ -997,13 +1067,20 @@ def _spec_status_line(window: str):
     if m:
         return m
     return _SPEC_STATUS_MENTION.search(window)
-# ⚠ A4 (v0.4.63): the rule that needs no versioned CITATION. Two live instances were invisible to
-# every matcher fix because `asserted-support.spec.md` and `marker-coordinate-truth.spec.md` are named
-# NOWHERE in CHANGELOG.md — the citation OPERAND hides them, not the matcher. But a header that names
-# `Target release: vX.Y.Z` where **vX.Y.Z already exists as a release section** is decidable without one.
+# ⚠ A4 (v0.4.63): the rule that needs no versioned CITATION. A header that names
+# `Target release: vX.Y.Z` where **vX.Y.Z already exists as a release section** is stale by definition.
 # ⚠ The version must be ADJACENT to the label (markup only between), which excludes the drafting-era
-# `target: cm v0.1.49` form; and an UNSHIPPED target anywhere in the preamble suppresses the arm, so a
-# spec legitimately aiming at a future release stays silent.
+# `target: cm v0.1.49` form.
+# ⚠ CORRECTED (v0.4.64, defect 2). This said the arm's two instances "are named NOWHERE in
+# CHANGELOG.md — the citation OPERAND hides them, not the matcher". True when written (`24e2ea8`);
+# false one commit later, when `e0a8970` — a descendant — added both citations. Re-measured: all 17
+# target-bearing specs are named there and the arm fires on 0. Stated historically; see the arm's own
+# comment in `check_spec_status`.
+# ⚠ CORRECTED (v0.4.64, defect 3). This said "an UNSHIPPED target anywhere in the preamble suppresses
+# the arm, so a spec legitimately aiming at a future release stays silent". No suppression is
+# implemented — the arm filters to targets that HAVE shipped, so a future-ONLY target is silent by the
+# FILTER, while a header naming both a shipped and an unshipped target FIRES. The claim now matches the
+# code (recall-biased), which is the disposition the operator chose over implementing suppression.
 _SPEC_TARGET_RELEASE = re.compile(r"(?i)target(?: release)?\s*:?\s*\**\s*(v?\d+\.\d+\.\d+)\b")
 _SPEC_PREAMBLE_CAP = 120      # `marker-coordinate-truth`'s label sits at line 84, past the 40-line window
 
@@ -1075,6 +1152,13 @@ def check_spec_status() -> int:
     """v0.4.61 (RC-4): a `docs/*.spec.md` whose header still states a DRAFTING-era state while
     CHANGELOG.md names that file inside a `## [X.Y.Z]` release section.
 
+    ⚠ **THIS CONTRACT HAS TWO ARMS since v0.4.63, and this docstring described only the first until
+    v0.4.64** — a review lens measured it, after the file-level invariant list had already been
+    corrected for the same omission. The SECOND needs NO citation: a header stating a pre-shipping
+    status while naming a `Target release:` that has **already shipped** is stale by definition. It
+    is the `elif`, so it fires only where the citation arm did not — which is exactly why the
+    distinction matters and why a reader told "there is one rule here" would miss it.
+
     ⚠ WHY THIS EXISTS. `LIVE_DOCS` is a VERSION-CURRENCY set — membership means "this doc's version
     statement goes stale when a release lands". A spec's STATUS is a different axis and was in NO
     set, so a drafting-era line could survive every check: four headers did, for months, with the
@@ -1116,8 +1200,11 @@ def check_spec_status() -> int:
     checked = 0
     for spec in sorted((ROOT / "docs").glob("*.spec.md")):
         lines = spec.read_text(encoding="utf-8", errors="replace").splitlines()
-        _hd0 = next((k for k, ln in enumerate(lines) if ln.startswith("## ")), len(lines))
-        _win = "\n".join(lines[:min(_hd0, _SPEC_PREAMBLE_CAP)])
+        # ⚠ v0.4.64: ONE region, bound once and sliced nowhere else. `_spec_header_end` bounds the
+        # heading, the cap AND the provenance note together — `_spec_status_line`'s own internal cut
+        # is now a no-op on this window (kept as a defensive guard for a caller handing it a raw str).
+        _hdr = lines[:_spec_header_end(lines)]
+        _win = "\n".join(_hdr)
         m = _spec_status_line(_win)
         if m:
             # ⚠ THE STATEMENT, NOT THE LINE. The matcher LOCATES the status over a 40-line window but
@@ -1137,17 +1224,33 @@ def check_spec_status() -> int:
             # line 84 and its header runs to line 93, so a 40-line window never reached it. ⚠ The
             # diagnostic that found this first claimed SEVEN files were unreached; six were body prose
             # and one a table row, which the gate is RIGHT to ignore — measure with the instrument.
-            _hd = next((k for k, ln in enumerate(lines) if ln.startswith("## ")), len(lines))
-            _end = min(_hd, _SPEC_PREAMBLE_CAP)
-            _ix = next((k for k, ln in enumerate(lines[:_end])
-                        if _SPEC_STATUS_DECL.match(ln)), None)
+            # ⚠ v0.4.64: the SAME region as the window above — this per-line locator used to rebuild
+            # `min(_hd, cap)` itself and, unlike `_spec_status_line`, never applied the provenance
+            # boundary. MEASURED **PRE-FIX** — the only informative direction, since post-fix the
+            # bound makes it impossible BY CONSTRUCTION: **0 of the 26** note-carrying specs land at
+            # or after the note, so the bound is observationally a no-op and this is a regression
+            # GUARD, not a pin. ⚠ An earlier version of this line said "0 of 52", which names the
+            # wrong population — only 26 of the 58 specs carry a note at all — and, quoted post-fix,
+            # is a TAUTOLOGY rather than a measurement.
+            _ix = next((k for k, ln in enumerate(_hdr) if _SPEC_STATUS_DECL.match(ln)), None)
             if _ix is None:
-                _ix = next((k for k, ln in enumerate(lines[:_end])
+                _ix = next((k for k, ln in enumerate(_hdr)
                             if _SPEC_STATUS_MENTION.match(ln)), None)
             _jx = _ix
             # ⚠ `_ix is not None` is a conjunct of the GUARD, not just of the ternary below: without it
             # mypy cannot narrow `_ix` and `(_jx - _ix)` is an int-minus-optional.
-            while (_ix is not None and _jx is not None and _jx < len(lines)
+            # ⚠ v0.4.64 (review finding): bounded by `len(_hdr)`, NOT `len(lines)`. The join walked
+            # past the region — it is the ONE reader whose walk was not region-bounded — so `_pending`
+            # could be selected by a clause the region deliberately EXCLUDES, while `_tgt` came from
+            # the region: the two conjuncts of `elif _tgt and _pending` measured over two regions.
+            # REACHABLE repro on pre-fix `main`: a region ending `**Status:** SHIPPED (v0.1.0).`
+            # followed by a note line `⚠ awaiting review — Drafting-era history follows.` fires,
+            # quoting `awaiting review` as a pre-shipping status, because `_cut2` truncates at the
+            # phrase and the text BEFORE it on that line survives. MEASURED: 4 of 58 joins crossed the
+            # region; bounding is a no-op on all 4 today (each crossing line IS the phrase match, so
+            # `_cut2` already cut it) — a GUARD, not a pin. It makes this docstring's own invariant
+            # true: every reader now takes the region.
+            while (_ix is not None and _jx is not None and _jx < len(_hdr)
                    # ⚠ SIX, not three. At three, a status that wraps to a fifth line
                    # (`asserted-support.spec.md`'s "awaiting merge" sits on line 6) fell outside the
                    # join and the header read as settled — the very instance A1 exists for. The
@@ -1181,11 +1284,35 @@ def check_spec_status() -> int:
         # ⚠ ONE string for BOTH predicates. The first draft matched DONE over a 60-char slice while PRE
         # saw the whole line, so the two tests were about different text.
         named = [v for v, body in sections if spec.name in body]
-        # ⚠ A4 (v0.4.63): a target release **that has already shipped** is stale with NO citation —
-        # which is what hides `asserted-support.spec.md` and `marker-coordinate-truth.spec.md`, named
-        # nowhere in CHANGELOG.md. An UNSHIPPED target anywhere in the preamble suppresses the arm, so a
-        # spec legitimately aiming at a future release stays silent.
-        _targets = {x.lstrip("v") for x in _SPEC_TARGET_RELEASE.findall("\n".join(lines[:_SPEC_PREAMBLE_CAP]))}
+        # ⚠ A4 (v0.4.63): a target release **that has already shipped** is stale with NO citation.
+        # ⚠ THE OPERAND, corrected at v0.4.64. This read raw `lines[:_SPEC_PREAMBLE_CAP]` — two
+        # over-reaches on one line, both found by the 2026-09-25 dream pass:
+        #   (a) NO provenance boundary. `_SPEC_PROVENANCE_QUOTE` bounds the status locator and the
+        #       statement join; this THIRD reader of the same field had no cut, so it read the
+        #       preserved drafting-era blockquote as the header's own target. MEASURED: 12 of the 17
+        #       target-bearing specs carry their version ONLY inside that quote, so the arm was reading
+        #       preserved HISTORY for most of its population. ⚠ And the operand was RIGHT when the arm
+        #       was authored — at `f0a4b75` this spec's target sat in the LIVE header, and `24e2ea8`,
+        #       the commit that ADDED the arm, swept it into the quote in the same commit. The arm was
+        #       dead on arrival for its own motivating instances; the sweep moved what it reads.
+        #   (b) NO preamble bound — the status arms use `min(first '## ', cap)`; this used the bare cap
+        #       and therefore read up to 120 lines of BODY.
+        # Both now come from `_spec_header_end`, so the boundary has ONE site.
+        # ⚠ CORRECTED CLAIM (defect 2, v0.4.64). This comment asserted, present tense, that the two
+        # instance specs are named *"NOWHERE in CHANGELOG.md — the citation OPERAND hides them, not the
+        # matcher"*. That was TRUE when the arm was added (`24e2ea8`) and FALSE one commit later:
+        # `e0a8970`, a DESCENDANT of the commit that wrote the claim, swept the headers AND added both
+        # specs to CHANGELOG.md. Re-measured on the live tree: **all 17** target-bearing specs appear
+        # there and the arm fires on **zero** (`checked = 52`, `errors = []`). The repair invalidated
+        # its own diagnosis. The arm is KEPT as future-proofing — a landed target is stale without
+        # needing a citation — so the rationale is stated historically, never deleted.
+        # ⚠ CORRECTED CLAIM (defect 3, v0.4.64). The constant's comment claimed *"an UNSHIPPED target
+        # anywhere in the preamble suppresses the arm"*. The code never implemented suppression: `_tgt`
+        # below filters to targets that HAVE shipped and the arm is `elif _tgt and _pending`, so a
+        # header naming BOTH a shipped and an unshipped target FIRES. Stated as the code behaves —
+        # recall-biased, with the future-ONLY case still silent (the `_tgt` filter is what keeps a spec
+        # legitimately aiming at a future release quiet, not a suppression rule).
+        _targets = {x.lstrip("v") for x in _SPEC_TARGET_RELEASE.findall("\n".join(_hdr))}
         _tgt = sorted(t for t in _targets if t in {v.lstrip("v") for v, _ in sections})
         if _pending and named:
             err(f"{spec.name}: the header still states a pre-shipping status ({stated[:90]!r})"
