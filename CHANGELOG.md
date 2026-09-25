@@ -45,7 +45,9 @@ that header in the same commit, moving that exact line into the `>` blockquote. 
 arrival **for its own two motivating instances**: `_targets` is now empty for both, and no `_pending`
 value can revive them. **The sweep moved the lines the arm reads.** A repair can invalidate its own
 instrument, and here it did so within a single commit — which is why the arm's remaining population
-(5, asserted by a new CONTROL) is a *different* population from the one that justified building it.
+(5 — ⚠ **a measurement, not a mechanically-asserted figure**; an earlier draft of this entry said
+"asserted by a new CONTROL", which no check does — see the note on the CONTROL below) is a *different*
+population from the one that justified building it.
 
 After the fix the arm keeps a live region-population of **5** (17 = 12 + 5). ⚠ **That 5 is a prose
 figure with no mechanical guard** — an earlier draft of this entry said "asserted rather than assumed"
@@ -91,8 +93,14 @@ docstring says so.
   excludes, because `_cut2` truncates at the provenance phrase and keeps whatever precedes it on
   that line. It is a GUARD, not a pin.
 - `tests/docs_links.py` green at **52** spec status lines — **unchanged**, measured before the edit and
-  re-measured after rather than carried. (A mid-line provenance note would have made the line-index cut
-  stricter than the char-index cut it replaces; none exists.)
+  re-measured after rather than carried. ⚠ **CORRECTED at v0.4.65:** this line said *"a mid-line
+  provenance note would have made the line-index cut stricter than the char-index cut it replaces;
+  none exists"* — and **"none exists" is false as measured: 26 specs carry a provenance phrase with a
+  prefix, 4 of them with a non-markup prefix.** The shape is *established*, not absent. The
+  denominator holds at 52 for a narrower reason: none of those 26 pairs the note with a declaration on
+  the SAME line, which is the condition that would actually drop a spec. Recorded rather than quietly
+  re-worded, because "the thing that would break this does not exist" is the claim most worth
+  measuring and this one was not.
 - `validate_manifests` · `simulate_accumulation` · `mypy` 0 issues in 42 files.
 
 ⚠ **Two of the four defects have no observable** — both are comment corrections — so they carry no pin.
