@@ -1062,9 +1062,19 @@ def _spec_header_end(lines: "list[str]") -> int:
     # line 8 still had every one of its lines searched for a note. The longest spec here is 3,646
     # lines. ⚠ Equivalence proven by RESULT is not equivalence proven by COST, and this gate runs in
     # CI on every push.
+    # ⚠ v0.4.66: the note must be a BLOCKQUOTE line. MEASURED: the sweep whose OUTPUT this boundary
+    # exists to fence off writes its own correction sentence into the LIVE header — "⚠ The
+    # drafting-era status survived because no gate re-read it" — and the phrase alone therefore
+    # matched four specs' *live* lines, cutting the region at the sweep's own feedback instead of at
+    # the preserved quote. Anchoring on `>` is exact: the marker the sweep writes is
+    # `> **Drafting-era status — never revisited after the arc closed.**`, and its live sentences are
+    # never quoted. ⚠ This is v0.4.63's own recorded lesson — "the sweep writes prose into the header
+    # the gate reads, so its own annotation must be written around the detector's vocabulary" —
+    # broken by the sweep that recorded it.
     _n = min(len(lines), _SPEC_PREAMBLE_CAP)
     _hd = next((k for k in range(_n) if lines[k].startswith("## ")), len(lines))
-    _note = next((k for k in range(min(_hd, _n)) if _SPEC_PROVENANCE_QUOTE.search(lines[k])), _n)
+    _note = next((k for k in range(min(_hd, _n))
+                  if lines[k].lstrip().startswith(">") and _SPEC_PROVENANCE_QUOTE.search(lines[k])), _n)
     return min(_hd, _note, _n)
 
 

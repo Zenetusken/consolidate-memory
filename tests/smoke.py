@@ -23489,13 +23489,29 @@ try:
                 "> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM:\n\n"
                 "> **Status: revised for review.** Target release: **v0.1.0 (patch)**\n")
             _o5c64 = _o5ck64 == 1 and len(_o5e64) == 1 and "Target release: v0.1.0" in _o5e64[0]
+
+            # ══ v0.4.66 — the boundary must anchor on the QUOTE, not on the phrase ═══════════════
+            # PIN — the sweep whose output the boundary fences off writes its OWN correction sentence
+            # into the LIVE header ("⚠ The drafting-era status survived because no gate re-read it"),
+            # and matching the phrase alone therefore cut four live specs at the sweep's feedback
+            # instead of at the preserved quote. MEASURED on the corpus: those four regions ended at
+            # lines 3/3/9/5 rather than at their `## ` headings (5/5/11/8) — a latent false negative,
+            # because any pre-shipping clause in the lost continuation was invisible.
+            # ⚠ This fixture puts a live continuation carrying the phrase ABOVE the target: PRE-FIX
+            # the region stops at the phrase and the target is never read; post-fix the region runs on
+            # and the arm FIRES. RED pre-fix, GREEN post — a PIN.
+            _o6ck64, _o6e64, _o6pm64 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status:** revised for review. ⚠ The drafting-era status survived "
+                "this line.\n\nTarget release: **v0.1.0 (patch)**\n")
+            _o6p64 = _o6ck64 == 1 and len(_o6e64) == 1 and "Target release: v0.1.0" in _o6e64[0]
         except Exception as _x63:               # a broken gate is RED, not a traceback
             _a1p63 = _a1c63 = _a2p63 = _a2c63 = _a3p63 = _a4p63 = _a4f63 = _a4s63 = False
             _a5p63 = _a5c63 = False
-            _o1p64 = _o2p64 = _o4g64 = _o5c64 = False
+            _o1p64 = _o2p64 = _o4g64 = _o5c64 = _o6p64 = False
             _a1pm63 = _a2pm63 = _a3pm63 = _a4pm63 = _a5pm63 = f"could not exercise it: {type(_x63).__name__}: {_x63}"
             _a1cm63 = _a2cm63 = _a4fm63 = _a4sm63 = _a5cm63 = _a1pm63
-            _o1pm64 = _o2pm64 = _o4pm64 = _o5pm64 = _a1pm63
+            _o1pm64 = _o2pm64 = _o4pm64 = _o5pm64 = _o6pm64 = _a1pm63
     finally:
         _dl40.ROOT = _spsroot61                 # restored even if the arm itself blew up
         _shpsd40.rmtree(_spstmp61, ignore_errors=True)
@@ -23591,6 +23607,13 @@ check("v0.4.64 O5 control (CONTROL — the arm still FIRES on a LIVE shipped tar
       "narrowing's OWN failure shape needs — its fixture carries a NOTE, which is what the "
       "over-correction this helper introduces turns on. ⚠ The note-free control that used to claim "
       f"this job was DELETED at v0.4.65 as a duplicate of an existing pin): ⚠ {_o5pm64}", _o5c64)
+check("v0.4.66 O6 pin (PIN — the provenance boundary anchors on the preserved QUOTE, not on the mere "
+      "phrase. The sweep whose output this boundary fences off writes its own correction sentence "
+      "into the LIVE header — \"⚠ The drafting-era status survived because no gate re-read it\" — "
+      "so matching the phrase alone cut FOUR live specs at the sweep's feedback instead of at the "
+      "quote, ending their regions at lines 3/3/9/5 rather than at their `## ` headings (5/5/11/8). "
+      "A latent false negative: any pre-shipping clause in the lost continuation was invisible. "
+      f"MEASURED pre-fix silent, post-fix fires): ⚠ {_o6pm64}", _o6p64)
 
 # ── v0.4.63 (B4): the contiguity gate is PER-FILE now, and its needles are NEW ──────────────────
 # The v0.4.57 entry named `CLAUDE.md:32-33` as the wrapped-anchor instance and NOTED IT CLOSED — but a
@@ -26725,7 +26748,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     only docs_links.py + docs/ restored: pre-fix
                                        #     2350 passed / 5 failed (the five PINs, nothing else),
                                        #     post-fix 2355 passed / 0 failed.
-                            + 4        # v0.4.64/v0.4.65 — the target arm's OPERAND (the provenance
+                            + 5        # v0.4.64/v0.4.65/v0.4.66 — the target arm's OPERAND (the provenance
                                        #     boundary + the preamble bound). TWO PINs, both
                                        #     asserting SILENCE post-fix and therefore RED
                                        #     pre-fix — the arm read raw `lines[:120]`, so it
