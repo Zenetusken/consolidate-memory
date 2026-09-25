@@ -23242,8 +23242,11 @@ try:
     del _dl40.errors[_spsn61:]
     # ⚠ v0.4.64: `>= 1` was a VACUITY floor, and a mutation measured what that costs. Making
     # `_spec_header_end` over-cut (return 0 whenever a note exists — the natural over-correction of
-    # this release's change) leaves the suite at **2362/3** — the RC-4 pin (this floor), O1, and O5 —
+    # this release's change) leaves the suite at **2361/3** — the RC-4 pin (this floor), O1, and O5 —
     # where BEFORE this floor and O5 existed the same mutation read only **2363/1**, O1 alone, while the live
+    # ⚠ Re-measured at v0.4.65: this line said 2362/3, carried from a run taken BEFORE this branch
+    # deleted the duplicate O3 — one check too many. A mutation count belongs to the triple (code,
+    # fixture, harness); deleting a check changes it, and the number moved 2365 -> 2364 total.
     # denominator falls **52 → 26** — every note-carrying spec drops out at once and nothing says so.
     # ⚠ The floor is PROPORTIONAL rather than an equality for the reason the release note gives: the
     # COUNT is a property of the corpus (it has read 51 and 52 as the corpus moved), so an equality
@@ -23452,7 +23455,7 @@ try:
             _o2p64 = _o2ck64 == 1 and not _o2e64
             # ⚠ v0.4.65: an "O3 control" stood here asserting that the arm still FIRES on a shipped
             # target in the real preamble. It was REMOVED because it was **byte-identical to the
-            # v0.4.63 A4 pin's own fixture** (`smoke.py:23378` — those two fixtures were
+            # v0.4.63 A4 pin's own fixture** (`smoke.py:23379` — those two fixtures were
             # BYTE-IDENTICAL; ⚠ this tombstone first said "the string occurs 4x", which counted a
             # SUBSTRING: four fixtures in this file CONTAIN that target line but have four different
             # tails, and only the deleted one matched the A4 pin exactly — the same wrong-operand
@@ -23585,9 +23588,9 @@ check("v0.4.64 O4 guard (GUARD, NOT a pin — a spec whose provenance note sits 
       f"region), so no check can witness it): ⚠ {_o4pm64}", _o4g64)
 check("v0.4.64 O5 control (CONTROL — the arm still FIRES on a LIVE shipped target sitting ABOVE its "
       "provenance note. Green on BOTH trees and EXAMINED on both. ⚠ This is the control the "
-      "narrowing's OWN failure shape needs, and O3 could not supply it: O3's fixture carries no note, "
-      "so it cannot see over-cutting in the note's PRESENCE — the only over-correction the new helper "
-      f"introduces): ⚠ {_o5pm64}", _o5c64)
+      "narrowing's OWN failure shape needs — its fixture carries a NOTE, which is what the "
+      "over-correction this helper introduces turns on. ⚠ The note-free control that used to claim "
+      f"this job was DELETED at v0.4.65 as a duplicate of an existing pin): ⚠ {_o5pm64}", _o5c64)
 
 # ── v0.4.63 (B4): the contiguity gate is PER-FILE now, and its needles are NEW ──────────────────
 # The v0.4.57 entry named `CLAUDE.md:32-33` as the wrapped-anchor instance and NOTED IT CLOSED — but a

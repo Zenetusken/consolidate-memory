@@ -1323,15 +1323,23 @@ def check_spec_status() -> int:
         #       the commit that ADDED the arm, swept it into the quote in the same commit. The arm was
         #       dead on arrival for its own motivating instances; the sweep moved what it reads.
         #   (b) NO preamble bound — the status arms use `min(first '## ', cap)`; this used the bare cap
-        #       and therefore read up to 120 lines of BODY.
+        #       and therefore read up to 120 lines REGARDLESS of where the header ends. ⚠ An earlier
+        #       version of this bullet said those were "120 lines of BODY", and a review lens measured
+        #       it false for the one spec it matters most for: `identity-from-the-input.spec.md` has
+        #       its first `## ` at line 149, so its lines 27-120 are PREAMBLE — the region is a subset
+        #       of the preamble, not an overrun into the body. What is true is narrower: the bound is
+        #       INERT there (see the caveat below), not that it reads body.
         # Both now come from `_spec_header_end`, so the boundary has ONE site.
         # ⚠ CAVEAT on (b), measured: the preamble bound is **INERT for a spec whose first `## ` lies
         # at or past the cap and that carries no note** — there `min(hd, cap)` is just the cap, so the
         # region is byte-identical to the pre-fix `lines[:120]`. MEASURED: exactly TWO specs have
         # `hd >= 120`; `record-post-state.spec.md` (hd=212) is saved by its note at index 8, but
-        # `identity-from-the-input.spec.md` (hd=149, no note) still reads lines 27-120 of what this
-        # gate's own A5 rule calls BODY. Verdict-safe today only because its target at line 27 is
-        # genuine header text. The O2 pin cannot see this shape — its fixture's `## ` sits at index 4.
+        # `identity-from-the-input.spec.md` (hd=149, no note) is bounded by nothing but the cap.
+        # ⚠ This caveat first said those lines were "what the A5 rule calls BODY" — FALSE: with
+        # `hd=149`, lines 0-148 ARE the preamble, so lines 27-120 are preamble too. The region is a
+        # subset of the preamble, not an overrun into the body; what is inert is the BOUND, not the
+        # region's membership. Verdict-safe today only because its target at line 27 is genuine
+        # header text. The O2 pin cannot see this shape — its fixture's `## ` sits at index 4.
         # ⚠ CORRECTED CLAIM (defect 2, v0.4.64). This comment asserted, present tense, that the two
         # instance specs are named *"NOWHERE in CHANGELOG.md — the citation OPERAND hides them, not the
         # matcher"*. That was TRUE when the arm was added (`24e2ea8`) and FALSE one commit later:
