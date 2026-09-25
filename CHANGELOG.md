@@ -5,6 +5,44 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.65] — 2026-09-25
+
+**Patch — the findings the v0.4.64 review agents were holding, and a released figure that was wrong.**
+
+The v0.4.64 review fan-out lost six agents' findings to a **delivery budget**: the harness caps a whole
+agent drain at **16,000 characters SHARED** across every agent completing together, and caps each string
+inside a structured result at **256**. Six agents finished within six minutes and the first one's payload
+consumed the pot. Re-queried with file-based delivery — full findings to disk, a three-field reply — they
+returned in full: **six agents, six replies, all under 350 characters, zero truncation.**
+
+### Fixed
+
+- ⚠ **A performance regression v0.4.64 introduced.** `_spec_header_end` collapsed to a `min` of three
+  `next(...)` calls — an idiom a review lens suggested, adopted after proving equivalence **by result**.
+  By result it was identical. By **cost** it was not: both scans ran unbounded, so a spec whose heading
+  sits at line 8 still had every line searched for a provenance note. MEASURED: **15,074** provenance
+  searches over the corpus against **968** bounded — in a gate that runs in CI, against specs up to
+  **3,646** lines. Both scans are now bounded; **0 of 58 results differ**.
+- ⚠ **The released v0.4.64 entry understated its own suite by one** — it said 2364 where `435ccb5`
+  reports **2365**. The figure was written before the review round that ADDED a check, and never re-read.
+- **A check that added no coverage**: the "O3 control" was **byte-identical to the v0.4.63 A4 pin's
+  fixture**. Removed, and the D6 constant re-bumped.
+- **Eight claims** in the v0.4.64 prose that outran their operands — including one sentence that flipped
+  **three times**, where both of my versions *and* a reviewer's "correction" were wrong because all three
+  measured a **neighbour** of the operand the claim turns on (`_pending` is False for every spec in the
+  arm's population; the `named` citation set was irrelevant to it).
+
+### ⚠ Recorded, not closed
+
+Mutation testing found **five behaviours no check witnesses** — the suite stays green with each one
+changed: unbinding the status **window** (only the *target scan*'s use of the region is pinned);
+the boundary's **side** (off-by-one on the note term); the **cap** term (deleting it, or 120 → 10⁹);
+the two-arm **`elif`** → `if`; and re-adding the `spec_done` guard the source forbids. **Two thirds of
+what v0.4.64 changed is unwitnessed.** Named here rather than left as an implication that something
+covers it.
+
+Measured: `tests/smoke.py` **2364 / 0** · `docs_links` **52** spec status lines · `mypy` 0 in 42 files.
+
 ## [0.4.64] — 2026-09-25
 
 **Patch — the target arm's OPERAND, and three claims its code does not support.** All four were found by
