@@ -7,10 +7,11 @@ version changes on `main`.
 
 ## [0.4.63] — 2026-09-25
 
-**Patch — the recorded-open docket, closed.** Items earlier cycles wrote down rather than fixed, plus four
-holes the status gate this cycle shipped turns out to have had all along.
+**Patch — the recorded-open docket, closed.** Items earlier cycles wrote down rather than fixed, plus FIVE
+holes the status gate this cycle shipped turns out to have had all along — and ⚠ three of the DOCKET's own
+entries were wrong when recorded, which is the roadmap's standing warning earning its place again.
 
-### The gate's four holes (`tests/docs_links.py` → `check_spec_status`)
+### The gate's five holes (`tests/docs_links.py` → `check_spec_status`)
 
 `check_spec_status` shipped at v0.4.61 and was corrected twice at v0.4.62. It had four more.
 
