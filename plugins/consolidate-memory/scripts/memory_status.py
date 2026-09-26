@@ -5201,9 +5201,38 @@ def duty_gaps(record: object) -> "list[DutyClause]":
     return [c for c in _DUTY_CLAUSES if c.fires(record)]
 
 
+def _over_budget_head(rem: dict) -> str:
+    """The `⚠ index OVER budget (N/B tok) — GATE active · lever L` prefix of EVERY active-gate arm.
+
+    ⚠ ONE HOME, not three spellings. Both the lapsed and the generic arms wrote this by DIRECT INDEXING
+    (`rem['index_tokens']`, `rem['budget']`, `rem['lever']`) while the suppressed arm above them — the one
+    that renders a real RECORD — already used `.get`. So the two arms that can receive a record-shaped
+    dict were the two that CRASHED on one: `KeyError: 'index_tokens'`, measured.
+
+    ⚠ WHY A RECORD-SHAPED DICT IS IN CONTRACT, rather than an abuse to be forbidden: this function's own
+    comment (`_remediation_section`, on the stage block) states that a record-shaped dict must not crash
+    it, and the v0.4.61 fix deliberately made its TAIL safe for exactly that reader — a RECORD carries
+    `candidates_surfaced` where the live ctx carries `stages`, and gating the block on one marker alone
+    made the two layers disagree about whether the triage had run. A tail that accepts records inside a
+    function whose arms reject them is the weakest-enforcement-site shape this repo keeps paying for.
+
+    ⚠ PRESENCE-GATED, and the absent operand renders as ABSENT: `?` for a token count the record never
+    carries, and the target budget as the denominator's default because it is a CONSTANT rather than a
+    measurement (the arms that reach here have already established the gate is active). `lever` uses the
+    `or "-"` idiom, not `.get(k, "-")`, so an empty-but-present string cannot slip an empty label through
+    — the v0.4.34 correction, applied here for the same reason it was applied there.
+    """
+    return (f"⚠ index OVER budget ({rem.get('index_tokens', '?')}/{rem.get('budget', INDEX_TOKEN_BUDGET)} tok)"
+            f" — GATE active · lever {str(rem.get('lever') or '-').upper()}")
+
+
 def _remediation_section(rem: dict) -> list:
     """The REMEDIATION report lines (v0.1.18) — shared by print_report + --triage. Empty when the index is
-    under budget (rem is {}). Presentation only; the heuristics RANK, the model JUDGES + confirms."""
+    under budget (rem is {}). Presentation only; the heuristics RANK, the model JUDGES + confirms.
+
+    ⚠ It renders BOTH shapes: the live ctx's `remediation` (its two production callers) and — by the stage
+    block's own design, see `_over_budget_head` — a RECORD-shaped remediation. Every operand read below is
+    therefore presence-gated; direct indexing here is the defect `_over_budget_head` was hoisted to close."""
     if not rem:
         return []
     # v0.1.66 (Phase B): the hard-ceiling line renders in BOTH branches below — the ceiling is
@@ -5256,15 +5285,13 @@ def _remediation_section(rem: dict) -> list:
         # ⚠ The line states the refire RULE, and deliberately does NOT assert a crossing: the bound is
         # TWO-axis, so on a TOKEN-axis lapse the fact count sits inside Δ and any "N > B+Δ" phrasing would
         # be a measurement this reader cannot make (its token baseline has no operand in the record).
-        out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
-                                           f"— GATE active · lever {rem['lever'].upper()} · justification "
+        out = [_ui.kv("REMEDIATION", _ui.c(f"{_over_budget_head(rem)} · justification "
                                            f"{state} ({where}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts "
                                            "or on index-token bloat)", "red"))]
         if _ceil_line:
             out.append(_ceil_line)
     else:
-        out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
-                                           f"— GATE active · lever {rem['lever'].upper()}", "red"))]
+        out = [_ui.kv("REMEDIATION", _ui.c(_over_budget_head(rem), "red"))]
         if _ceil_line:
             out.append(_ceil_line)
     # D8 (v0.1.21): lead with the INDEX-RELIEF stages (B/C move the gated index); R = de-link-first; A = disk-only LAST.

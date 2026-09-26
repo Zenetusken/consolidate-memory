@@ -5093,6 +5093,38 @@ with _tfB.TemporaryDirectory() as _tdB:
                                                         "index_tokens": 2000, "budget": 1500,
                                                         "over_ceiling": False}))) == 1)
 
+        # ── v0.4.75: a RECORD-shaped dict must not CRASH `_remediation_section` ──────────────────────
+        # ⚠ The function's own comment states the contract ("a record-shaped dict cannot crash it") and
+        # its v0.4.61 TAIL honours it — but the two ACTIVE-gate arms read `rem['index_tokens']`,
+        # `rem['budget']` and `rem['lever']` by DIRECT INDEXING, and a RECORD carries none of the first
+        # two (they are the suppressed path's own operands, deliberately not relayed). MEASURED
+        # pre-change: `KeyError: 'index_tokens'`. A tail that accepts records inside a function whose
+        # arms reject them is the weakest-enforcement-site shape.
+        # ⚠ WRAPPED, and the wrap is the point: an unwrapped call inside a `check(...)` argument RAISES
+        # out of module scope and kills the run — no totals line, this pin never reached, the D6 counter
+        # lost with it. Same crash-class this repo has paid for twice, and the same repair: turn the
+        # raise into a VALUE the check asserts on.
+        def _shape_probe(payload: dict) -> "tuple[str, str | None]":
+            try:
+                return "\n".join(ms._remediation_section(dict(payload))), None
+            except Exception as e:                       # a crash IS a failed arm, never a skip
+                return "", type(e).__name__
+
+        _recShapeOut, _recShapeErr = _shape_probe(
+            {"required": True, "lever": "prune", "standing_justified": False,
+             "baseline_facts": 77, "current_facts": 91})     # a RECORD: no index_tokens, no budget
+        check("v0.4.75 (PIN): `_remediation_section` SURVIVES a record-shaped dict — the contract its own "
+              "tail states, which the two active-gate arms broke by direct indexing (pre-change this is "
+              "KeyError('index_tokens'), so the check reds on the ERROR NAME rather than on a wrong word)",
+              _recShapeErr is None and "index OVER budget" in _recShapeOut
+              and "?/1500 tok" in _recShapeOut)              # the absent operand renders as ABSENT
+        _ctxShapeOut, _ctxShapeErr = _shape_probe(
+            {"required": True, "lever": "prune", "index_tokens": 4444, "budget": 1500,
+             "standing_justified": False, "baseline_facts": 77, "current_facts": 91})
+        check("v0.4.75 (CONTROL): …and the LIVE-CTX shape still renders its REAL operands — the repair is "
+              "presence-gating, never a blanket `?` (green on both trees; the arm it must not disturb)",
+              _ctxShapeErr is None and "4444/1500 tok" in _ctxShapeOut)
+
         # ── v0.4.61 (RC-1), SECOND LAYER: the record → dashboard relay ──
         # ⚠ The pins above cover `build_context` and `memory_status._remediation_section`. They do NOT
         # cover the layer BELOW them, and that is MEASURED rather than assumed: disabling the
@@ -27136,6 +27168,10 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     from BOTH pre-change; + 1 GUARD (mutation-sensitive) on the
                                        #     relay's `isinstance` arm, which the review round found
                                        #     MISSING from the first cut
+                            + 2        # v0.4.75 — `_remediation_section` survives a record: 1 PIN (wrapped,
+                                       #     so a pre-change RAISE is asserted as a value rather than
+                                       #     killing the run) + 1 CONTROL (the live-ctx shape still
+                                       #     renders its real operands)
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

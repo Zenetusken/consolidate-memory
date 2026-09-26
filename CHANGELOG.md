@@ -5,6 +5,36 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.75] — 2026-09-26
+
+**Patch — `_remediation_section` survives a RECORD, which its own comment already promised.** The function's
+stage block states the contract — *"the tail below is presence-gated so a record-shaped dict cannot crash
+it"* — and the v0.4.61 fix built that tail for exactly such a reader: a RECORD carries `candidates_surfaced`
+where the live ctx carries `stages`, and gating the block on one marker alone made the two layers disagree
+about whether the triage had run. But the two **active-gate arms** read `rem['index_tokens']`,
+`rem['budget']` and `rem['lever']` by **direct indexing**, and a record carries neither of the first two —
+they are the suppressed path's own operands, deliberately not relayed. Measured:
+`_remediation_section(record)` raises **`KeyError: 'index_tokens'`**. **A tail that accepts records inside a
+function whose arms reject them is the weakest-enforcement-site shape this repo keeps paying for.**
+
+⚠ **The lapsed arm was MINE.** v0.4.73 copied the generic arm's direct indexing, while the *suppressed* arm
+above it already used the safe `.get(…, '?')` idiom — so the new arm inherited a crash instead of the fix
+sitting beside it. The repair is therefore **one helper both arms call** (`_over_budget_head`), not two
+edits, because two copies of a rule is how a second spelling gets acquired (the v0.4.70 precedent).
+
+⚠ **The absent operand renders as ABSENT, never as a plausible number.** A record's token count is `?` — the
+idiom the suppressed arm already used — while the denominator stays `INDEX_TOKEN_BUDGET`, because that is a
+**constant**, not a measurement, and the arms that reach it have already established the gate is active.
+`lever` uses the `or "-"` form rather than `.get(k, "-")`, so an empty-but-present string cannot slip an
+empty label through — the v0.4.34 correction, applied here for the reason it was applied there.
+
+⚠ **The pin is WRAPPED, and the wrap is the point.** An unwrapped `_remediation_section(record)` inside a
+`check(...)` argument raises out of module scope and kills the run — no totals line, and the D6 counter lost
+with it. That is the crash-class this repo has paid for twice (v0.4.58, v0.4.60), and the repair idiom is
+theirs: turn the raise into a **VALUE** the check asserts on, so pre-change the arm reds on the error NAME
+rather than taking the suite down. A CONTROL asserts the live-ctx shape still renders its real operands, so
+the fix cannot be satisfied by a blanket `?`.
+
 ## [0.4.74] — 2026-09-26
 
 **Patch — `current_facts` is declared, and the fact count gets one binding.** v0.4.73 shipped with a recorded
