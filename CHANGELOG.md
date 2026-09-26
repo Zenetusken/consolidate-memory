@@ -5,6 +5,49 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.69] — 2026-09-26
+
+**Patch — a quadratic the release made fixable, and the enumeration §4 was waiting on.** Three
+follow-ups to v0.4.68, all found by adversarial passes run against it.
+
+**A security review found the pointer scan is QUADRATIC on an unterminated `](` run** — the regex
+`\]\(([^)]+)\)` sweeps to end-of-line and backtracks one character per start position. MEASURED:
+3.4–4.9× per doubling, extrapolating to **~38 minutes** of uninterruptible CPU for a 1 MiB document
+(`ARCHIVE_INDEX_CAP_BYTES`), on a path with no timeout, reached from every store `*.md` classified as
+an archive. ⚠ **v0.4.68 did not introduce it and in fact NARROWED it** — the role filter skips the
+regex on non-pointer lines, and the old whole-text scan had a wider input set. What v0.4.68 did was
+give the rule **one home**, which is exactly where a single guard closes the class at every reader.
+
+Fixed by making the scan **linear** rather than by capping length: a cap would make an archive over it
+place **NOTHING**, and a placement is load-bearing — its facts would report UNPLACED and the rebuild
+would re-add their pointers. The blowup is an artefact of backtracking, not of the language. Measured
+after: equivalence **IDENTICAL** to the retired regex over **7,274 live store lines** and 14
+adversarial shapes; on the reported input, **0.000010s against the regex's 7.54s**. The now-dead regex
+is deleted, and a REGRESSION GUARD (R7) holds the line with an absolute 0.1s bar that separates by
+~750,000× — it cannot redden pre-fix, since the symbol is new, so it is labelled a guard and not a pin.
+
+**The enumeration §4 left open was then produced, and it is sharper than expected.** The roadmap's
+"8 pointers (~400 tok)" cluster cannot be enumerated — a size and a token figure, **zero membership,
+anywhere**. ⚠ Worse: the figure is **non-identifying**. In a store whose pointers average ~50 est tok,
+"8 pointers (~400 tok)" is what *any* size-8 draw costs — **93.15 % of all 8-subsets fall in
+[360, 440] tok**. It could not have failed to match, so it corroborated nothing. Relief is real
+(~360–402 est tok, 47–52 % of the 774-tok overage); no cheap metric recovers the cluster **as a set**
+(best F1 0.182). ⚠ **But `body_tfidf` decisively separates a true DUPLICATE from it** — the store's one
+verifiable duplicate ranks **#1 of 3655 at 0.4931** against the cluster's 28 intra-pairs topping out at
+**0.2942**, a 1.68× gap. That is a threshold that CAN fail, which is what §4 lacked. The detector is
+therefore buildable **as a duplicate finder, not a cluster finder**; it is still not built.
+
+**And the v0.4.68 spec's own STATUS was stale** — it said the skill amendment was NOT implemented
+while #275 had shipped it. A released document asserting a shipped thing is unshipped is the class the
+spec-status gate exists to catch one level down: the gate reads whether a spec declares a LIVE status,
+not whether the declaration is still true. Now states SHIPPED, and names what remains open.
+
+⚠ Two open items are RECORDED rather than closed, in `security/` (local, gitignored):
+`findings-2026-09-25.md` re-triages dream-beta-tester's 3 confirmed pentest findings from 2026-07-06
+and finds **all three still open** (2 High, 1 Medium, each reproduced live) — unfixed deliberately,
+because `maintainer/ci_check.sh` does not exercise `snapshot.py`/`beta_checks.py`, so a fix there needs
+its own regression arm and its own cycle.
+
 ## [0.4.68] — 2026-09-25
 
 **Patch — the pointer's ROLE and REGION, and a fleet blast radius measured at one store.** No

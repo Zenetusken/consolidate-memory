@@ -14,7 +14,6 @@ NATIVE_INDEX_CAP_LINES = 200
 RESERVE = 0.15
 ARCHIVE_INDEX_CAP_BYTES = 1024 * 1024
 ARCHIVE_INDEX_CAP_LINES = 10000
-_POINTER_TARGET_RE = re.compile(r"\]\(([^)]+)\)")
 
 # ── the pointer rule: ONE home for each half ────────────────────────────────────────────────────
 # A store document answers "which facts do I place?" by two rules that used to be re-spelled in
@@ -74,6 +73,45 @@ def pointer_lines(text: str) -> list:
             if s.startswith("- [")]
 
 
+def first_pointer_target(line: str) -> "str | None":
+    """The target of the FIRST `](…)` in `line`, or None. **Linear, deliberately.**
+
+    ⚠ The regex this replaces — `\\]\\(([^)]+)\\)` — is QUADRATIC on a line carrying a run of
+    `](` with no `)` after it: `[^)]+` sweeps to end-of-line and backtracks one character at a
+    time, once per start position. MEASURED (`/tmp` probe, `pointer_targets` on `"- [](x" +
+    "]("*n`): 3.4–4.9× per doubling, extrapolating to **~38 minutes** of uninterruptible CPU for
+    a 1 MiB document (`ARCHIVE_INDEX_CAP_BYTES`), on a path with no timeout, reached from every
+    store `*.md` that classifies as an archive.
+
+    ⚠ This class is PRE-EXISTING — `_LINK_RE` has the same shape and is older — and v0.4.68 did
+    not introduce it; the role filter actually NARROWED the exposure, since a non-pointer line
+    never reaches the regex. What v0.4.68 did was give the rule ONE HOME, which is why the guard
+    belongs here: `memory_status._WIKI_SCAN_CAP` (`"pentest: extract_wikilinks/pointer finditer
+    are O(n²) on unterminated"`) gates this same run at its own two sites, and a single fix here
+    closes the class at every reader at once.
+
+    A length CAP was the alternative and is rejected: it would make an archive over the cap place
+    NOTHING, and a placement is load-bearing — the facts would report UNPLACED and the rebuild
+    would re-add their pointers. This scan is behaviourally identical to the regex and needs no
+    cap, because the blowup is an artefact of backtracking, not of the language.
+
+    Linear because each iteration either RETURNS or advances: `find(")")` scanning far is
+    possible only on the iteration that then returns (and if it finds nothing there is no `)`
+    after this `](`, so no later one can match either).
+    """
+    i = 0
+    while True:
+        j = line.find("](", i)
+        if j < 0:
+            return None
+        k = line.find(")", j + 2)
+        if k < 0:
+            return None              # no `)` at/after here → no later `](` can match either
+        if k > j + 2:                # `[^)]+` needs at least one character
+            return line[j + 2:k]
+        i = j + 2                    # `]()` is not a match; keep looking
+
+
 def pointer_targets(text: str) -> list:
     """The pointer TARGETS a document places — the ONE derivation, for every reader.
 
@@ -84,10 +122,10 @@ def pointer_targets(text: str) -> list:
     """
     out: list = []
     for s in pointer_lines(text):
-        m = _POINTER_TARGET_RE.search(s)
-        if not m:
+        raw = first_pointer_target(s)
+        if raw is None:
             continue
-        raw = m.group(1).strip()
+        raw = raw.strip()
         out.append(raw[:-3] if raw.endswith(".md") else raw)
     return out
 
@@ -155,11 +193,11 @@ def archive_index(future_text: str) -> dict:
     seen: set = set()
     targets: list = []
     for s in pointer_lines(future_text):   # ROLE + REGION, one home
-        m = _POINTER_TARGET_RE.search(s)
-        if not m:
+        _t = first_pointer_target(s)
+        if _t is None:
             reasons.append("invalid pointer syntax: " + s[:80])
             continue
-        raw = m.group(1).strip()
+        raw = _t.strip()
         stem = raw[:-3] if raw.endswith(".md") else raw
         try:
             stem = validate_fact_stem(stem)
