@@ -665,6 +665,32 @@ def _placement_decline(ctx: StoreContext, stem: str, idx_text: str) -> tuple[lis
     return _placements_from(_paths).get(stem, []), _unreadable
 
 
+def _drop_pointer_lines(idx_text: str, stem: str) -> str:
+    """Remove the POINTER line(s) for `stem`, keeping prose that merely quotes the shape.
+
+    ⚠ The form this replaces dropped ANY line containing the bare substring `](stem.md)`, and it
+    existed in TWO writers — `local_forget` and `local_archive` — each deleting content the
+    reader never counted as a placement. MEASURED on the security review's fixture (2026-09-25):
+    two lines removed where one was intended. It is the identical defect `apply_pointer` carries
+    R5 for, and two copies of a rule is precisely how this store keeps acquiring a second
+    spelling of it, so the fix is one home covering both writers rather than two edits.
+
+    Scope is the reader's own `pointer_lines`, so a line the reader cannot see as a placement is
+    never deleted for being one — the deletion now agrees with the read rule instead of being
+    broader than it.
+    """
+    from index_admission import first_pointer_target, pointer_lines
+    drop = set()
+    for s in pointer_lines(idx_text):
+        t = first_pointer_target(s)
+        if t is None:
+            continue
+        t = t.strip()
+        if (t[:-3] if t.endswith(".md") else t) == stem:
+            drop.add(s)
+    return "\n".join(ln for ln in idx_text.splitlines() if ln.strip() not in drop)
+
+
 def local_forget(ctx: StoreContext, stem: str) -> dict:
     from control_plane import read_snapshot, transact
     from identifiers import IdentifierRefused, validate_fact_stem
@@ -693,7 +719,7 @@ def local_forget(ctx: StoreContext, stem: str) -> dict:
             idx = (idx_snap.data or b"").decode("utf-8", errors="replace")
         else:
             idx = "# Memory Index\n"
-        idx = "\n".join(ln for ln in idx.splitlines() if f"]({stem}.md)" not in ln)
+        idx = _drop_pointer_lines(idx, stem)
         temps[str(idxp)] = idx.rstrip() + "\n"
         extra = {}
         modes = {}
@@ -753,7 +779,7 @@ def local_archive(ctx: StoreContext, stem: str) -> dict:
             idx = (idx_snap.data or b"").decode("utf-8", errors="replace")
         else:
             idx = "# Memory Index\n"
-        idx = "\n".join(ln for ln in idx.splitlines() if f"]({stem}.md)" not in ln)
+        idx = _drop_pointer_lines(idx, stem)
         temps[str(idxp)] = idx.rstrip() + "\n"
         idx_adm = project_index(temps[str(idxp)])
         if not idx_adm["admitted"]:
