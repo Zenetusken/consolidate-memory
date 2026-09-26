@@ -11,113 +11,81 @@ version changes on `main`.
 the stale copy.** Three findings, one class: a surface asserting a claim its source of record refutes.
 
 **1 · `SKILL.md` said v0.4.76 cost "three checks". It cost TWO.** The `[0.4.76]` section below records
-the cost as **TWO** checks, MEASURED, and explicitly names "three" as the withdrawn draft. The released
-SKILL — public, loaded by every session that uses the plugin — carried the retracted figure.
-⚠ **That sentence is written the long way round on purpose.** This entry's first cut QUOTED the clause
-verbatim, which put a second, false anchor above the real one and made the new `Cost:` pin read a
-quotation instead of the release's own line — it stayed green when `[0.4.76]`'s clause was mutated to
-`THREE`. The matcher now skips quoted mentions too (see `_COST_RE`), but not quoting it is cheaper. ⚠ **No gate read this SCALAR** — not "nothing could see it": `SKILL.md` IS in `docs_links`' `LIVE_DOCS`
-and link-check sets, but that check reads only its opening version statement; `SKILL.md` is not among
-`mypy`'s inputs, and the cycle-record validator checks container types, never a scalar. MEASURED, both matchers, same answer:
-`^check(` sites **971 → 973** (D6 **+2**); suite totals **2394 → 2396**.
+the cost as TWO, MEASURED, and names "three" as the withdrawn draft. The released SKILL — public,
+loaded by every session that uses the plugin — carried the retracted figure. **No gate read that
+scalar:** `SKILL.md` is in `docs_links`' `LIVE_DOCS` and link-check sets, but that check reads only its
+opening version statement; the file is not among `mypy`'s inputs, and the cycle-record validator checks
+container types, never a scalar. MEASURED: `^check(` sites **971 → 973** (D6 **+2**); suite totals
+**2394 → 2396**.
 
-**2 · `CLAUDE.md`'s Dev loop omitted a gate its own release harness runs.** It named smoke, sim, mypy,
-`cm` and manifests — but not `tests/docs_links.py`, which `release.sh --stage` runs as one of its four
-validators, and which this same file calls one of those four 48 lines below. A maintainer following the
-dev loop never ran it locally — CI's `docs` job runs `tests/docs_links.py` on every PR, so the
-omission surfaced there rather than at the keyboard.
+**2 · `CLAUDE.md`'s Dev loop omitted a gate its own release harness runs.** The block named smoke,
+sim, mypy, `cm`, manifests and the pentest harness — but not `tests/docs_links.py`, which
+`release.sh --stage` runs as one of its four validators, and which this file calls one of those four 48
+lines below. A maintainer following the loop never ran it locally; CI's `docs` job runs it on every
+PR, so the omission surfaced there rather than at the keyboard.
 
 **3 · `CLAUDE.md`'s `Layout` was a STALE PARTIAL COPY of `AGENTS.md`'s.** The always-loaded tier paid
 **1567 tok** — 38% of the file — to be the wrong copy: it omitted `docs/adr/` (24 ADRs),
 `local_ingress.py`, and 6 of the 9 `tests/` modules. `AGENTS.md` is the on-demand operating manual and
-self-declares `CLAUDE.md` as holding "the same conventions with more narrative" — after this change
-that sentence is false, so it and `CONTRIBUTING.md`'s twin are corrected here too.
+self-declared `CLAUDE.md` as holding "the same conventions with more narrative" — false after this
+change, so it and `CONTRIBUTING.md`'s twin are corrected here too.
 
 ⚠ **THE MERGE LANDED FIRST, because the pointer is only safe once the target is complete — and
-`AGENTS.md` was NOT complete.** Thirteen facts lived only in CLAUDE.md's copy; two were absent from
-`AGENTS.md` *entirely*: **`dream_procedure.py`** (its name, purpose, the NAR/EXT narration teeth, the
-`render_dashboard --persist` invocation, the exit 4/3 arms, its spec pointer) and the **`security/`
-LOCAL-only rule**. All thirteen were merged into `AGENTS.md` § Layout before the pointer went in. A
-pointer that drops a binding rule moves it from always-loaded to on-demand *silently*, which is the
-enforcement-erosion failure, and `dream_procedure.py` was the one whose loss would have been silent.
+`AGENTS.md` was NOT.** Thirteen facts lived only in CLAUDE.md's copy; two were absent from `AGENTS.md`
+*entirely*: **`dream_procedure.py`** and the **`security/` LOCAL-only rule**. All thirteen merged into
+`AGENTS.md` § Layout before the pointer went in. A pointer that drops a binding rule moves it from
+always-loaded to on-demand *silently*.
 
-**Measured outcome:** `CLAUDE.md` **4140 → 2900 tok** (Layout alone 1567 → 193) — back under the 4000
-budget. ⚠ **"Back", not "for the first time"**: this entry's first cut said the latter, and the repo's
-own estimator refutes it — whole-file `est_tokens` by tag puts the file **under** 4000 from v0.2.0
-(3456) through **v0.4.18** (3931), over from **v0.4.19** (4018) until this patch — and over once BEFORE
-that, v0.1.73–v0.1.85 (4116), recovered at v0.1.86. So v0.4.19 is the SECOND breach, not *the*
-crossing; the truncated census is corrected here rather than left to read as the first. A sole-claim
-needs a census, and this one had not been run (`a-sole-claim-needs-a-census-not-a-sighting`). ⚠ And
-"the other five sections are unchanged" was likewise false and is corrected here: three of them moved —
-preamble +67 (the `AGENTS.md` pointer), Dev loop +94 (the added gate and its note), Releasing −27. The
-headline pair and the Layout figure are exact; the section arithmetic is `4140 − (1567−193) = 2766`,
-against an actual 2900, the difference being those three edits.
+**Measured outcome: `CLAUDE.md` 4140 → 2900 tok (Layout alone 1567 → 193)** — **back** under the 4000
+budget, not "for the first time" for the first time. ⚠ **Unit, because the figures come from two
+instruments:** the headline pair and the Layout pair are `memory_status.py --sections` (characters);
+the history below is `git show <tag>:CLAUDE.md | wc -c` ÷ 4 (bytes). By the byte estimate the file was
+under 4000 from v0.2.0 through v0.4.18 and over from v0.4.19 — and over once before that, v0.1.73
+through v0.1.85, recovered at v0.1.86. Both agree on the verdict; they do not agree to the token.
 
-An independent completeness audit verified that no fact carried by the old Layout is missing from the
-post-fix tree, and that every directive the pointer block carries survives **inside `CLAUDE.md`** (not
-merely in `AGENTS.md`) — the five being `${CLAUDE_PLUGIN_ROOT}` · the `cm` symlink · end-users-open-the-
-dashboard-never-`cm` · the global-store path and the `memory/` placeholder · `release.sh`+`security/`
-LOCAL-only. ⚠ Enumerated, not counted: the next paragraph's "five architectural invariants" is a
-DIFFERENT five, and the first draft of this sentence said "five" for both.
-
-⚠ **The tier trade, named rather than implied.** Five architectural invariants that a CLAUDE.md reader
-used to see are now on-demand only: `store_context.py` is the sole native/canonical path constructor ·
-`canonical_ingress.py` the sole canonical writer · `mirror_conflict.py` never silently overwrites a
-local edit · `index_admission.py`'s 200-line/25KB applies to `MEMORY.md`, not the global catalog · the
-beacon is read-only and never runs `detect_stacks`. All five are in `AGENTS.md`, four are mechanically
-enforced elsewhere (smoke pins, the single writer path, the cached beacon verdict), and the pointer is
-loud rather than silent — but the migration IS a migration.
+⚠ **The tier trade, named rather than implied.** The directives the pointer block keeps are enumerated
+there. Separately, five ARCHITECTURAL invariants a CLAUDE.md reader used to see are now on-demand only
+— `store_context.py` is the sole native/canonical path constructor · `canonical_ingress.py` the sole
+canonical writer · `mirror_conflict.py` never silently overwrites a local edit · `index_admission.py`'s
+200-line/25KB scope · the beacon's read-only contract. All five are in `AGENTS.md`; four are
+mechanically enforced elsewhere (smoke pins, the single writer path, the cached beacon verdict).
 
 ⚠ **And the saving is a property of the CONFIGURATION, not of the files.** `AGENTS.md` is on-demand
-only because Claude Code's default `instructionFiles` mode is `claude-md-or-agents-md` (a project with
-its own `CLAUDE.md` does not also load `AGENTS.md`). Under `claude-md-and-agents-md` — or under Codex,
-whose native convention `AGENTS.md` is — both files are always-loaded and the ~1240-token saving
-vanishes. Nothing in this repo named that condition before; it is named here.
+only because Claude Code's default `instructionFiles` mode is `claude-md-or-agents-md`. Under
+`claude-md-and-agents-md` — or Codex, whose native convention `AGENTS.md` is — both files are
+always-loaded and the saving vanishes.
 
 ### Arms
 
 | arm | shape | pre-fix | post-fix |
 |---|---|---|---|
-| **PIN** — `Cost:` agreement across SKILL.md ↔ CHANGELOG.md | two-surface | **RED** (`SKILL=THREE`, `CHANGELOG=TWO`) | GREEN |
-| **PIN** — CLAUDE.md's Dev-loop block names `docs_links.py` | presence in a fence | **RED** | GREEN |
-| **GUARD** — CLAUDE.md's Layout pointer still resolves | conditional | green (cannot redden) | green |
+| **PIN** — `Cost:` agreement, `SKILL.md` ↔ `CHANGELOG.md` | one locator; word AND operand | **RED** (`SKILL=THREE`) | GREEN |
+| **PIN** — Dev-loop block names `docs_links.py` | presence in a fence | **RED** | GREEN |
+| **GUARD** — Layout pointer still resolves | conditional, section-scoped | green (cannot redden) | green |
 
-⚠ **The third arm is a GUARD and was mislabelled a PIN in the plan** — corrected by measuring, not by
-reasoning. Its condition is `if CLAUDE.md delegates, THEN AGENTS.md carries the target`; pre-fix
-CLAUDE.md carries the tree itself, so the precondition is false and it cannot redden there
-(`a-check-added-by-a-fix-may-not-flip`). Validated the only way a guard can be: by driving its mutation.
-Renaming `## Layout` in `AGENTS.md` → RED. Renaming `dream_procedure.py` → RED. Both revert to GREEN.
-All three arms were measured on a **full pre-fix copy with every marker verified at 0** before running.
+⚠ The third is a **GUARD**, not a PIN: its condition is `if CLAUDE.md delegates, THEN AGENTS.md carries
+the target`, so on the pre-fix revision — where CLAUDE.md still holds the tree — it cannot redden.
+Validated by driving its mutation: move `dream_procedure.py` out of `## Layout` → RED; delete it → RED;
+intact → GREEN. All three arms were measured on a full pre-fix copy with every marker verified before
+running.
 
-⚠ **The `Cost:` pin carries a stated bound and an unavailable-strength note.** Two surfaces that are
-*both* wrong stay green — it catches DRIFT, not error. And no stronger observable exists: the quantity
-is "how many checks did a PAST change add", a property of a diff, not of the current tree; today's
-suite total and today's `check(` stocks are all stocks, and a shipped gate cannot check out the pre-fix
-revision. Two-surface agreement against this file is the ceiling. ⚠ It also carries a **missing-clause
-arm** — a reworded clause yields `None` on both sides, and `None == None` is green, which is how the
-drift would return silently. Absence is an error, never a skip.
+⚠ The `Cost:` pin compares the **operand**, not just the word — both surfaces can read "TWO" while
+their parentheticals name different matchers, which is what shipped (`^check(` vs `check(` for the same
+971→973; unanchored gives 2143→2145). It carries a **missing-clause arm** (a reworded clause yields
+`None == None` → green) and **skips quoted mentions**, without which it anchored on this entry's own
+quotation of the clause it protects and stayed green when the real line was mutated. ⚠ Its own
+docstring records that a STRONGER, revision-anchored observable exists and is unbuilt — the tags
+re-derive 971→973 exactly; what blocks it is the `docs` CI job's shallow checkout, not a ceiling.
 
-⚠ **Do NOT restructure `SKILL.md`'s release-log blurb in this patch.** Lines 20–21 are **41,544 bytes —
-two single-line paragraphs, 21.9% of the file, ≈10,386 est tok** — which is *why* the number drifted:
-prose no gate reads. That is its own cycle. (⚠ Re-measured on the FINAL tree; this figure read 39,815
-when first written and this commit's own edits moved it — a present-tense number about a tree it no
-longer matched, which is the class under repair. Caught by the adversarial round.)
+⚠ **Do NOT restructure `SKILL.md`'s release-log blurb in this patch.** Lines 20–21 are two single-line
+paragraphs, roughly a fifth of the file and ≈10k est tok, which is *why* the number drifted: prose no
+gate reads. That is its own cycle.
 
-⚠ **RECORDED, NOT FIXED:** `memory_status._is_promotion_candidate` fires on `not fm.get("scope")`, but
-`local_ingress.py:388` stamps `scope: project-local` on **every** fact it writes — so the Phase-1
-promotion re-audit's population is exactly the facts that did **not** go through the single writer.
-Whether that is a coverage hole or a faithful signal depends on whether any legitimate path bypasses
-the writer; that question needs its own cycle.
-
-⚠ **Both this claim's earlier drafts were wrong, in opposite directions, and one census settles both.**
-Draft 1 said *"the 42 legacy unscoped facts are the only ones that can ever seed"* — naming the
-unfiltered set for the filterable one. Draft 2 said *"structurally blind to every fact authored since
-the writer landed"* — and that is **refuted by the same census**: all **42** facts here lacking `scope`
-were modified on or after the writer landed (2026-09-01; earliest 2026-09-13), so facts authored *after*
-it plainly do seed. The measured set, exactly: of those 42, **19** pass the seed's `feedback` /
-`reference` filter, and `_promotion_candidates` surfaces **8** — its own `_PROMO_CAP`. ⚠ Draft 2 was
-written to *correct* draft 1 and made the claim stronger and more falsifiable, which is why the census
-caught it; that is the shape this whole entry is about, twice over in one paragraph.
+⚠ **RECORDED, NOT FIXED:** the Phase-1 promotion re-audit's population is exactly the facts that did
+NOT go through `local_ingress`'s single writer, which stamps `scope: project-local` on everything it
+writes. Of the **42** facts in this store lacking `scope`, **19** pass the seed's `feedback`/`reference`
+filter and `_promotion_candidates` surfaces **8** (its `_PROMO_CAP`). Whether that is a coverage hole
+or a faithful signal needs its own cycle.
 
 ## [0.4.76] — 2026-09-26
 
@@ -169,7 +137,7 @@ on the pre-fix tree too. What they witness is the **MUTATION**, now reddening on
 evidence for the docstring's own "RAISED AT ALL THREE SITES" claim, asserted by nobody until now.
 
 ⚠ Cost: **TWO** checks, MEASURED (`^check(` sites 971 → 973, D6 +2). ⚠ The `^` was ADDED in v0.4.77
-and the figure was always the anchored one: `971 → 973` is the `^check(` count (`grep -cE '^check('` per
+and the figure was always the anchored one: `971 → 973` is the `^check(` count (`grep -c '^check('` per
 tag), while an unanchored `grep -c 'check('` gives **2143 → 2145** over the same pair of revisions. The
 clause shipped naming the unanchored matcher beside an anchored number, so the two surfaces that state
 this figure spelled it differently; a count's matcher is part of the count. The class's own existence is one; `_served`'s raise arm is the other. `_mint` and `_miss` were repaired by EDITING their assertions — a bool cannot carry a type, and `except AssertionError` cannot carry a subclass — so neither added a check. ⚠ An earlier draft of this line said THREE, counting the edits.

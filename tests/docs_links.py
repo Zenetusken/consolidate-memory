@@ -1363,9 +1363,12 @@ def check_spec_status() -> int:
 
 
 # ─── v0.4.77 — cross-surface agreement ────────────────────────────────────────────────────────
-# Nothing above compares one doc's NUMBER to another doc's NUMBER. `check_required_strings`
-# proves a string is FINDABLE; `check_version_statements` proves a version is CURRENT; neither
-# can see two prose surfaces disagree about the same figure. MEASURED: SKILL.md's v0.4.76 blurb
+# ⚠ Scoped to what is actually uncovered: nothing above compares two docs' statements of the same
+# FIGURE. (`check_currency_dates`, called from `check_version_statements`, DOES compare a doc
+# number to a doc number — a live doc's stated date against the CHANGELOG's — so an unscoped
+# version of this sentence was a false sole-claim, caught by the adversarial round.)
+# `check_required_strings` proves a string is FINDABLE; `check_version_statements` proves a
+# version is CURRENT; neither can see two prose surfaces disagree about one figure. MEASURED: SKILL.md's v0.4.76 blurb
 # read "Cost: three checks" while CHANGELOG.md recorded TWO and explicitly named "three" as the
 # withdrawn draft. Both shipped. No matcher read either.
 
