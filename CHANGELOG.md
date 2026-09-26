@@ -15,23 +15,34 @@ It was right about the hole and wrong about its own repair: **the class was name
 asserted at none**, because `_mint`'s check captured the raise into a **bool** and `_served`'s asserted
 only `_raised59 is not None`.
 
-⚠ **MEASURED: rewriting all three raises to `ValueError` left the suite GREEN (2394/0).** `ValueError`
-where `UnclassifiedReason` belongs is a different observable, not a different message — the guard fired
-either way, and no check could tell them apart. That is the precise distinction the class docstring says
-it exists to give a pin. ⚠ **v0.4.63's own entry claimed the opposite** — *"the recorded `ValueError`
-mutation **RED** (the old pin was green on it)"* — and that clause is now corrected **in place** with the
-measurement, because a reader auditing "was the type hole closed?" would have concluded yes.
+⚠ **MEASURED, at BOTH granularities, because the first cut of this entry quoted one against the other:**
 
-**Fixed at both sites.** `_mint`'s assertion now tests the TYPE (it could not, as a bool), and `_served`
-gained the arm. The reference is `getattr`-guarded with an `AssertionError` fallback, so a tree predating
-the class reports a red rather than raising at module scope.
+| mutation | v0.4.75 suite | v0.4.76 suite |
+|---|---|---|
+| `_mint` + `_served` → `ValueError` | **GREEN 2394/0** ← the hole | **2394 / 2 reds** |
+| **all three** → `ValueError` | 2393 / 1 (the `_miss` pin) | **2393 / 3 reds** |
+| the class **RENAMED** | **GREEN 2395/0** ← the fallback hole | **2392 / 4 reds** |
+| clean | 2394 / 0 | **2396 / 0** |
 
-⚠ **It is a GUARD, not a PIN**: `UnclassifiedReason` IS an `AssertionError`, so the assertion is green on
-the pre-fix tree too. What it witnesses is the **MUTATION** — and the mutation now reddens **three** times,
-one per raise site, which is the verifying evidence for the docstring's own "RAISED AT ALL THREE SITES"
-claim. Until this release that claim was asserted by nobody, in prose only.
+⚠ **The first cut of this entry claimed the all-three mutation was green, citing 2394/0.** That figure is
+the **TWO-site** mutation — a different experiment — and the claim it was cited against was **true**. The
+real hole is narrower: **two of the three sites asserted no type at all.** Correcting a true record with a
+neighbour's measurement is the error this repo's own entries keep naming, and this one was mine.
 
-⚠ Cost: **one** check. The `_mint` site was repaired by editing an existing assertion, not by adding one.
+**Fixed at all three sites.** `_mint`'s assertion now tests the TYPE (it could not, as a bool); `_served`
+and `_miss` gained the arm. `_miss` mattered most quietly: its `except AssertionError` **separates
+`AssertionError` from `ValueError` and cannot separate the module's own class from a bare base** — so a
+rename or a re-raise passed. ⚠ The class reference is `getattr(..., None)` plus an **assertion that it
+exists**; the first cut used a `getattr(..., AssertionError)` FALLBACK and claimed it made a pre-dating
+tree report a red. **MEASURED: RENAMING the class left the suite GREEN (2395/0)** — a fallback VALUE
+substitutes itself for the thing being asserted, so the check passes while measuring nothing. That is the
+opposite of the safety it claimed, and it is why the rename row above is in the table.
+
+⚠ **They are GUARDs, not PINs**: `UnclassifiedReason` IS an `AssertionError`, so the assertions are green
+on the pre-fix tree too. What they witness is the **MUTATION**, now reddening once per site — the verifying
+evidence for the docstring's own "RAISED AT ALL THREE SITES" claim, asserted by nobody until now.
+
+⚠ Cost: **three** checks — the class's existence, and one arm per site it is not already covered by.
 
 ## [0.4.75] — 2026-09-26
 
@@ -722,14 +733,19 @@ audit for it is recorded; re-run it after every sweep.
   isolated trees: post-fix green; the recorded `ValueError` mutation **RED** (the old pin was green on it);
   pre-fix RED without crashing. ⚠ It is a **GUARD, not a PIN** by this repo's rule — its pre-fix red is
   still KEY-ABSENCE — and it is labelled so.
-  ⚠ **CORRECTED at v0.4.76: the `ValueError` clause above was FALSE when written.** Naming the class at
-  three sites is not the same as ASSERTING it at three sites, and no check did: `_mint`'s captured the
-  raise into a BOOL, and `_served`'s asserted only `_raised59 is not None` — so rewriting every raise to
-  `ValueError` left the suite **GREEN (2394/0), MEASURED at v0.4.76**, and the entry's "the old pin was
-  green on it" described a hole the fix had only *named*. The class's own docstring promised "a type a
-  pin can assert" while no pin asserted it. v0.4.76 carries the enforcement — 3 reds under the mutation,
-  one per site — and this note records that the prose ran a release ahead of the code for eleven
-  releases, which is the same defect class as the three that preceded it.
+  ⚠ **NARROWED at v0.4.76 — and the narrowing itself had to be corrected.** The clause above is
+  **TRUE for a three-site mutation** (that is what it says: every raise rewritten at once), MEASURED at
+  **2393/1**, red at the `_miss` pin. What was FALSE is narrower and is the real finding: **two of the
+  three sites asserted no type at all**, so mutating `_mint` + `_served` ALONE left the suite **GREEN
+  (2394/0)** — `_mint` captured the raise into a bool and `_served` tested only `_raised59 is not None`.
+  ⚠ **An earlier draft of THIS NOTE called the clause above false outright, quoting that 2394/0 as
+  evidence — a false correction, written while correcting, on four surfaces.** 2394/0 is a DIFFERENT
+  EXPERIMENT (two sites, not three); citing it against a claim about all three is the
+  measure-a-neighbour error this file's own entries keep recording. The claim was right; the hole was
+  narrower; and the sentence that misread them was mine.
+  ⚠ **The distinction is the finding:** a base-class `except` — what `_miss`'s pin used — separates
+  `AssertionError` from `ValueError` and **cannot** separate the module's own named class from a bare
+  base or a sibling subclass. v0.4.76 makes all THREE sites assert the named class.
 - **B2 — `try_acquire` is genuinely not closable, and the recorded reason was incomplete.** *"Cannot be
   closed without reintroducing the `blocking=` keyword"* names ONE design's cost. The blocker is the
   **signature**: `acquire`'s body *waits*, so every route through the override pays — wait; or pass a

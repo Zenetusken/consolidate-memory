@@ -25640,6 +25640,34 @@ check("v0.4.57 (PIN, structural): every reason `ensure` MINTS is declared in `_E
       "a reason minted as a NAME rather than a literal evades this scan (see the note above)",
       bool(_minted57) and _minted57 == _declared57)
 # and the producer ENFORCES it, the way `_miss` does for `load()`'s reasons
+# ── v0.4.76: the reason TYPE, asserted at ALL THREE sites ────────────────────────────────────────────
+# ⚠ `UnclassifiedReason` is the class `facts_manifest` raises so a raise carries WHICH guard fired.
+# MEASURED on the v0.4.75 suite: mutating `_mint` + `_served` to `ValueError` left it GREEN (2394/0) —
+# the class was NAMED at three sites and ASSERTED at neither of those two.
+# ⚠ AND A getattr FALLBACK IS NOT A SAFETY NET — the first cut of this release used
+# `getattr(_fm44, "UnclassifiedReason", AssertionError)` and claimed that made a pre-dating tree
+# "report a red". MEASURED: RENAMING the class leaves the suite GREEN (2395/0). A fallback VALUE
+# substitutes itself for the thing being asserted, so the check passes while measuring nothing. The
+# repair is the crash-class idiom this repo already uses — `getattr(..., None)` plus an ASSERTION
+# that the class exists — so a rename is a RED, never a substituted default.
+def _reason_cls76() -> "type | None":
+    return getattr(_fm44, "UnclassifiedReason", None)
+
+
+def _is_reason76(v: object) -> bool:
+    """True iff `v` is the module's NAMED reason class. `None`-safe by construction: a missing class
+    answers FALSE rather than raising (`isinstance(x, None)` is a TypeError), and the class's own
+    EXISTENCE is asserted separately, so the two cannot both pass by accident."""
+    c = _reason_cls76()
+    return c is not None and isinstance(v, c)
+
+
+_cls76 = _reason_cls76()
+check("v0.4.76 (PIN): the module's reason class EXISTS and subclasses `AssertionError` — a RENAME is a "
+      "RED, never a substituted default (the first cut's `getattr(..., AssertionError)` fallback made a "
+      "rename GREEN, MEASURED 2395/0, which is the opposite of the safety it claimed to be)",
+      _cls76 is not None and issubclass(_cls76, AssertionError))
+
 _mint_raised57: "object" = None
 try:
     _fm44._mint("not-a-declared-reason")
@@ -25650,15 +25678,14 @@ except Exception as _e57mint:                     # a raise is a RESULT here, ne
 # that leaving it there "leaves the hole live at the WEAKEST site". It was right about this site and
 # wrong about its own repair: it promised a subclass giving "a type a pin can assert", and NO pin
 # asserted it here or at `_served`. MEASURED: rewriting the raise to `ValueError` left the suite GREEN.
-# ⚠ A `getattr`-guarded class reference with an `AssertionError` FALLBACK, so a tree that predates the
-# class reports a red rather than raising at module scope — and an assertion, never a bare call, so a
-# mutation reddens instead of aborting the run.
-_mint_cls57 = getattr(_fm44, "UnclassifiedReason", AssertionError)
+# ⚠ An assertion, never a bare call, so a mutation reddens instead of aborting the run — and the class
+# is resolved through `_is_reason76`, which answers FALSE for a missing class instead of substituting a
+# fallback that would pass while measuring nothing.
 check("v0.4.57 (PIN): an UNDECLARED `ensure` reason RAISES at the producer rather than being "
       "returned — so a new mint cannot reach a consumer before someone declares its transience — "
       "**and it raises the NAMED type**, which a bool could not carry: `ValueError` where "
       "`UnclassifiedReason` belongs is a different observable, not a different message",
-      isinstance(_mint_raised57, _mint_cls57) and callable(getattr(_fm44, "_mint", None)))
+      _is_reason76(_mint_raised57) and callable(getattr(_fm44, "_mint", None)))
 
 # (2) PIN — `release()` NEVER RAISES, so a failing release cannot strand its siblings.
 # Measured by a review lens: `except ImportError` beside `flock` caught only that class, so an
@@ -26008,7 +26035,7 @@ check("v0.4.59 (PIN): an UNDECLARED reason returned by `ensure` RAISES at the pr
 check("v0.4.76 (GUARD, mutation-sensitive): the `_served` guard raises `UnclassifiedReason` — the "
       "observable carries WHICH guard fired, not merely that something did (the distinction the class "
       "was introduced for and no pin asserted)",
-      isinstance(_raised59, getattr(_fm44, "UnclassifiedReason", AssertionError)))
+      _is_reason76(_raised59))
 
 # (1b) PIN — the validation is TOTAL BY CONSTRUCTION, which is a structural property and therefore
 # checkable: `ensure` is a wrapper whose ONE return routes through `_served`, over an inner function
@@ -26494,18 +26521,25 @@ check("v0.4.50 (PIN): the firewall identity covers `_READ_CAP` — how MUCH of e
       _id50a != _id50b and _cap50 is not None and _fm44.secret_pred() == _id50a)
 # (d) `_miss` — the producer DECLARES a reason's rebuildability, or raises naming it.
 _miss50 = getattr(_fm44, "_miss", None)
-_raised50: "bool | None"
+# ⚠ v0.4.76 — THE THIRD SITE, and the one v0.4.76's first cut called "already pinned". `except
+# AssertionError` answers only "is it SOME AssertionError", so a bare `AssertionError` at this raise
+# — or any sibling subclass, or a rename — passed. MEASURED: rewriting `_miss`'s raise to a bare
+# `AssertionError` leaves the suite GREEN. The named class is the observable all three sites now
+# assert; a base-class `except` carries exactly the distinction the class was created to give a pin.
+_raised50: "object | None" = None
+_miss_ran50 = False
 try:
     _miss50("zz-undeclared") if _miss50 else None
-    _raised50 = False
-except AssertionError:
-    _raised50 = True
-except Exception:
-    _raised50 = None
+    _miss_ran50 = True
+except Exception as _e50:                          # a raise is a RESULT here, never a skip
+    _raised50 = _e50
 check("v0.4.50 (PIN): an UNDECLARED cache-miss reason RAISES at the producer rather than falling "
       "through to a silent rebuild — so a new terminal arm cannot acquire `global.lock` without "
-      "someone deciding it should (pre-fix: `ensure`'s default was the only classifier)",
-      _raised50 is True and _miss50 is not None and _miss50("absent") == (None, "absent"))
+      "someone deciding it should (pre-fix: `ensure`'s default was the only classifier) — "
+      "**and v0.4.76 makes it raise the NAMED type**, since `except AssertionError` could not tell "
+      "the module's own class from a bare base",
+      not _miss_ran50 and _is_reason76(_raised50)
+      and _miss50 is not None and _miss50("absent") == (None, "absent"))
 
 # --- v0.4.45 review: the SEED RELAY, which nothing pinned ------------------------------------
 # The existing v0.4.45 PIN asserts the PRODUCER (`store_local_index(...)["index_fault"]`). Nothing
@@ -27232,9 +27266,11 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     shape still renders its REAL operands). ⚠ The first
                                        #     cut was 2 checks probing ONE arm — a pin for one arm
                                        #     wearing a whole-function label.
-                            + 1        # v0.4.76 — the `_served` guard's raise TYPE gets its own arm.
-                                       #     ⚠ The `_mint` site was fixed by EDITING an existing check
-                                       #     (a bool cannot carry a type), so it adds no term.
+                            + 2        # v0.4.76 — the reason TYPE: 1 PIN that the class EXISTS (a rename
+                                       #     must red, never fall back) + 1 GUARD on `_served`'s raise.
+                                       #     ⚠ `_mint` and `_miss` were fixed by EDITING existing checks
+                                       #     (a bool cannot carry a type; `except AssertionError` cannot
+                                       #     carry a subclass), so they add no term.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
