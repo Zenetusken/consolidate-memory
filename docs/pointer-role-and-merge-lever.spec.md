@@ -23,7 +23,8 @@ measurement); both are corrected above with the falsified forms kept visible, be
 more instructive than the corrections. ⚠ **Still NOT implemented, and named rather than implied
 closed:** the `_stored_pointer` / `existing_ptrs` / `sync_global` / `session_beacon` residuals in
 §3.3 (inert — they read `MEMORY.md`, which has no `---`), §1's adjacent disagreements, and the
-cluster enumeration §4 leaves open. Target release: **v0.4.68 (patch)** — shipped. ⚠ The operand is worth
+`merge?` detector itself (§4 now states what is buildable and what is not, and why). Target
+release: **v0.4.68 (patch)** — shipped. ⚠ The operand is worth
 stating precisely, because the first revision stated it as 3529 and the honest figure is far smaller:
 **two stores in the fleet hold an archive-shaped document at all**, and exactly one of them changes.
 "One of two" and "one of 3529" support the same bump, but only the first is what was measured, and a
@@ -321,13 +322,39 @@ nobody has written down. The reviewer reconstructed 8 facts / 419 est tok that s
 size — the figure corroborates, the membership is unrecorded, and §4's original sentence therefore
 rested on an operand it could not check.
 
-**So the detector question is RE-OPENED, not settled.** A `merge?` detector is still **not built in
-this release** — but as a scope decision, not on the evidence that one is impossible. The honest
-statement of where this leaves the lever is: *three cheap signals were tried and failed; one cheap
-signal (token TF-IDF) was found by a reviewer to have real recall; and the cluster that would
-validate any of them has never been enumerated.* Whoever picks this up should enumerate the roadmap's
-8 members FIRST — that is the ground truth every metric must be scored against, and without it each
-candidate metric can only be argued about.
+**So the detector question is RE-OPENED, not settled** — and a later pass then CLOSED it, which is
+recorded here rather than left as a dangling instruction. The gap this section named was that every
+metric was being argued about against a cluster **nobody had written down**. That enumeration was
+attempted, and it produced a sharper result than expected:
+
+- **The cluster cannot be enumerated as the roadmap meant it.** The roadmap records a size (8) and a
+  token figure (~400) and **no membership — three mentions, zero lists, anywhere in the repo or the
+  store.**
+- ⚠ **And the figure is non-identifying, which is stronger than "unrecorded".** In a store whose
+  pointers average ~50 est tok, "8 pointers (~400 tok)" is what **any** size-8 draw costs:
+  **93.15 % of all 8-subsets of the live population fall in [360, 440] est tok**. The stated size
+  *could not have failed to match*, so it corroborated nothing — the same defect class as §4's
+  original "no signal": a number that cannot fail is not evidence.
+- **The relief is real and measurable: ~360–402 est tok**, 47–52 % of the store's 774-tok overage.
+- **No cheap metric recovers the cluster as a SET** (best pairwise F1 = 0.182; the probe's
+  `SequenceMatcher` scores 0.022 and is dead at its own `_DEMOTION_SIMILAR`).
+
+⚠ **But a cheap metric decisively separates a true DUPLICATE from this cluster, and that is the
+finding that makes the question decidable.** `body_tfidf` ranks the store's one verifiable duplicate
+**#1 of 3655 at 0.4931**, while the cluster's 28 intra-pairs top out at **0.2942** — a **1.68× gap**,
+with the true duplicate and the near-topic cluster on opposite sides of it. That is a threshold that
+**can** fail, which is exactly what §4 was missing.
+
+**What this means for the lever, stated precisely.** The detector is buildable **as a duplicate
+finder, not as a cluster finder** — it surfaces facts that say the same thing, which is the
+content-preserving, highest-value half of the merge disposition, and it is the half `cm local merge`
+would need. It does **not** reproduce the roadmap's topical "pin/observable" grouping, and nothing
+cheap does. A `merge?` detector remains **not built in v0.4.68**; it is now a scoped, decidable piece
+of work rather than an open argument.
+
+Full measurements and probes are in the pass's own report (an adversarial-review artifact under
+`/tmp`). ⚠ That path is **ephemeral**, which is why the enumeration's decisive figures are stated
+above rather than cited: a conclusion that lives only in its instrument dies with it.
 
 **What ships in its place, for now.** A `merge?` detector is **not built in v0.4.68**. Instead
 `SKILL.md` is amended so that a pass which finds itself over the ceiling is **instructed to read the

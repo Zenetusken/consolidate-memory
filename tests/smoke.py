@@ -13654,6 +13654,8 @@ with _Env73() as _e_pr2:
           "would_readd_archived_pointers" not in _rep_pr2
           and "would_readd_archived_sources" not in _rep_pr2)
 
+import time as _time68  # noqa: E402  (the ReDoS guard below needs a clock; every
+# other time alias in this file is imported LATER, after this point)
 # v0.4.68 — the pointer's ROLE and REGION (docs/pointer-role-and-merge-lever.spec.md §2 R2/R3).
 # P8–P11 above read an archive through its POINTER LINES. These read it through its HEADER REGION,
 # and the two are not the same question: `SHIPPED.md` is a pointer block followed by hundreds of
@@ -13710,6 +13712,25 @@ with _tf37.TemporaryDirectory() as _td68:
           "Measured cost on the live fleet: one store's 57 archived placements went to 0 and its "
           "drift count 4 -> 61 (intermediate: [])",
           ia.archive_index(_sections68)["targets"] == ["section-a", "section-b"])
+    # ReDoS regression pin (security review 2026-09-25, finding 1). The pointer regex this
+    # release retired was QUADRATIC on a run of `](` with no `)` after it — measured 3.4-4.9x
+    # per doubling, extrapolating to ~38 MINUTES at the 1 MiB archive cap, on a path reached
+    # from every store *.md that classifies as an archive. The bar below is an ABSOLUTE margin,
+    # not a per-doubling ratio: it separates by ~750,000x, so it cannot be flaky on a loaded
+    # machine, and it reddens on the retired form by seven orders of magnitude rather than by a
+    # hair. Pre-fix this check CANNOT run — `first_pointer_target` does not exist there — so it
+    # is a REGRESSION GUARD, not a PIN, and the version it guards against is the one this
+    # release retired rather than a shipped one.
+    _adv68 = "- [](x" + "](" * 32000
+    _t0_68 = _time68.process_time()
+    _got68 = ia.first_pointer_target(_adv68)
+    _el68 = _time68.process_time() - _t0_68
+    check("v0.4.68 R7 (REGRESSION GUARD — cannot redden pre-fix, the symbol is new; it guards "
+          "the QUADRATIC the retired regex had, measured 7.54s on this exact input against "
+          "~1e-5s now): the pointer scan is linear, so a crafted or merely TRUNCATED store "
+          "document cannot stall Phase 0 — and no length cap is needed, which matters because "
+          "a cap would make an archive over it place NOTHING and its facts report UNPLACED",
+          _got68 is None and _el68 < 0.1)
     check("v0.4.68 R4 (CONTROL — green on BOTH trees, so it discriminates nothing on its own and "
           "is labelled as such): the two readers AGREE on one archive document. They agree on the "
           "pre-fix tree for the wrong reason — each counts the quoted line, by two different "
@@ -26896,7 +26917,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     it cannot redden pre-fix
                                        #     and is NOT a pin. ⚠ Three of the five are
                                        #     deliberately not pins, and say so in their text.
-                            + 4        # v0.4.68 — the pointer's ROLE and REGION. THREE PINs and a
+                            + 5        # v0.4.68 — the pointer's ROLE and REGION. THREE PINs and a
                                        #     CONTROL: R2 (mid-prose), R3 (quoted item below a
                                        #     divider), R3b (a `## `-sectioned doc with NO divider
                                        #     must be read WHOLE — a PIN against the INTERMEDIATE
