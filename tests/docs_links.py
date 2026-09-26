@@ -163,6 +163,13 @@ DOCS = [
     # Reached from SECURITY.md, which is itself in this list — so the chain README →
     # SECURITY.md → spec is walked, and the spec's own outbound links are checked too.
     "docs/redos-guard-linearity.spec.md",
+    # v0.4.68. The design-of-record for the pointer rule, and the doc a reader is handed when
+    # asking "which reader answers this question?" — so its outbound links are walked rather than
+    # trusted. It reaches here the same way the entry above does: linked from a doc already in
+    # this list. ⚠ Listing it checks its LINKS; its header is `check_spec_status`'s operand, and
+    # its release claim is read by the target arm — three gates, three different questions about
+    # one file, which is why "is it listed?" has no single answer here.
+    "docs/pointer-role-and-merge-lever.spec.md",
 ]
 # The measured EDGE of THIS WALK, recorded so the next editor inherits it rather than
 # re-deriving it: `plugins/dream-beta-tester/docs/SPEC-A.md` and the repo-root `CLAUDE.md`

@@ -13654,6 +13654,52 @@ with _Env73() as _e_pr2:
           "would_readd_archived_pointers" not in _rep_pr2
           and "would_readd_archived_sources" not in _rep_pr2)
 
+# v0.4.68 — the pointer's ROLE and REGION (docs/pointer-role-and-merge-lever.spec.md §2 R2/R3).
+# P8–P11 above read an archive through its POINTER LINES. These read it through its HEADER REGION,
+# and the two are not the same question: `SHIPPED.md` is a pointer block followed by hundreds of
+# lines quoted from the roadmap, so a QUOTED list item below its `---` is not a placement. Nothing
+# above could see that — the quoted line IS a leading anchor on a pointer-shaped line, so no role
+# rule excludes it, and P11's own comment records the reading that gave up on separating them.
+# What separates them is where they SIT, not how they are spelled.
+with _tf37.TemporaryDirectory() as _td68:
+    _prose68 = Path(_td68) / "mid-prose.md"
+    _prose68.write_text(
+        "# Notes\n\nSee [the baseline](mentioned-fact.md) before tuning anything.\n",
+        encoding="utf-8")
+    _arch68 = ("# Shipped\n\n"
+               "- [shipped-live](shipped-live.md) — a real pointer, ABOVE the divider\n\n"
+               "---\n\n"
+               "Quoted from the roadmap:\n\n"
+               "- [quoted-old](quoted-old.md) — a quotation, BELOW it\n")
+    _arch68_p = Path(_td68) / "archive-doc.md"
+    _arch68_p.write_text(_arch68, encoding="utf-8")
+    check("v0.4.68 R2 (PIN): an anchor quoted MID-PROSE is not a placement — the line must BE a "
+          "pointer line, not merely carry the pointer's shape. This is the `stem` case: a header "
+          "note in SHIPPED.md illustrated the shape, the count included the illustration, and the "
+          "store reported a phantom fact named `stem` (`DANGLING: ['stem']`, placed 92 against "
+          "91 bodies). The ROLE rule is not new — `archive_index` has always skipped "
+          "non-pointer lines and P10 pins that on the prose arm — but `index_fact_names` never "
+          "applied it, so ONE prose mention placed a fact (pre-fix: {'mentioned-fact'})",
+          ms.index_fact_names(_prose68) == set())
+    check("v0.4.68 R3 (PIN): a quoted LIST ITEM below an archive document's divider is not a "
+          "placement either — and no ROLE rule can exclude it, because it IS a leading anchor on "
+          "a pointer-shaped line. Only the REGION separates it: placements are those above the "
+          "first `---` or `## `, whichever comes first. This is H1, the harm that made "
+          "`distill-feature-plan` and `arc-a-qa-harness-teeth-evidence` read as ARCHIVED for "
+          "months although no archive operation ever placed them (pre-fix: ['shipped-live', "
+          "'quoted-old']). ⚠ The above-divider pointer surviving is part of THIS assertion, not "
+          "a separate check: an arm that returned a shorter list for any reason would pass a "
+          "membership test and fail this equality",
+          ia.archive_index(_arch68)["targets"] == ["shipped-live"])
+    check("v0.4.68 R4 (CONTROL — green on BOTH trees, so it discriminates nothing on its own and "
+          "is labelled as such): the two readers AGREE on one archive document. They agree on the "
+          "pre-fix tree for the wrong reason — each counts the quoted line, by two different "
+          "routes — which is precisely why this is not a PIN. It is here to catch a FUTURE "
+          "divergence, the class this store keeps paying for when one rule acquires two "
+          "spellings: `index_fact_names` now delegates to the shared derivation instead of "
+          "re-spelling it (spec §2 R4)",
+          ms.index_fact_names(_arch68_p) == set(ia.archive_index(_arch68)["targets"]))
+
 # ── Phase 2: journal terminal cleanup / schema split ──
 with _Env73() as _e_js:
     _ctx_js = sc.resolve_store(_e_js.proj)
@@ -26831,6 +26877,18 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     it cannot redden pre-fix
                                        #     and is NOT a pin. ⚠ Three of the five are
                                        #     deliberately not pins, and say so in their text.
+                            + 3        # v0.4.68 — the pointer's ROLE and REGION. TWO PINs, both
+                                       #     RED pre-fix and GREEN post-fix: the mid-prose
+                                       #     mention (R2, the `stem` case) and the quoted list
+                                       #     item below an archive divider (R3, the H1 case
+                                       #     that made two facts read as ARCHIVED for months).
+                                       #     ⚠ The pre-fix RED for R3 is an EQUALITY, not a
+                                       #     membership test, because the above-divider pointer
+                                       #     must survive the narrowing — a fix that dropped it
+                                       #     too would satisfy a membership arm. Plus ONE
+                                       #     CONTROL, green on BOTH trees: the two readers
+                                       #     agree on one archive doc, which is the ONLY check
+                                       #     that would catch them drifting apart again.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

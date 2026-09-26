@@ -1,0 +1,320 @@
+# The pointer's ROLE — and the merge lever's true shape
+
+The store answers one question in five different places and gets a different answer in each:
+*which facts does this document place?* The rule is currently "any `](stem.md)` anywhere in the
+file's TEXT", which cannot tell a pointer from prose that quotes one. This document specifies the
+fix, and records a measurement that decides a second question the roadmap has carried open — the
+`merge?` detector — in the negative.
+
+Measured 2026-09-25/26 against the live store at
+the store at `~/.claude/projects/<slug>/memory/` and the tree at `f0b8767`.
+
+**How to read the citations.** Every `file:line` below is **`f0b8767`-numbered**. Resolve it with
+`git show f0b8767:<path>`; a coordinate that has moved since is a citation to re-derive, not to
+correct here. A fact in the private memory store is named by stem and never given a path
+coordinate — the store is not in this repository, so no revision can answer for it.
+
+**STATUS (2026-09-26): the RULE and its reader convergence are IMPLEMENTED on
+`fix/v0.4.68-pointer-role`, measured (§5), and awaiting review and merge. NOT implemented: §4's
+skill amendment, and the named residuals in §6. Those are listed there rather than implied closed.**
+Target release: **v0.4.68 (patch)** — settled by measurement, not by argument (§6): the fleet scan
+found exactly one store changes, and no install's record contract moves.
+
+## 1. The defect, measured
+
+`memory_status.py:1396`
+
+```python
+_LINK_RE = re.compile(r"\]\(([^)]+)\.md\)")        # MEMORY.md pointer link target (stem)
+```
+
+One function, `index_fact_names`, is applied to two files with **different contracts**.
+`MEMORY.md` is a pure pointer list — its only non-pointer line is the `# Memory Index` title.
+`SHIPPED.md` is a 550-line archive *document*: a 17-line header and pointer block, `---` at line
+18, then long recovery sections quoted from the roadmap. Exactly **three** of its 550 lines are
+pointer-shaped: `:15` a real pointer, `:322` and `:550` **quoted list items inside narrative prose**.
+
+Two live harms, both reproduced this week:
+
+- **H1 — quoted prose conferred archive membership.** Because of `:322` and `:550`,
+  `distill-feature-plan` and `arc-a-qa-harness-teeth-evidence` read as ARCHIVED for months although
+  no archive operation ever placed them. Measured: `index_fact_names(SHIPPED.md)` returns 3 stems,
+  of which only one is above the divider.
+- **H2 — an example in prose became a fact.** A header note added to `SHIPPED.md` quoted the
+  pointer shape literally as its illustration; `_LINK_RE` counted the illustration and the store
+  reported a phantom fact named `stem` — `DANGLING: ['stem']`, `placed 92` against `91` bodies.
+
+**This is not an unknown defect.** `docs/periphery-parity.spec.md:587` records it as *"§2.3's
+residual: a doc whose link is formatted as a pointer line is structurally indistinguishable from a
+real archive"*, and defers it explicitly for scope — *"the honest fix is a new report key …, and a
+report-contract addition needs its own pin and its own arm re-derivation."* That note concedes the
+gap it leaves: *"this risk is that the classification path has no such naming."* This document
+closes the residual at its source instead of naming it downstream.
+
+**Its blast radius is not cosmetic.** `extract_signals._tier_sets` (`extract_signals.py:725`,
+`:731`, `:740`) uses the same whole-text scan to decide whether a fact is **indexed or archived** —
+and that tier drives the demotion policy and the miss detector. A single quoted line in an archive
+document can therefore change a fact's tier, which is the input to a retention decision.
+
+## 2. Requirements
+
+- **R1 — one derivation.** There is exactly one definition of "the pointer targets of an index
+  document", and every reader calls it. This file's own history is the reason: the store has paid
+  repeatedly for a rule with two spellings that drift.
+- **R2 — role.** An anchor counts only when its **line is a pointer line** (a line whose stripped
+  text begins `- [`). An anchor mentioned mid-prose does not count.
+- **R3 — region.** In an **archive** document, the pointer set is those in its **header region**:
+  above the first `---` **or** the first `## ` heading, whichever comes first. `MEMORY.md` has
+  neither, so its whole file is its header region and it is unaffected.
+- **R4 — convergence, scoped by the QUESTION a reader asks.** Every reader that answers *"which
+  facts does this document place?"* uses R1's derivation, with no local re-spelling. ⚠ This is
+  NARROWER than this requirement's first draft, which named every site that touched the anchor.
+  Two of those sites ask a different question and must NOT converge; converging them would be the
+  defect rather than the fix. §3.3 records which is which, and the trigger that would make the
+  remaining inert sites live.
+- **R5 — read/write agreement.** The read rule and the write rule are the same rule. Today the read
+  side is stricter than the write side, which locates a pointer line by bare substring.
+- **R6 — no pin regressions.** The five multi-pointer-line pins at `tests/smoke.py:12546-12640`
+  stay green. A pointer line may legitimately carry a second anchor; see §3.4.
+
+## 3. Design
+
+### 3.1 R2 is not a new rule — it is a decision already made and pinned; R3 is the missing half
+
+**R2 is already the canonical reader's behaviour, deliberately, and pinned.** The shared reader
+(`index_admission.archive_index`, `index_admission.py:84-86`) skips any line that does not begin
+`- [` after stripping, and `tests/smoke.py:13612` (P10) asserts exactly that on a prose fixture:
+
+```python
+_prose_pr = ("# Working notes\n\n"
+             "Read [the baseline](mention-fact.md) before tuning anything.\n")
+check("v0.4.32 P10 … the shared rule calls the prose doc an archive, and the extraction the fix
+       reads takes zero targets from it",
+      ms._is_archive_index_text(_prose_pr) is True
+      and ia.archive_index(_prose_pr)["targets"] == [])
+```
+
+So the role rule exists, is tested, and the classifier is deliberately **broader** than the
+extractor. **On R2 the work is convergence, not invention** — bringing `index_fact_names`,
+`extract_signals`' tier reader and the rest onto the derivation the canonical reader already uses.
+That is a smaller and safer change than adding a rule, and it is restoring a decision rather than
+making one.
+
+**R3 is missing, and the canonical reader is where it bites.** Measured on the live store:
+
+```
+archive_index(SHIPPED.md)["targets"]  →  3 stems
+  :15   ABOVE the `---` divider (line 18)  ← a real pointer
+  :322  BELOW the divider                  ← a quoted list item
+  :550  BELOW the divider                  ← a quoted list item
+```
+
+The two quoted lines are *leading anchors on list-item lines*, so **no role rule can exclude
+them** — not the line-scoped reading, not the stricter anchor-scoped one. R2 fixes H2; only R3
+fixes H1, and the reader conferring the bad membership is the canonical one every placement
+question already flows through.
+
+### 3.2 The boundary idiom is reused, not invented
+
+R3 uses the same "whichever comes first" derivation as `tests/docs_links.py::_spec_header_end`. This
+repo spent the v0.4.64–67 arc learning that **a boundary is a property of the FIELD, not of the
+reader that happened to observe the defect**, and paid for it twice. A second boundary idiom here
+would be that same defect with a new spelling.
+
+### 3.3 The one home, and the readers that converge on it
+
+The preferred home is `index_admission`, which already owns `archive_index` (`index_admission.py:64`)
+— the reader every placement question is currently answered through, and the one
+`local_ingress._rebuild_plan` already consults (`local_ingress.py:896-903` reads its `targets`,
+deliberately not its `admitted`).
+
+**Keep `_LINK_RE` raw; compose, do not edit.** The anchor regex should stay a plain anchor matcher,
+and the new derivation composes it with the role and region rules. Editing the regex would change
+every consumer at once — including the ones that legitimately want any anchor — where composing
+changes only the callers that mean "a pointer". This also keeps R5 honest: `apply_pointer`
+(`index_admission.py:112-131`) currently locates the line to replace by bare substring with no shape
+test, so **it must become role- and region-aware too**, or the read side will silently be the
+stricter of the two and a write can place a pointer the reader will not see.
+
+**Every site that touches the anchor, sorted by the question it asks — which is what decides
+whether it converges.** The first draft of this table sorted by module and called them all
+"readers that must converge". Measuring what each one is FOR split the list in two, and the
+second half is not unfinished work — it is work that must not be done.
+
+| site | the question it asks | verdict |
+|---|---|---|
+| `index_admission.archive_index` (`:111`) | what does this doc place? | **converged** — is the rule's home |
+| `memory_status.index_fact_names` (`:1528`) | what does this doc place? | **converged** — delegates |
+| `extract_signals._tier_sets` (`:725`, `:731`, `:740`) | what does this doc place? | **converged** — measured inert, §6 |
+| `index_admission.apply_pointer` (`:158`) | where is the line to REPLACE? | **converged** — R5, below |
+| `local_ingress._stored_pointer` (`:78`) | where is the pointer LINE for this stem? | **residual** — inert |
+| `local_ingress` `existing_ptrs` (`:653`, `:842`) | is this stem currently in MEMORY.md? | **residual** — inert, lockstep pair |
+| `local_ingress` (`:1116`, `:1123`) | which lines carry the carried stems? | **residual** — inert |
+| `sync_global.py` `:2374`, `:3816`; `session_beacon.py` `:298` | verbatim anchor copies | **residual** — inert |
+| `memory_status._is_archive_index_text` (`:1737`) | **is this doc an archive?** | **must NOT converge** |
+| `memory_status.ref_stems` (`:3707`) | **is this fact reachable ANYWHERE?** | **must NOT converge** |
+
+⚠ **The two "must NOT converge" rows are the finding, and both were on the first draft's
+converge list.** They are not the placement question and their breadth is load-bearing:
+
+- `_is_archive_index_text` is a **classifier**, and `tests/smoke.py` P10 pins it as deliberately
+  BROADER than the extractor — it answers `True` for a doc from which `archive_index` takes zero
+  targets. Converging it would red that pin and destroy the asymmetry the pin exists to record.
+- `ref_stems` collects anchors from archive docs and CLAUDE.md prose so that *"a fact reachable
+  there is NOT mis-flagged as a safe-evict orphan"*. Its own comment states the direction: it is
+  a **protection**. Narrowing it does not make a reader more precise — it unprotects facts from
+  eviction, moving them toward being pruned. A rule that is correct for placement is wrong here,
+  and the difference is which way the error costs.
+
+**The residuals are INERT, and the trigger that would wake them is one line.** Every one reads
+`MEMORY.md` — a pure pointer list with no `---` and no `## ` — so `pointer_region` returns it whole
+and its lines already pass the role test. R2/R3 are therefore **no-ops at those sites today**.
+They stop being no-ops the moment `MEMORY.md` gains a divider or a prose line, which is exactly the
+event this spec exists to make survivable: a future reader should not have to rediscover which
+sites were converged and which were left. ⚠ Leaving them is a deliberate scope call, not an
+oversight — each is a behavior-identical edit that would still have to be pinned, and a pin for a
+no-op cannot be a PIN.
+
+**The role-check precedents, re-measured.** `archive_index` uses `strip().startswith("- [")` and
+`_stored_pointer` uses `lstrip().startswith("- [")`, differing only on indentation tolerance;
+the write-side constructors emit at column 0. Those two are now the SAME rule where it matters
+(`pointer_lines` strips), and `_stored_pointer`'s stricter `lstrip` remains as one of the named
+residuals. `apply_pointer`'s substring match with **no shape test at all** — the fourth precedent,
+and the one with a live failure mode — is closed by R5 below.
+
+### 3.4 The reading that was rejected
+
+Two readings were on the table: **(A) line-scoped** (every anchor on a pointer line counts) and
+**(B) anchor-scoped** (only the leading anchor counts). **(B) is tidier and is rejected**: it reds
+five existing pins, and those pins encode a real decision — a pointer line may legitimately carry a
+second anchor. Adopting (B) would be changing a behaviour to satisfy a preference.
+
+### 3.6 R5 — the write side, and why a stricter reader is a data-loss shape
+
+`apply_pointer` located the line to replace by bare substring — `f"]({stem}.md)" in ln` — with no
+shape test and no region. The read side was therefore stricter than the write side, and the
+failure mode is not symmetric with the one in §1: a write could rewrite a line its own reader does
+not count as a pointer (a prose mention), report success, and leave the fact **unplaced**.
+
+`admit_write` cannot catch that. It measures the index's **size**, and the write it just made is
+size-neutral — it replaced one line with one line. So the defect is invisible to the very check
+guarding the write path, which is what makes it worth its own requirement rather than a footnote
+to R1.
+
+Both halves now ask `pointer_lines`. The fallback inserts at the **end of the region**, not the end
+of the file: below a divider the reader is blind, and writing where your own reader cannot look is
+the same defect one layer down. For a pure pointer list (`MEMORY.md`) the region is the whole file,
+so this is **byte-identical** to the old append — which is why it required no pin of its own, and
+the five `tests/smoke.py` multi-pointer-line pins are the evidence it changed nothing they assert.
+
+### 3.5 The rebuild coupling, stated precisely
+
+`_rebuild_plan` reads membership through the shared `archive_index` reader, so R1/R3 reach it for
+free. What remains name-based is the **fact glob** (`local_ingress.py:918`,
+`if f.name in ("MEMORY.md", "SHIPPED.md") … continue`) — a different site answering a different
+question ("is this file a fact?" not "what does this archive place?"). It is **named here and not
+silently widened**; a new archive document added under a different name would be globbed as a fact,
+and that is a separate, pre-existing residual.
+
+## 4. The merge lever — a measurement that says NO, and what replaces it
+
+The roadmap has carried an open item for weeks: the always-loaded index is **90 pointers / ≈4614 est
+tok against a 3840 hard ceiling**, `sync_global --pull` M1-holds all new globals until it shrinks,
+and the conclusion on record is that **fewer pointers is the only lever** — because the index cue is
+**cap-bounded** (measured: 623 chars → 50 tok; 377 → 56; 170 → 58) and compressing hooks therefore
+cannot help.
+
+The obvious next step was a `merge?` Phase-0 detector. **It was probed before being built, and it
+has no signal.** Three independent signals, over the live store's 86 indexed non-mirror facts:
+
+| signal | measurement | verdict |
+|---|---|---|
+| **description similarity** — the store's own `_DEMOTION_SIMILAR = 0.6`, `SequenceMatcher(autojunk=False)`, canonical arg order | across all **3,655** pairs the **maximum is 0.432**; median 0.205, mean 0.206. At 0.45 and 0.50: **zero pairs** | the threshold is never reached |
+| **name prefix** | one group (`a-check-*`, 3 members) with **0 of 3** wikilinks between them, stating three unrelated claims. The roadmap's flagship pin/observable cluster does not appear — it splits across `a-pin` / `a-pins` | one specious group |
+| **wikilink overlap** (Jaccard) | 38 pairs at ≥0.5 — driven by **hub co-citation**: `exact-assertion-beats-verdict-scan ~ mutation-count-belongs-to-the-triple` scores 0.83 on five shared links that are all hubs, and the top pair reaches **J = 1.00 from a single shared link** | measures shared references, not shared claims |
+
+**The failure is structural, not incidental.** The facts' `description:` fields are engineered as
+**distinct recall keys** — the store's core discipline — so text similarity is lowest exactly where
+the store is best written. The citation graph is hub-dominated, so overlap is co-citation. And the
+ratio does not track meaning where it does fire: at 0.40 it pairs `gate-coverage-is-its-match-set`
+with `weakest-enforcement-site-wins`, which are unrelated claims sharing vocabulary.
+
+**Conclusion: the merge lever is a JUDGMENT lever, not a detection lever.** The roadmap's
+"pin/observable cluster (~400 tok)" is a human judgment about topical relatedness, and no signal in
+the store's data reproduces it. Making it mechanical would require semantic embeddings — a runtime
+dependency this repo forbids by its own zero-dependency rule.
+
+**What replaces the detector.** A `merge?` detector is **not built**. Instead `SKILL.md` is amended
+so that a pass which finds itself over the ceiling is **instructed to read the index and propose
+merge clusters itself**, at the moment the judgment is needed. The current text implies this and
+never says it; the lever has been named for weeks with nothing pointing at it. The amendment makes
+the request explicit and keeps it where it belongs — in the model's judgment, confirmed by the
+operator, never in a metric that cannot carry it.
+
+## 5. Evidence and provenance
+
+- The defect and the two harms: **measured** on the live store 2026-09-25/26 (`index_fact_names`,
+  `placed_fact_names`, a `_LINK_RE` count over `SHIPPED.md`).
+- The recorded residual: `docs/periphery-parity.spec.md:254`, `:479`, `:587`.
+- The reader inventory and the four disagreeing precedents: a completed exploration of the tree at
+  `f0b8767`, reporting file:line for every site named in §3.3.
+- ⚠ **The merge NO-GO is independently corroborated.** A separate design pass ran its own probe and
+  reached the same verdict without seeing this one's numbers: *"0 pairs at 0.6, noise below — NO-GO,
+  don't build."* Two independent measurements agreeing is the strongest evidence in this document,
+  and it is the reason §4 is a decision rather than a preference. Note the agreement covers the
+  **description-similarity** signal; the prefix and link-overlap probes are this document's alone.
+- The merge probe: three read-only scripts run over the live store, reusing the store's own
+  primitives and constants (`_frontmatter`, `extract_wikilinks`, `resolve_wikilink`, `_is_mirror`,
+  `_DEMOTION_SIMILAR`, `INDEX_CEILING_TOKENS`). The probe re-implements the *population walk* (the
+  real `demotion_candidates` caps its output to `_DEMOTION_BOTTOM_K` surfaced rows, which is exactly
+  what a merge detector must see past); it reuses the metric and thresholds themselves.
+
+## 6. Honest limits and open items
+
+- **Fleet blast radius — MEASURED, and it is one store.** R2/R3 change what counts as placed for
+  every store, not just this one, so the effect was measured across the fleet rather than assumed:
+  **3529 stores scanned, exactly ONE archive changes** — this repository's own `SHIPPED.md`
+  (divider at line 18) — losing exactly the two stems that had already been restored by hand. Every
+  other store reports `LOSES: []`. The surface exists (`placed_fact_names` feeds the health sweep),
+  so a store that did lose membership would self-report rather than revert silently — but on this
+  measurement none does.
+- **The version bump — patch, settled on that evidence.** `CLAUDE.md`'s policy asks whether an
+  existing install BREAKS. No schema, CLI, or manifest surface moves; legacy cycle records still
+  render; the one store whose answer changes changes it toward the truth. The earlier note calling
+  this "arguably a minor" rested on the change being fleet-wide — the fleet scan is what settles it,
+  and it settles it the other way.
+- **`DOCS` in `tests/docs_links.py` — done.** This document is listed there (invariant 2), and the
+  gate's own count is the evidence rather than this sentence: link-checked files moved **19 → 20**.
+- **The tier reader — measured, and it is INERT on the live store.** §1 claims a quoted line *can*
+  change a fact's tier, and that capability is real — but the live effect was measured rather than
+  inferred: `_tier_sets(store, None)` returns **indexed 90 → 90, archived 1 → 1, zero lost, zero
+  gained** on both trees. The reason is worth recording, because it is not luck: the two quoted
+  stems had already been restored to `MEMORY.md` by hand, and the tier sets subtract `indexed`
+  (`arch - indexed`), so `indexed` wins whether or not the archive is read correctly. ⚠ So this
+  convergence prevents the class recurring; it does **not** repair a live misclassification, and a
+  summary claiming it does would be overreading a no-op.
+- **A wrong operand worth recording so nobody chases it.** A live scan finds **4 anchors that are
+  mid-line rather than line-start** — and all four are in **fact bodies**, not index files:
+  the store facts `consolidate-memory-roadmap` (two of them) and
+  `verify-deltas-against-committed-shas` (two, the last quoting `](evil.md)` as the very threat it
+  documents). ⚠ They are named by FACT, not by `file:line`: the store lives outside the repository,
+  so a path coordinate for it resolves against no revision in the tree and the citation gate is
+  right to refuse it. They are **inert**:
+  `_is_archive_index` rejects anything carrying fact frontmatter, so no reader scans them. R2 changes
+  nothing for them. They are named here because a naive "find the offenders" scan reports them as
+  evidence of the defect, and they are not.
+- **Two adjacent disagreements found while exploring, out of scope but unrecorded elsewhere.**
+  (1) `_KEEP_RE`'s comment (`memory_status.py:1650`) says it is *"scanned over the WHOLE body"* while
+  both call sites scan **narrower** haystacks — frontmatter at `:1928`, description-only at `:2908`.
+  Comment and code disagree, and that is current behaviour. (2) `defrag_candidates` deliberately does
+  **not** consult `_KEEP_RE` at all — its quieting mechanism is the v0.4.23 watermark — so the two
+  list-family detectors answer "is this candidate real?" by different rules. Neither is touched by
+  this spec; both want their own decision.
+- **No longer open — the three verbatim copies were read.** An earlier draft of this list carried
+  them as unverified. They are `sync_global.py:2374`, `sync_global.py:3816` and
+  `session_beacon.py:298`, and all three read **`MEMORY.md`** — a pure pointer list with no divider
+  and no prose — so R2 and R3 are no-ops for them today. That is why they sit in §3.3's residual
+  rows rather than its converged ones; the reason is a measurement, not a deferral.
+- **The evaluation is a snapshot.** The probe's figures belong to the store at 86 indexed facts on
+  2026-09-26 and to the revision they were measured on. A later pass must re-measure rather than
+  carry them.

@@ -1525,7 +1525,8 @@ def index_fact_names(index_path: Path) -> set:
     if not index_path.exists():
         return set()
     try:
-        return set(_LINK_RE.findall(index_path.read_text(encoding="utf-8", errors="replace")))
+        from index_admission import pointer_targets          # the ONE pointer derivation
+        return set(pointer_targets(index_path.read_text(encoding="utf-8", errors="replace")))
     except OSError:
         return set()
 
