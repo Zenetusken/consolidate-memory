@@ -25640,14 +25640,25 @@ check("v0.4.57 (PIN, structural): every reason `ensure` MINTS is declared in `_E
       "a reason minted as a NAME rather than a literal evades this scan (see the note above)",
       bool(_minted57) and _minted57 == _declared57)
 # and the producer ENFORCES it, the way `_miss` does for `load()`'s reasons
-_mint_raised57 = False
+_mint_raised57: "object" = None
 try:
     _fm44._mint("not-a-declared-reason")
-except Exception:
-    _mint_raised57 = True
+except Exception as _e57mint:                     # a raise is a RESULT here, never a skip
+    _mint_raised57 = _e57mint
+# ⚠ THE TYPE IS THE CLAIM, AND IT WAS UNENFORCED AT THIS SITE (v0.4.76 review). The class docstring
+# states "the type-agnostic shape sits at `_mint`'s check too (`except Exception` → a bool)" and warns
+# that leaving it there "leaves the hole live at the WEAKEST site". It was right about this site and
+# wrong about its own repair: it promised a subclass giving "a type a pin can assert", and NO pin
+# asserted it here or at `_served`. MEASURED: rewriting the raise to `ValueError` left the suite GREEN.
+# ⚠ A `getattr`-guarded class reference with an `AssertionError` FALLBACK, so a tree that predates the
+# class reports a red rather than raising at module scope — and an assertion, never a bare call, so a
+# mutation reddens instead of aborting the run.
+_mint_cls57 = getattr(_fm44, "UnclassifiedReason", AssertionError)
 check("v0.4.57 (PIN): an UNDECLARED `ensure` reason RAISES at the producer rather than being "
-      "returned — so a new mint cannot reach a consumer before someone declares its transience",
-      _mint_raised57 and callable(getattr(_fm44, "_mint", None)))
+      "returned — so a new mint cannot reach a consumer before someone declares its transience — "
+      "**and it raises the NAMED type**, which a bool could not carry: `ValueError` where "
+      "`UnclassifiedReason` belongs is a different observable, not a different message",
+      isinstance(_mint_raised57, _mint_cls57) and callable(getattr(_fm44, "_mint", None)))
 
 # (2) PIN — `release()` NEVER RAISES, so a failing release cannot strand its siblings.
 # Measured by a review lens: `except ImportError` beside `flock` caught only that class, so an
@@ -25988,6 +25999,16 @@ check("v0.4.59 (PIN): an UNDECLARED reason returned by `ensure` RAISES at the pr
       "`load()`'s reasons through, so a guard keyed on `_ENSURE_REASONS` alone would redden on "
       "correct trees",
       _raised59 is not None and len(_accepted59) == 7)
+# ⚠ v0.4.76: the TYPE, at the site the class docstring names as the reason the class exists. Its words:
+# "a guard raising `ValueError` where an `AssertionError` belongs passed every check — the observable
+# could not carry the difference between 'this guard fired' and 'something, anywhere, raised'." That is
+# EXACTLY what `_raised59 is not None` still could not carry. MEASURED pre-fix: the `ValueError` rewrite
+# leaves 2394/0. It is a GUARD, not a PIN — an `UnclassifiedReason` is an `AssertionError`, so the
+# assertion is green on the pre-fix tree too; what it witnesses is the MUTATION.
+check("v0.4.76 (GUARD, mutation-sensitive): the `_served` guard raises `UnclassifiedReason` — the "
+      "observable carries WHICH guard fired, not merely that something did (the distinction the class "
+      "was introduced for and no pin asserted)",
+      isinstance(_raised59, getattr(_fm44, "UnclassifiedReason", AssertionError)))
 
 # (1b) PIN — the validation is TOTAL BY CONSTRUCTION, which is a structural property and therefore
 # checkable: `ensure` is a wrapper whose ONE return routes through `_served`, over an inner function
@@ -27211,6 +27232,9 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     shape still renders its REAL operands). ⚠ The first
                                        #     cut was 2 checks probing ONE arm — a pin for one arm
                                        #     wearing a whole-function label.
+                            + 1        # v0.4.76 — the `_served` guard's raise TYPE gets its own arm.
+                                       #     ⚠ The `_mint` site was fixed by EDITING an existing check
+                                       #     (a bool cannot carry a type), so it adds no term.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

@@ -263,6 +263,14 @@ class UnclassifiedReason(AssertionError):
     The type-agnostic shape sits at `_mint`'s check too (`except Exception` → a bool), so naming
     the class at one site while its siblings raise the bare base leaves the hole live at the
     WEAKEST site — which is exactly where the next edit re-opens it.
+    ⚠ **AND THE PIN ARRIVED AT v0.4.76, NOT WITH THE CLASS.** For eleven releases this docstring
+    promised a type a pin could assert while NO pin asserted it at either site: `_mint`'s captured
+    the raise into a bool and `_served`'s tested only that SOMETHING came back — the exact
+    distinction this class exists to carry, still uncarried. MEASURED then: rewriting all three
+    raises to `ValueError` left the suite GREEN. Both sites now assert the type, and the mutation
+    reddens at all three. The lesson is in the paragraph above, read literally: naming a class at
+    a site is not enforcing it there, and prose that describes an enforcement it does not have is
+    indistinguishable from one that does — until someone mutates the thing and measures.
     """
 
 

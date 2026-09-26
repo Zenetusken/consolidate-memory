@@ -5,6 +5,34 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.76] — 2026-09-26
+
+**Patch — the `UnclassifiedReason` pin promised for eleven releases, and asserted at neither site.**
+`facts_manifest` raises a named `UnclassifiedReason(AssertionError)` at three sites (`_mint`, `_served`,
+`_miss`) so a raise carries WHICH guard fired rather than merely that something did. Its docstring says
+so — and says that the type-agnostic shape at `_mint`'s check "leaves the hole live at the WEAKEST site".
+It was right about the hole and wrong about its own repair: **the class was named at all three sites and
+asserted at none**, because `_mint`'s check captured the raise into a **bool** and `_served`'s asserted
+only `_raised59 is not None`.
+
+⚠ **MEASURED: rewriting all three raises to `ValueError` left the suite GREEN (2394/0).** `ValueError`
+where `UnclassifiedReason` belongs is a different observable, not a different message — the guard fired
+either way, and no check could tell them apart. That is the precise distinction the class docstring says
+it exists to give a pin. ⚠ **v0.4.63's own entry claimed the opposite** — *"the recorded `ValueError`
+mutation **RED** (the old pin was green on it)"* — and that clause is now corrected **in place** with the
+measurement, because a reader auditing "was the type hole closed?" would have concluded yes.
+
+**Fixed at both sites.** `_mint`'s assertion now tests the TYPE (it could not, as a bool), and `_served`
+gained the arm. The reference is `getattr`-guarded with an `AssertionError` fallback, so a tree predating
+the class reports a red rather than raising at module scope.
+
+⚠ **It is a GUARD, not a PIN**: `UnclassifiedReason` IS an `AssertionError`, so the assertion is green on
+the pre-fix tree too. What it witnesses is the **MUTATION** — and the mutation now reddens **three** times,
+one per raise site, which is the verifying evidence for the docstring's own "RAISED AT ALL THREE SITES"
+claim. Until this release that claim was asserted by nobody, in prose only.
+
+⚠ Cost: **one** check. The `_mint` site was repaired by editing an existing assertion, not by adding one.
+
 ## [0.4.75] — 2026-09-26
 
 **Patch — `_remediation_section` survives a RECORD, which its own comment already promised.** The function's
@@ -694,6 +722,14 @@ audit for it is recorded; re-run it after every sweep.
   isolated trees: post-fix green; the recorded `ValueError` mutation **RED** (the old pin was green on it);
   pre-fix RED without crashing. ⚠ It is a **GUARD, not a PIN** by this repo's rule — its pre-fix red is
   still KEY-ABSENCE — and it is labelled so.
+  ⚠ **CORRECTED at v0.4.76: the `ValueError` clause above was FALSE when written.** Naming the class at
+  three sites is not the same as ASSERTING it at three sites, and no check did: `_mint`'s captured the
+  raise into a BOOL, and `_served`'s asserted only `_raised59 is not None` — so rewriting every raise to
+  `ValueError` left the suite **GREEN (2394/0), MEASURED at v0.4.76**, and the entry's "the old pin was
+  green on it" described a hole the fix had only *named*. The class's own docstring promised "a type a
+  pin can assert" while no pin asserted it. v0.4.76 carries the enforcement — 3 reds under the mutation,
+  one per site — and this note records that the prose ran a release ahead of the code for eleven
+  releases, which is the same defect class as the three that preceded it.
 - **B2 — `try_acquire` is genuinely not closable, and the recorded reason was incomplete.** *"Cannot be
   closed without reintroducing the `blocking=` keyword"* names ONE design's cost. The blocker is the
   **signature**: `acquire`'s body *waits*, so every route through the override pays — wait; or pass a
