@@ -77,11 +77,17 @@ quotation of the clause it protects and stayed green when the real line was muta
 docstring records that a STRONGER, revision-anchored observable exists and is unbuilt — the tags
 re-derive 971→973 exactly; what blocks it is the `docs` CI job's shallow checkout, not a ceiling.
 
-⚠ **Do NOT restructure `SKILL.md`'s release-log blurb in this patch.** ⚠ Scope, because the blurb and its
-fattest lines are different sizes: lines **20–21** are two single-line paragraphs, 41,083 chars, ≈21.7%
-of the file; the blurb itself runs on to line **123** (the `Public 1.0 stays HOLD.` sentinel) and is
-**51,729 chars / 27.3%**. Either way it is prose no gate reads, which is *why* the number drifted. That
-is its own cycle.
+⚠ **Do NOT restructure `SKILL.md`'s release-log blurb in this patch.** It is a large fraction of the file
+— two single-line paragraphs plus roughly a hundred lines of release log, running to the `Public 1.0
+stays HOLD.` sentinel — and it is prose no gate reads, which is *why* the number drifted. That is its
+own cycle.
+
+⚠ **No char or byte count is given for it, deliberately, and this is the third time that decision has
+been made.** Two rounds each stated a precise size here and each figure was measured against the tree
+BEFORE the commit that wrote it — so the commit stating the number moved it. (It is also the count most
+likely to be read as a warning about staleness while being stale.) A figure its own commit moves cannot
+be stated durably, so this entry states the shape instead of the size; anyone who needs the number can
+measure the shipped file, which is the only tree it is ever true of.
 
 ⚠ **RECORDED, NOT FIXED:** the Phase-1 promotion re-audit's population is exactly the facts that did
 NOT go through `local_ingress`'s single writer, which stamps `scope: project-local` on everything it
