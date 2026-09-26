@@ -3,11 +3,13 @@
 The store answers one question in five different places and gets a different answer in each:
 *which facts does this document place?* The rule is currently "any `](stem.md)` anywhere in the
 file's TEXT", which cannot tell a pointer from prose that quotes one. This document specifies the
-fix, and records a measurement that decides a second question the roadmap has carried open — the
-`merge?` detector — in the negative.
+fix, and reports on a second question the roadmap has carried open — the `merge?` detector — where
+⚠ **the first conclusion was falsified in review and is now much narrower than "no".** §4 states
+what survives and what does not; read it before quoting this document on that question.
 
-Measured 2026-09-25/26 against the live store at
-the store at `~/.claude/projects/<slug>/memory/` and the tree at `f0b8767`.
+Measured 2026-09-25/26 against the live store at `~/.claude/projects/<slug>/memory/` and the
+tree at `f0b8767`, and re-measured after an adversarial review round (2026-09-26) that falsified two
+of its claims.
 
 **How to read the citations.** Every `file:line` below is **`f0b8767`-numbered**. Resolve it with
 `git show f0b8767:<path>`; a coordinate that has moved since is a citation to re-derive, not to
@@ -19,8 +21,11 @@ coordinate — the store is not in this repository, so no revision can answer fo
 FALSIFIED two claims in this document (§3.2's boundary argument and §6's fleet measurement). Both are
 corrected above, with the falsified forms kept visible. NOT implemented: §4's skill amendment, and
 the named residuals in §6. Those are listed there rather than implied closed.**
-Target release: **v0.4.68 (patch)** — settled by measurement, not by argument (§6): the fleet scan
-found exactly one store changes, and no install's record contract moves.
+Target release: **v0.4.68 (patch)**, on the corrected measurement (§6). ⚠ The operand is worth
+stating precisely, because the first revision stated it as 3529 and the honest figure is far smaller:
+**two stores in the fleet hold an archive-shaped document at all**, and exactly one of them changes.
+"One of two" and "one of 3529" support the same bump, but only the first is what was measured, and a
+denominator inflated 1764× is the kind of number that makes a small check look like a sweep.
 
 ## 1. The defect, measured
 
@@ -34,7 +39,12 @@ One function, `index_fact_names`, is applied to two files with **different contr
 `MEMORY.md` is a pure pointer list — its only non-pointer line is the `# Memory Index` title.
 `SHIPPED.md` is a 550-line archive *document*: a 17-line header and pointer block, `---` at line
 18, then long recovery sections quoted from the roadmap. Exactly **three** of its 550 lines are
-pointer-shaped: `:15` a real pointer, `:322` and `:550` **quoted list items inside narrative prose**.
+pointer-shaped: line 15 is a real pointer, and lines 322 and 550 are **quoted list items inside
+narrative prose**. ⚠ Named *by line* and deliberately NOT as `file:line`: this is a store document,
+it lives outside this repository, and no revision can answer for it — so a coordinate shaped like a
+citation would be resolved like one, fail, and be right to fail. (An adversarial reviewer flagged
+the bare form as unresolvable and this document briefly "fixed" it into the citation shape. The
+gate refused it. The reviewer's remedy was the defect.)
 
 Two live harms, both reproduced this week:
 
@@ -65,9 +75,14 @@ document can therefore change a fact's tier, which is the input to a retention d
   repeatedly for a rule with two spellings that drift.
 - **R2 — role.** An anchor counts only when its **line is a pointer line** (a line whose stripped
   text begins `- [`). An anchor mentioned mid-prose does not count.
-- **R3 — region.** In an **archive** document, the pointer set is those in its **header region**:
-  above the first `---` **or** the first `## ` heading, whichever comes first. `MEMORY.md` has
-  neither, so its whole file is its header region and it is unaffected.
+- **R3 — region.** In an **archive** document, the pointer set is those above the first **`---`**
+  rule. ⚠ **The `---` rule ONLY.** A `## ` heading was a terminator here in this document's first
+  revision, and it was a real regression against a live store — §3.2 is the corrected argument and
+  §6 carries the measured cost, because this requirement list is what an implementer reads first and
+  it still prescribed the clause the code had to drop. A document with **no** `---` is read WHOLE,
+  which is fail-open: it reproduces the behaviour that preceded this rule, so no store can lose a
+  placement it previously had. `MEMORY.md` has no `---`, so its whole file is its header region and
+  it is unaffected.
 - **R4 — convergence, scoped by the QUESTION a reader asks.** Every reader that answers *"which
   facts does this document place?"* uses R1's derivation, with no local re-spelling. ⚠ This is
   NARROWER than this requirement's first draft, which named every site that touched the anchor.
@@ -76,15 +91,17 @@ document can therefore change a fact's tier, which is the input to a retention d
   remaining inert sites live.
 - **R5 — read/write agreement.** The read rule and the write rule are the same rule. Today the read
   side is stricter than the write side, which locates a pointer line by bare substring.
-- **R6 — no pin regressions.** The five multi-pointer-line pins at `tests/smoke.py:12546-12640`
-  stay green. A pointer line may legitimately carry a second anchor; see §3.4.
+- **R6 — no pin regressions.** The multi-pointer-line pins at `tests/smoke.py:12546-12640` stay
+  green — ⚠ **that range contains THREE of them, not five**; the other two sit outside it and were
+  named as five by this document without being re-counted. A pointer line may legitimately carry a
+  second anchor; see §3.4.
 
 ## 3. Design
 
 ### 3.1 R2 is not a new rule — it is a decision already made and pinned; R3 is the missing half
 
 **R2 is already the canonical reader's behaviour, deliberately, and pinned.** The shared reader
-(`index_admission.archive_index`, `index_admission.py:84-86`) skips any line that does not begin
+(`index_admission.archive_index`, `f0b8767:84-86`) skips any line that does not begin
 `- [` after stripping, and `tests/smoke.py:13612` (P10) asserts exactly that on a prose fixture:
 
 ```python
@@ -146,7 +163,12 @@ it inherits that document's accidents.
 
 ### 3.3 The one home, and the readers that converge on it
 
-The preferred home is `index_admission`, which already owns `archive_index` (`index_admission.py:64`)
+⚠ **Coordinates.** Anything introduced by this change (`pointer_region`, `pointer_lines`,
+`pointer_targets`) has **no `f0b8767` coordinate** — it did not exist there — so this document names
+those symbols and never gives them a revision-numbered line. A coordinate that resolves to a blank
+line is worse than no coordinate, because it looks checkable.
+
+The preferred home is `index_admission`, which already owns `archive_index` (`f0b8767:64`)
 — the reader every placement question is currently answered through, and the one
 `local_ingress._rebuild_plan` already consults (`local_ingress.py:896-903` reads its `targets`,
 deliberately not its `admitted`).
@@ -166,16 +188,16 @@ second half is not unfinished work — it is work that must not be done.
 
 | site | the question it asks | verdict |
 |---|---|---|
-| `index_admission.archive_index` (`:111`) | what does this doc place? | **converged** — is the rule's home |
-| `memory_status.index_fact_names` (`:1528`) | what does this doc place? | **converged** — delegates |
-| `extract_signals._tier_sets` (`:725`, `:731`, `:740`) | what does this doc place? | **converged** — measured inert, §6 |
-| `index_admission.apply_pointer` (`:158`) | where is the line to REPLACE? | **converged** — R5, below |
-| `local_ingress._stored_pointer` (`:78`) | where is the pointer LINE for this stem? | **residual** — inert |
+| `index_admission.archive_index` (`f0b8767:64`) | what does this doc place? | **converged** — is the rule's home |
+| `memory_status.index_fact_names` (`f0b8767:1521` def; `:1528` the `_LINK_RE` use) | what does this doc place? | **converged** — delegates |
+| `extract_signals._tier_sets` (`f0b8767:705` def; `:725`, `:731`, `:740`) | what does this doc place? | **converged** — measured inert, §6 |
+| `index_admission.apply_pointer` (`f0b8767:111`) | where is the line to REPLACE? | **converged** — R5, below |
+| `local_ingress._stored_pointer` (`f0b8767:68` def; `:78` the shape test) | where is the pointer LINE for this stem? | **residual** — inert |
 | `local_ingress` `existing_ptrs` (`:653`, `:842`) | is this stem currently in MEMORY.md? | **residual** — inert, lockstep pair |
 | `local_ingress` (`:1116`, `:1123`) | which lines carry the carried stems? | **residual** — inert |
 | `sync_global.py` `:2374`, `:3816`; `session_beacon.py` `:298` | verbatim anchor copies | **residual** — inert |
-| `memory_status._is_archive_index_text` (`:1737`) | **is this doc an archive?** | **must NOT converge** |
-| `memory_status.ref_stems` (`:3707`) | **is this fact reachable ANYWHERE?** | **must NOT converge** |
+| `memory_status._is_archive_index_text` (`f0b8767:1716` def; `:1736` the `_LINK_RE` use) | **is this doc an archive?** | **must NOT converge** |
+| `build_context`'s `ref_stems` local (`f0b8767:3707`; the enclosing `def build_context` is `:3525`) | **is this fact reachable ANYWHERE?** | **must NOT converge** |
 
 ⚠ **The two "must NOT converge" rows are the finding, and both were on the first draft's
 converge list.** They are not the placement question and their breadth is load-bearing:
@@ -244,8 +266,13 @@ and that is a separate, pre-existing residual.
 The roadmap has carried an open item for weeks: the always-loaded index is **90 pointers / ≈4614 est
 tok against a 3840 hard ceiling**, `sync_global --pull` M1-holds all new globals until it shrinks,
 and the conclusion on record is that **fewer pointers is the only lever** — because the index cue is
-**cap-bounded** (measured: 623 chars → 50 tok; 377 → 56; 170 → 58) and compressing hooks therefore
-cannot help.
+**cap-bounded**, so compressing hooks cannot relieve it. ⚠ **That claim's evidence is WITHDRAWN.** An
+earlier revision of this paragraph carried a measured series as its support — 623 chars → 50 tok;
+377 → 56; 170 → 58 — and two independent adversarial reviewers could not reproduce it under either
+in-tree renderer, one of them further noting that its SIGN (a shorter cue costing MORE tokens) is
+forbidden outright by `est_tokens`' monotonicity. The qualitative claim is retained because it is
+independently supported by the ceiling arithmetic in the same paragraph; the numbers are gone
+because they were asserted, not re-derived.
 
 The obvious next step was a `merge?` Phase-0 detector. **It was probed before being built, and it
 has no signal.** Three independent signals, over the live store's 86 indexed non-mirror facts:
@@ -262,17 +289,46 @@ the store is best written. The citation graph is hub-dominated, so overlap is co
 ratio does not track meaning where it does fire: at 0.40 it pairs `gate-coverage-is-its-match-set`
 with `weakest-enforcement-site-wins`, which are unrelated claims sharing vocabulary.
 
-**Conclusion: the merge lever is a JUDGMENT lever, not a detection lever.** The roadmap's
-"pin/observable cluster (~400 tok)" is a human judgment about topical relatedness, and no signal in
-the store's data reproduces it. Making it mechanical would require semantic embeddings — a runtime
-dependency this repo forbids by its own zero-dependency rule.
+**Conclusion — NARROWED, because the broad form was falsified in review.**
 
-**What replaces the detector.** A `merge?` detector is **not built**. Instead `SKILL.md` is amended
-so that a pass which finds itself over the ceiling is **instructed to read the index and propose
-merge clusters itself**, at the moment the judgment is needed. The current text implies this and
-never says it; the lever has been named for weeks with nothing pointing at it. The amendment makes
-the request explicit and keeps it where it belongs — in the model's judgment, confirmed by the
-operator, never in a metric that cannot carry it.
+⚠ **This section first concluded that "the merge lever is a JUDGMENT lever, not a detection lever"
+and that making it mechanical "would require semantic embeddings". Both are WITHDRAWN.** An
+adversarial reviewer attacked the negative result by trying metrics the probe did not try, and found
+one that works: **a stdlib token TF-IDF ranks the store's one verifiable duplicate #1 of 3655**,
+where the probe's `SequenceMatcher` ranks it 2981st. Token TF-IDF is stdlib-only, so it is *not*
+excluded by the zero-dependency rule — the sentence that closed the question invoked the very rule
+that permits the answer. The same reviewer also failed to reproduce the probe's token figures under
+one instrument (4367 by `len//4` where the ceiling is denominated in `est_tokens`, the same lines
+being 4620) — a mixed-unit comparison, not a tuned one.
+
+**What survives, and it is much smaller:** *these three signals, as specified — description
+similarity at `_DEMOTION_SIMILAR`, name prefix, raw wikilink Jaccard — do not recover the roadmap's
+pin/observable cluster.* That is a statement about three metrics, not about the existence of a
+signal. ⚠ And even that is weaker than it reads: the roadmap names its cluster ("8 pointers (~400
+tok)") but **never enumerates its members**, so "the cluster does not appear" is a claim about a set
+nobody has written down. The reviewer reconstructed 8 facts / 419 est tok that satisfies the stated
+size — the figure corroborates, the membership is unrecorded, and §4's original sentence therefore
+rested on an operand it could not check.
+
+**So the detector question is RE-OPENED, not settled.** A `merge?` detector is still **not built in
+this release** — but as a scope decision, not on the evidence that one is impossible. The honest
+statement of where this leaves the lever is: *three cheap signals were tried and failed; one cheap
+signal (token TF-IDF) was found by a reviewer to have real recall; and the cluster that would
+validate any of them has never been enumerated.* Whoever picks this up should enumerate the roadmap's
+8 members FIRST — that is the ground truth every metric must be scored against, and without it each
+candidate metric can only be argued about.
+
+**What ships in its place, for now.** A `merge?` detector is **not built in v0.4.68**. Instead
+`SKILL.md` is amended so that a pass which finds itself over the ceiling is **instructed to read the
+index and propose merge clusters itself**, at the moment the judgment is needed. The current text
+implies this and never says it; the lever has been named for weeks with nothing pointing at it.
+
+⚠ **This amendment is now an INTERIM measure, not the destination §4 first claimed.** It was written
+as the permanent replacement for a detector that was said to be impossible; on the corrected
+evidence a detector is not ruled out. The amendment remains correct for this release — a human/model
+judgment pass over the ceiling is strictly better than nothing, and it does not depend on any of the
+falsified claims — but it should not be read as the answer. The answer is: enumerate the cluster,
+then score metrics against it.
 
 ## 5. Evidence and provenance
 
