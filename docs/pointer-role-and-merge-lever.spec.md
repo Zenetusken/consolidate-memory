@@ -276,15 +276,34 @@ and that is a separate, pre-existing residual.
 ## 4. The merge lever — a measurement that says NO, and what replaces it
 
 The roadmap has carried an open item for weeks: the always-loaded index is **90 pointers / ≈4614 est
-tok against a 3840 hard ceiling**, `sync_global --pull` M1-holds all new globals until it shrinks,
-and the conclusion on record is that **fewer pointers is the only lever** — because the index cue is
-**cap-bounded**, so compressing hooks cannot relieve it. ⚠ **That claim's evidence is WITHDRAWN.** An
-earlier revision of this paragraph carried a measured series as its support — 623 chars → 50 tok;
-377 → 56; 170 → 58 — and two independent adversarial reviewers could not reproduce it under either
-in-tree renderer, one of them further noting that its SIGN (a shorter cue costing MORE tokens) is
-forbidden outright by `est_tokens`' monotonicity. The qualitative claim is retained because it is
-independently supported by the ceiling arithmetic in the same paragraph; the numbers are gone
-because they were asserted, not re-derived.
+tok against a 3840 hard ceiling**, and `sync_global --pull` M1-holds all new globals until it shrinks.
+The conclusion on record was that **fewer pointers is the only lever** — because the index cue is
+**cap-bounded**, so compressing hooks cannot relieve it. ⚠ **That claim's evidence was WITHDRAWN, and
+the claim it supported has since been FALSIFIED by measurement (2026-09-26).** The withdrawn series —
+623 chars → 50 tok; 377 → 56; 170 → 58 — could not be reproduced under either in-tree renderer, and
+its SIGN (a shorter cue costing MORE tokens) is forbidden outright by `est_tokens`' monotonicity. The
+qualitative claim was retained on the grounds that the ceiling arithmetic in this paragraph
+independently supported it. Measured, that is false, **and the arithmetic never supported it**: it
+establishes the DISTANCE to the ceiling, never which component can supply it. Decomposing the live
+index — 90 pointer lines, 18,741 B:
+
+| component | bytes | share |
+|---|---|---|
+| link text `- [<stem>]` | 3,726 | 19.9 % |
+| filename `(<stem>.md)` | 3,906 | 20.8 % |
+| hook text + glue | 11,109 | **59.3 %** |
+
+The hooks are the LARGEST component, and they are **not at their cap**: the longest line's hook is 60
+est tok (`HOOK_TOKEN_WARN`), but the average line's hook is ≈119 B ≈ 30 tok against a 240 B cap.
+Clearing the 3,381 B to the ceiling therefore does **not** require evicting pointers — a ≈30 % trim
+across every hook clears it, while capping every link text at 16 chars frees only 2,106 B (still
+1,275 B short). ⚠ That is a statement about what is *possible*, not about what is *advisable*: the hook
+is the recall key, so degrading 90 of them to buy a self-imposed margin is a recall cost, not a free
+reclaim. The lever set is three-way — **~13.5 evictions** (durable density, which the skill forbids
+force-evicting), **a ≈30 % hook trim** (a real recall cost), or **a link-text cap** (insufficient
+alone) — and choosing among them is a product decision, not a mechanical one. The 2026-09-26 dream
+pass took the non-destructive relief instead: two completed arcs archived and one verified duplicate
+merged, 693 B freed, the ceiling reported as **not cleared**.
 
 The obvious next step was a `merge?` Phase-0 detector. **It was probed before being built, and it
 has no signal.** Three independent signals, over the live store's 86 indexed non-mirror facts:
