@@ -13680,6 +13680,33 @@ with _Env73() as _e_v70:
           "would_readd_archived_pointers" not in _rep_pr2
           and "would_readd_archived_sources" not in _rep_pr2)
 
+# v0.4.72 — the merge lever's buildable half. ⚠ `duplicate_candidates` does not EXIST pre-fix, so
+# this check reads it through `getattr` and asserts a VALUE rather than calling it: a bare call would
+# raise at module scope and take the whole run with it (no totals line, D6 never reached) — the
+# crash-class this suite has been bitten by four times.
+with _tf37.TemporaryDirectory() as _td72:
+    _s72 = Path(_td72)
+    _same = "alpha beta gamma delta epsilon zeta eta theta " * 6
+    for _n72 in ("dup-a", "dup-b"):
+        (_s72 / f"{_n72}.md").write_text(
+            f"---\nname: {_n72}\ndescription: a distinct key {_n72}\n---\n{_same}\n", encoding="utf-8")
+    (_s72 / "unrelated.md").write_text(
+        "---\nname: unrelated\ndescription: nothing shared\n---\n"
+        + "zulu yankee xray whiskey victor uniform tango sierra " * 6 + "\n", encoding="utf-8")
+    _f72 = getattr(ms, "duplicate_candidates", None)
+    _ok72 = False
+    if callable(_f72):
+        _d72 = _f72(_s72)
+        _ok72 = ([(p["a"], p["b"]) for p in _d72["pairs"]] == [("dup-a", "dup-b")]
+                 and _d72["population"] == 3 and _d72["scored_pairs"] == 3)
+    check("v0.4.72 R9 (PIN): the duplicate detector fires on the pair that says the SAME thing and "
+          "NOT on an unrelated third fact, over the population it reports. The lever was argued "
+          "about for weeks with nothing to score candidates against — this is the half that "
+          "measures, and it is calibrated on ITS OWN metric (the review's 0.4931 comes from a "
+          "different tokenizer; carrying that number over made a threshold nothing could cross, "
+          "measured: 0 pairs)",
+          _ok72)
+
 import time as _time68  # noqa: E402  (the ReDoS guard below needs a clock; every
 # other time alias in this file is imported LATER, after this point)
 # v0.4.68 — the pointer's ROLE and REGION (docs/pointer-role-and-merge-lever.spec.md §2 R2/R3).
@@ -26943,7 +26970,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     it cannot redden pre-fix
                                        #     and is NOT a pin. ⚠ Three of the five are
                                        #     deliberately not pins, and say so in their text.
-                            + 6        # v0.4.68 — the pointer's ROLE and REGION. THREE PINs and a
+                            + 7        # v0.4.68 — the pointer's ROLE and REGION. THREE PINs and a
                                        #     CONTROL: R2 (mid-prose), R3 (quoted item below a
                                        #     divider), R3b (a `## `-sectioned doc with NO divider
                                        #     must be read WHOLE — a PIN against the INTERMEDIATE

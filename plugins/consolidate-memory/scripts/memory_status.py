@@ -5612,7 +5612,89 @@ _CUE_PHASE5 = ("Phase-5 beat due — narrate the audit/defrag dreamily (plain it
 # no mode and gates no write), which is why it is absent from the read-only-mode exclusion list at
 # the preflight call site. The list below is the parse surface, so a flag must be BOTH parsed and
 # listed; adding it to only one of the two is the drift this comment's own rule warns about.
-_KNOWN_FLAGS = ("--ascii", "--audit", "--before", "--color", "--diffs", "--force", "--into",
+# ── the merge lever's ONE buildable half ───────────────────────────────────────────────────────
+# ⚠ CALIBRATED ON THIS METRIC'S OWN DATA, and the difference matters — see below.
+#
+# The review that established the lever is buildable measured `body_tfidf` with ITS tokenization and
+# reported the store's one verifiable duplicate at 0.4931 against a cluster max of 0.2942. THIS
+# implementation is a different tokenizer, and its own distribution was measured rather than
+# inherited: over the live store's 87 non-mirror facts (3,741 pairs) the top pairs score
+#
+#     0.4205  a-cell-quoted-without-its-column ~ a-producer-scoped-zero-needs-its-column
+#     0.4046  number-provenance-tiers ~ verify-deltas-against-committed-shas
+#     0.3633  peer-findings-diffed-against-recorded-holes ~ shipping-copy-may-not-be-the-copy-…
+#     0.3186 …                                    <- and a long tail below
+#
+# ⚠ The first version of this constant was 0.45, carried over from the review's metric. On THIS
+# metric that is a threshold NOTHING CAN CROSS — measured: zero pairs at or above it. That is
+# precisely the defect the review found in the proposal it replaced (`SequenceMatcher` maxing at
+# 0.432 against a 0.6 floor), and inheriting a number from a different instrument would have
+# re-committed it inside the fix. **A threshold must be set on the metric it governs.**
+#
+# 0.35 sits above the tail and below the top pairs on the measured distribution: it fires, on the
+# live store, on three pairs. It is a PROVISIONAL calibration — the cluster's intra-pair band in
+# THIS metric has not been measured (its membership is unenumerable, which is §4's finding), so
+# the safe-direction claim is only "these pairs are the most similar by this measure", not "these
+# are merges". Report-then-apply: a pair here is a CANDIDATE to read, never an action.
+_DUPLICATE_SIMILAR = 0.35
+_DUP_TOKEN_RE = re.compile(r"[a-z0-9]{2,}")
+
+
+def duplicate_candidates(store_dir: Path, threshold: float = _DUPLICATE_SIMILAR) -> dict:
+    """Fact pairs whose BODIES say the same thing — token TF-IDF cosine, stdlib only.
+
+    Read-only and pure over the given directory. This is the half of the merge lever that
+    measures: the lever was argued about for weeks with nothing to score candidates against.
+
+    ⚠ Deliberately NOT a cycle-record key. The record is the contract (TypedDicts, the renderer,
+    the SKILL schema block), and a report-contract addition needs its own pin and its own arm
+    re-derivation — the reasoning `docs/periphery-parity.spec.md:587` gives for the residual it
+    declines. This ships as a read-only report run at the moment of the judgment, which is what
+    the lever actually needs. Mirrors are skipped: a replica is a COPY, not a duplicate CLAIM.
+    """
+    import math
+    docs: dict = {}
+    for f in sorted(store_dir.glob("*.md")):
+        if f.stem in ("MEMORY", "SHIPPED"):
+            continue
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _is_mirror(text):
+            continue
+        docs[f.stem] = _DUP_TOKEN_RE.findall(text.lower())
+    n = len(docs)
+    if n < 2:
+        return {"population": n, "threshold": threshold, "pairs": [], "scored_pairs": 0}
+    df: dict = {}
+    for toks in docs.values():
+        for w in set(toks):
+            df[w] = df.get(w, 0) + 1
+    vecs: dict = {}
+    for stem, toks in docs.items():
+        tf: dict = {}
+        for w in toks:
+            tf[w] = tf.get(w, 0) + 1
+        v = {w: (1.0 + math.log(c)) * math.log((1.0 + n) / (1.0 + df[w])) for w, c in tf.items()}
+        norm = math.sqrt(sum(x * x for x in v.values())) or 1.0
+        vecs[stem] = {w: x / norm for w, x in v.items()}
+    stems = sorted(vecs)
+    pairs: list = []
+    for i, a in enumerate(stems):
+        for b in stems[i + 1:]:
+            va, vb = vecs[a], vecs[b]
+            if len(va) > len(vb):
+                va, vb = vb, va
+            dot = sum(x * vb.get(w, 0.0) for w, x in va.items())
+            if dot >= threshold:
+                pairs.append({"a": a, "b": b, "similarity": round(dot, 4)})
+    pairs.sort(key=lambda pr: (-pr["similarity"], pr["a"], pr["b"]))
+    return {"population": n, "threshold": threshold,
+            "pairs": pairs, "scored_pairs": n * (n - 1) // 2}
+
+
+_KNOWN_FLAGS = ("--ascii", "--audit", "--duplicates", "--before", "--color", "--diffs", "--force", "--into",
                 "--json", "--justify-defrag", "--justify-demotion", "--no-color", "--sections",
                 "--seed", "--snapshot", "--snooze-until", "--stamp-marker",
                 "--standing-justify-facts", "--standing-justify-tokens", "--triage", "--verbose")
@@ -5744,6 +5826,10 @@ def main() -> int:
         print(json.dumps({"ok": True, "windows_full": out.get("windows_full"),
                           "sequence": out.get("sequence"),
                           "stamped": out.get("stamped"), "skipped": out.get("skipped")}))
+        return 0
+    if "--duplicates" in argv:
+        from store_context import resolve_store
+        print(json.dumps(duplicate_candidates(resolve_store(project_dir).native_memory_dir), indent=2))
         return 0
     if "--justify-defrag" in argv:
         out = run_justify_defrag(project_dir, defrag_stems, force="--force" in argv)
