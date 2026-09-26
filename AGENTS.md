@@ -1,11 +1,18 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.4.76** (2026-09-26). `CLAUDE.md` holds the
-same conventions with more narrative; where they disagree, the live files win.
+verified against the live tree at **v0.4.77** (2026-09-26). This file carries the
+dense reference — the authoritative tree, the full command inventory, the release
+mechanics. `CLAUDE.md` carries the BINDING DIRECTIVES only, at a fraction of the
+size, because it is the always-loaded tier and this one is read on demand; it
+points here for the detail. Where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
-`MEMORY.md` index.
+`MEMORY.md` index. ⚠ That split is a property of the CONFIGURATION, not of these
+files: it holds because Claude Code's default `instructionFiles` mode is
+`claude-md-or-agents-md`, under which a project carrying its own `CLAUDE.md` does
+NOT also load `AGENTS.md`. Set `claude-md-and-agents-md` — or open this repo under
+Codex, whose native convention `AGENTS.md` is — and BOTH files are always-loaded.
 
 ## What this is
 
@@ -16,7 +23,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.4.76 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
+| `consolidate-memory` | 0.4.77 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
 | `dream-beta-tester` | 0.2.0 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -90,19 +97,48 @@ plugins/consolidate-memory/       the main plugin (= ${CLAUDE_PLUGIN_ROOT})
                                   (smoke-pinned to CycleRecord.__annotations__ — edit together or fail)
     references/harness-map.md     paths, fact schema, verification recipes, cross-project model
   hooks/hooks.json                SessionStart hook (matchers startup+resume, 2s timeout) → session_beacon.py
-  scripts/                        stdlib-only runtime: store_context.py (sole native/canonical path
+  scripts/                        stdlib-only runtime. store_context.py (sole native/canonical path
                                   constructor), identifiers.py (contained domain/stem/project ids),
-                                  domain_policy.py, control_plane.py (SQLite + locks +
-                                  journal), canonical_ingress.py (sole canonical writer),
-                                  mirror_conflict.py, index_admission.py, capabilities.py,
-                                  retention.py, local_ingress.py, cm_ops.py (doctor/conflicts/resolve/
-                                  migrate/data/project enroll/journal/local), memory_status.py (contract seed + audit),
-                                  extract_signals.py, sync_global.py, distill_scan.py, preflight.py
-                                  (the environment pre-flight — doctor embeds it, the beacon reads its
-                                  cached verdict), render_dashboard.py, render_html.py, render_log.py,
-                                  _ui.py, session_beacon.py, dashboard.template.html
+                                  domain_policy.py (domain/sensitivity admission — user-global is
+                                  domain-global), control_plane.py (SQLite + locks + journal),
+                                  canonical_ingress.py (sole canonical writer), local_ingress.py
+                                  (LocalFactV1 native writer — stamps scope: project-local),
+                                  mirror_conflict.py (three-way classifier — never silently overwrites
+                                  a local edit), index_admission.py (native MEMORY.md 200-line/25KB
+                                  admission — NOT the global catalog), capabilities.py, retention.py,
+                                  cm_ops.py (doctor/conflicts/resolve/repair-mirror/migrate/data/
+                                  project enroll/journal/local), facts_manifest.py (the served/miss
+                                  manifest), identity.py, fact_schema.py.
+                                  Pipeline: memory_status.py (Phase 0 — locate stores + git scope +
+                                  the `--json` cycle-record seed, and the mutation audit),
+                                  extract_signals.py (Phase 2 — curated, secret-safe session signal,
+                                  claims-first), sync_global.py (cross-project: `--list` / `--pull`
+                                  [`--evict=` | `--allow-net-grow`] / `--promote` / `--gc [--edges]
+                                  [--apply]` (FROZEN reason tokens; clean-vs-edited reclaim) /
+                                  `--tokens` / `--utility` / `--harvest` / `--staleness` / `--workflows`
+                                  / `--network` + provenance), distill_scan.py (Phase 5 — recurring
+                                  Bash templates + compound-command chains; `--into`/`--from` inject
+                                  script-truth counts into a cycle record), dream_procedure.py
+                                  (v0.4.19 narration teeth — NAR: dream beats must narrate in the
+                                  transcript's assistant text blocks; EXT: extractor accountability;
+                                  + the honest degrade; invoked by `render_dashboard --persist`, exit
+                                  4/3 arms; docs/dream-narration-teeth.spec.md), preflight.py (the
+                                  environment pre-flight — `cm doctor` embeds it, the beacon reads its
+                                  cached verdict, Phase 0 seeds the record's `preflight` block),
+                                  render_dashboard.py (the data-driven ASCII dashboard — renders ONE
+                                  cycle record), render_html.py (the self-contained HTML archive — all
+                                  cycles, + dashboards/diffs sidecars), dashboard.template.html (the
+                                  shell render_html.py fills), render_log.py (the lean per-dream audit
+                                  TABLE, all cycles — powers `cm log`, the 3rd log view), _ui.py
+                                  (shared visual vocabulary + the CM_DREAM_ARC dream-cue;
+                                  render_dashboard keeps its OWN copies, behaviorally drift-pinned by
+                                  a smoke test — output equality, not literal source bytes),
+                                  session_beacon.py (≤1 factual context line when THIS store is behind
+                                  the fleet — read-only, no-nag, silent-exit-0; stacks via the
+                                  `--pull-written` state cache, NEVER `detect_stacks`, measured 2s on
+                                  big repos)
 plugins/dream-beta-tester/        QA companion plugin
-  .claude-plugin/plugin.json      manifest (v0.1.8)
+  .claude-plugin/plugin.json      manifest (0.2.0)
   skills/dream-beta-test/         judgment-lens skill (/dream-beta-test) + references/lenses.md (7 lenses)
   scripts/                        deterministic oracle (beta_checks.py) + run/render/emit helpers
   fixtures/                       make_fixture.py + make_cycle_probe.py + canary-v0.1.19/ (VENDORED
@@ -112,7 +148,12 @@ plugins/dream-beta-tester/        QA companion plugin
   docs/                           SPEC.md (design-of-record) · STATUS.md (validation matrix + defect log)
                                   · CONTRACT.md (reports/latest.json schema + self-heal contract)
 cm                                 dev CLI over the scripts (doctor/conflicts/canonical/migrate/data
-                                  /project enroll included; symlink-safe)
+                                  /project enroll included). Symlink-safe (`readlink -f`) → install on
+                                  PATH for frictionless per-repo use:
+                                  `ln -s "$(pwd)/cm" ~/.local/bin/cm`. It invokes the scripts by
+                                  EXPLICIT PATH, not `${CLAUDE_PLUGIN_ROOT}`, so it works without the
+                                  plugin being installed — which is exactly why it is a MAINTAINER
+                                  tool: end users open the archive, never `cm`.
 docs/adr/                         001 empty-set judgment · 002 StoreContext · 003 domain isolation ·
                                   004 stable identity · 005 three-way mirrors · 006 control plane ·
                                   007 schema v2 / migrate · 008–016 0.3.0 hardening ·
@@ -127,6 +168,10 @@ tests/                             smoke.py · simulate_accumulation.py · valid
 memory/                            GITIGNORED placeholder (.gitkeep only) — the canonical global store lives at
                                    ~/.claude/consolidate-memory/domains/<domain>/ (legacy ~/.claude/memory/ is read-only migration inventory)
 ```
+
+⚠ **LOCAL-only, GITIGNORED, never published:** `release.sh` (the release harness — see "Releasing")
+and the whole `security/` directory (DevSecOps pentest tooling + audit findings). Neither belongs on the
+remote. Only `SECURITY.md` at the repo root is public.
 
 ## Core contracts — do not break these
 

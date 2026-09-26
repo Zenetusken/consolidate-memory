@@ -1362,6 +1362,244 @@ def check_spec_status() -> int:
     return checked
 
 
+# ─── v0.4.77 — cross-surface agreement ────────────────────────────────────────────────────────
+# ⚠ Scoped to what is actually uncovered: nothing above compares two docs' statements of the same
+# FIGURE. (`check_currency_dates`, called from `check_version_statements`, DOES compare a doc
+# number to a doc number — a live doc's stated date against the CHANGELOG's — so an unscoped
+# version of this sentence was a false sole-claim, caught by the adversarial round.)
+# `check_required_strings` proves a string is FINDABLE; `check_version_statements` proves a
+# version is CURRENT; neither can see two prose surfaces disagree about one figure. MEASURED: SKILL.md's v0.4.76 blurb
+# read "Cost: three checks" while CHANGELOG.md recorded TWO and explicitly named "three" as the
+# withdrawn draft. Both shipped. No matcher read either.
+
+# ⚠ Both files are reverse-chronological, so the first READABLE `Cost:` clause in each is the most
+# recent one on that surface — which is what makes "first match" the right pairing rather than an
+# accident.
+#
+# ⚠ AND "READABLE" IS LOAD-BEARING, because a QUOTATION is not a claim. MEASURED, caught by the
+# adversarial round on this pin's own first cut: the v0.4.77 CHANGELOG entry QUOTED v0.4.76's
+# clause while explaining the defect, which put a `Cost:` match ABOVE the real one — the pin then
+# read the quotation, left v0.4.76's own line unread, and stayed GREEN when that line was mutated
+# to `THREE`. It was green on a wrong figure at the exact site it exists to protect, and its
+# failure message named the wrong file to correct. A pin anchored one release above its subject
+# looks healthy (`a-mis-aimed-anchor-errors-it-does-not-fail`,
+# `substring-needle-can-select-a-second-subject`).
+#
+# So a match inside a quotation is SKIPPED: if the four characters before it carry a quote or a
+# backtick, the clause is prose ABOUT a claim, not a claim. ⚠ STATED BOUND: this is a HEURISTIC,
+# not a parse — a deeply nested or oddly-punctuated quotation could still slip through, and a
+# legitimate clause preceded by a stray quote within those four characters would be skipped (which
+# fails LOUD, via the missing-clause arm, never silently).
+_COST_RE = re.compile(r"Cost:\s*\**\s*([A-Za-z]+|\d+)\**\s+checks?")
+_QUOTE_CHARS = '"\'`“”‘’'
+
+# ⚠ The WORD alone is not the claim. MEASURED by the adversarial round on this pin's first cut: both
+# surfaces read "TWO" and the pin was green while the parenthetical carrying the NUMBERS disagreed —
+# the two clauses spelled the same figure with different matchers (`^check(` vs `check(`), which is
+# `auditor-disagreement-names-the-operand` one layer in: two numbers over one suite, and only the
+# matcher says which. So a clause that carries a `N → M` pair must AGREE on the pair too, and on the
+# matcher spelling that precedes it.
+# ⚠ Tolerant of the shapes this repo actually writes: bold INSIDE the parenthetical (this entry's own
+# line 21 is `` `^check(` sites **971 → 973** ``) and an ASCII `->` as well as `→`. The first cut knew
+# neither, so it silently returned no pair — and a `->` mutation of the NUMBERS then escaped the
+# operand comparison entirely: a false green on the exact defect that comparison exists for
+# (`a-dropped-check-is-silent-a-false-red-is-not`). Tolerance here is not cosmetic; each token is a
+# shape a real change could take.
+_COST_PAIR_RE = re.compile(r"`(\^?check\()`\s*sites\s*\**\s*(\d+)\s*(?:→|->)\s*\**\s*(\d+)")
+# A clause that says `sites` is asserting a pair-shaped claim, so a failed PARSE is a fault to report,
+# never a skip. Without this, "my regex could not read it" and "there is nothing to read" are the same
+# state — and the second is the only one that may pass silently.
+_COST_SITES_RE = re.compile(r"Cost:.*?sites", re.S)
+
+
+def _cost_clause(body: str) -> "tuple | None":
+    """The first READABLE `Cost:` clause as `(text, word, pair_or_None)`, or None if there is none.
+
+    ⚠ ONE LOCATOR FOR BOTH EXTRACTIONS, and that is the whole point. An earlier cut resolved the pair
+    with an independent whole-file `search()`, so the two readings could land on DIFFERENT clauses —
+    and when `_COST_PAIR_RE` was later widened to tolerate the repo's bold-in-parens shape, the pair
+    search latched onto an EARLIER occurrence than the claim search did, and a mutation of the real
+    clause went undetected. MEASURED: mutation B was RED before that widening and GREEN after it. Two
+    searches over one file is two anchors; a claim and its operand must come from the same words.
+    """
+    for m in _COST_RE.finditer(body):
+        before = body[max(0, m.start() - 4):m.start()]
+        if any(c in _QUOTE_CHARS for c in before):
+            continue  # a quotation, not a claim — see _COST_RE's note
+        clause = body[m.start():m.start() + 300]
+        cut = clause.find(". ")
+        if cut != -1:
+            clause = clause[:cut]
+        pm = _COST_PAIR_RE.search(clause)
+        return clause, m.group(1).upper(), (pm.groups() if pm else None)
+    return None
+
+
+def _cost_claim(body: str) -> "str | None":
+    """The quantity a `Cost:` clause states, normalized; None when no clause is readable.
+
+    ⚠ Deliberately NOT a substring test for a word. MEASURED: SKILL.md's own blurb contains
+    "the all-three muta…" — prose ABOUT the defect — so `"three" in body` is green both before
+    and after the fix. That is a check no input can turn red, the shape
+    `a-text-check-reads-prose-about-its-subject` names; extracting the clause is what gives
+    this one something to fail on.
+    """
+    got = _cost_clause(body)
+    return got[1] if got else None
+
+
+def check_cost_claim_agreement() -> int:
+    """The `Cost:` figure in SKILL.md and in CHANGELOG.md must be the SAME value.
+
+    ⚠ STATED BOUND — read it before trusting this. Two surfaces that are BOTH wrong stay
+    green. This catches DRIFT between them, not error in either: it is a consistency pin,
+    never an oracle.
+
+    ⚠ A STRONGER OBSERVABLE DOES EXIST, AND THIS FIRST SAID IT DID NOT — corrected, not
+    re-argued. The claim was "a shipped gate cannot check out the pre-fix revision", and it is
+    FALSE for this repo: `v0.4.75` and `v0.4.76` are both tagged, `git show v0.4.75:tests/smoke.py
+    | grep -c '^check('` re-derives the CHANGELOG's 971 → 973 exactly, and `.github/workflows/
+    ci.yml` sets `fetch-depth: 0` in two jobs for precisely this reason (smoke's citation gate
+    already resolves historical revisions). The REAL limit is narrower and one line from solved:
+    the `docs` job's own `actions/checkout` takes no `fetch-depth`, so THAT job is shallow and
+    cannot see the tags. What this check therefore is: the cheap, always-available half. A
+    revision-anchored re-derivation would be strictly stronger and is a candidate for its own
+    cycle — recorded here so the next reviewer does not have to rediscover the tags.
+    """
+    seen: dict[str, str] = {}
+    pairs: dict[str, tuple] = {}
+    for rel in ("plugins/consolidate-memory/skills/consolidate-memory/SKILL.md", "CHANGELOG.md"):
+        got = _cost_clause(read(rel))
+        # ⚠ THE MISSING-CLAUSE ARM, and it is load-bearing rather than defensive. Without it
+        # a clause reworded out of the regex's reach yields None on that surface, and
+        # `None == None` is GREEN — the drift this check exists to catch returns silently.
+        # This is the rule `check_version_statements` already states for its own axis: a
+        # missing statement is an error, not a skip, else the cheapest fix for a red gate
+        # is deleting the line that tripped it.
+        if got is None:
+            err(f"{rel} carries no readable `Cost: <n> checks` clause — a reworded clause is "
+                f"an error, not a skip; re-anchor `_COST_RE` rather than dropping the check")
+            return len(seen)
+        clause, word, pair = got
+        if pair is None and "sites" in clause:
+            # The clause asserts a `… sites N → M` claim this regex could not read. LOUD, never a
+            # skip: "I could not parse it" and "there is nothing to compare" must not be one state
+            # (`a-dropped-check-is-silent-a-false-red-is-not`). ⚠ Bounded — it keys on a `sites`
+            # token, so a pair-shaped claim in some other phrasing is still unread; this is the
+            # shape the repo writes, and the one whose silent skip was measured.
+            err(f"{rel}'s `Cost:` clause carries a `sites N → M` claim that `_COST_PAIR_RE` could "
+                f"not parse — a parse failure must not read as 'nothing to compare'")
+        seen[rel] = word
+        if pair is not None:
+            pairs[rel] = pair  # (matcher, from, to) — the operand, from the SAME clause
+    if len(set(seen.values())) > 1:
+        shown = ", ".join(f"{k.split('/')[-1]}={v}" for k, v in seen.items())
+        err(f"the `Cost:` claim disagrees across surfaces — {shown}; the CHANGELOG is the "
+            f"release-notes source of record, so the other surface is the one to correct")
+    # ⚠ The word is HALF the claim. Both surfaces can read "TWO" while the pair disagrees — which is
+    # what shipped: one clause named `^check(` and the other `check(` for the SAME 971→973. Compare
+    # the operand too, and only when BOTH surfaces carry one (a clause with no pair is not a fault).
+    # Compare when BOTH surfaces parsed a pair. ⚠ One surface carrying none is not a fault (a clause
+    # may state only the word); one surface FAILING TO PARSE is, and that is reported above.
+    if len(pairs) == len(seen) and len(set(pairs.values())) > 1:
+        shown = ", ".join(f"{k.split('/')[-1]}={v}" for k, v in pairs.items())
+        err(f"the `Cost:` clauses name DIFFERENT operands for the same figure — {shown}; a count is a "
+            f"function of its matcher (`gate-coverage-is-its-match-set`), so the two surfaces must "
+            f"spell it the same way")
+    return len(seen)
+
+
+def check_dev_loop_completeness() -> int:
+    """CLAUDE.md's Dev-loop block must name every gate the release harness enforces.
+
+    MEASURED pre-fix: the block named smoke, sim, mypy, `cm` and manifests — but NOT
+    `docs_links.py`, which `release.sh --stage` runs as one of its four validators. A
+    maintainer following the dev loop met that gate for the first time AT RELEASE.
+
+    ⚠ LABEL: a PIN, not a GUARD. The string is ABSENT on the pre-fix revision, so this
+    reddens there. (A "green on both trees" shape would be `if present, then correct` —
+    which is not what this asserts, and is how a pin gets misfiled as a guard.)
+    """
+    body = read("CLAUDE.md")
+    # ⚠ Scoped to the FENCED block, never the whole file. CLAUDE.md names `docs_links.py`
+    # outside the fence too — the paragraph under it explains WHY the gate matters — so a
+    # whole-file containment test would pass on prose ABOUT the gate rather than on the
+    # block a maintainer actually copies. Same trap as `_cost_claim`'s.
+    m = re.search(r"^## Dev loop\s*\n\n```\n(.*?)```", body, re.S | re.M)
+    if m is None:
+        err("CLAUDE.md has no fenced `## Dev loop` block for this gate to read")
+        return 0
+    block = m.group(1)
+    for gate in ("tests/smoke.py", "tests/simulate_accumulation.py",
+                 "tests/validate_manifests.py", "tests/docs_links.py"):
+        if gate not in block:
+            err(f"CLAUDE.md's Dev-loop block does not name {gate} — the release harness runs "
+                f"it as one of its four validators, so the loop is incomplete")
+    return 1
+
+
+def check_layout_pointer() -> int:
+    """CLAUDE.md delegates its tree to `AGENTS.md` — assert the target still carries it.
+
+    v0.4.77 replaced CLAUDE.md's 1567-tok Layout with a pointer to `AGENTS.md` § Layout, which
+    is what brings the always-loaded tier under budget. ⚠ A pointer is a CLAIM ABOUT ANOTHER
+    FILE, and nothing else here reads two docs against each other: without this, AGENTS.md
+    could drop the section — or the entries the pointer's authority rests on — and CLAUDE.md
+    would still read as authoritative while pointing at nothing. That is the stale-duplicate
+    failure this change fixes, one hop out.
+
+    ⚠ LABEL: a GUARD, not a PIN — and the label was corrected after measuring, not reasoned
+    into. Its condition is `if CLAUDE.md delegates, THEN AGENTS.md must still carry the
+    target`, so on the PRE-FIX revision CLAUDE.md carries the tree itself, the precondition
+    is false, and this cannot redden there. MEASURED on a full pre-fix copy: the other two
+    checks red, this one stays green. A watcher that cannot fail before the change is a
+    regression guard; calling it a pin would be a label naming the intent rather than the
+    condition (`a-guards-label-is-not-its-predicate`). Validated the only way a guard can be
+    — by driving its mutation (see the v0.4.77 CHANGELOG entry).
+    """
+    claude = read("CLAUDE.md")
+    if "AGENTS.md" not in claude or "Layout" not in claude:
+        return 0  # CLAUDE.md no longer delegates a tree; there is no pointer to keep honest
+    if not re.search(r"AGENTS\.md`?\s*§\s*Layout", claude):
+        # ⚠ A SILENT SKIP HERE IS A HOLE, and the adversarial round drove it: rewording the pointer
+        # (`§ Layout` → ``under `## Layout` ``) turned this check into a no-op whose output was
+        # BYTE-IDENTICAL to a real green run — so the release's only mechanical check on the pointer
+        # could be disabled by a wording change while its own warning ("AGENTS.md could drop the
+        # section and CLAUDE.md would still read as authoritative while pointing at nothing") stayed
+        # reachable. MEASURED: reword the pointer AND delete AGENTS.md's `## Layout` → still rc=0,
+        # identical output. CLAUDE.md names BOTH `AGENTS.md` and `Layout`, so it IS delegating and
+        # this check's contract DOES apply — the regex merely stopped recognising the phrasing.
+        # Absence of the anchor is therefore an error, never a skip (`a-dropped-check-is-silent-a-
+        # false-red-is-not`), exactly as the Dev-loop and `Cost:` checks above already treat theirs.
+        err("CLAUDE.md names both `AGENTS.md` and `Layout` but carries no `AGENTS.md § Layout` anchor "
+            "this gate can read — a REWORDED pointer disables this check silently; re-anchor it or "
+            "drop the delegation")
+        return 0
+    agents = read("AGENTS.md")
+    m = re.search(r"^## Layout\s*$(.*?)(?=^## |\Z)", agents, re.M | re.S)
+    if m is None:
+        err("CLAUDE.md points at `AGENTS.md` § Layout, but AGENTS.md has no `## Layout` section")
+        return 0
+    # ⚠ Scoped to the SECTION, never the whole file — and the scope was NARROWED after measuring.
+    # The first cut tested `entry not in agents` over the entire file. MEASURED by the adversarial
+    # round: move the single `dream_procedure.py` line out of `## Layout` and into
+    # `## Core contracts` and it stayed GREEN, while the pointer's own promise — the tree "carries
+    # `docs/adr/` and the full `tests/` inventory" — was provably broken. The claim is about a
+    # SECTION, so a whole-file matcher cannot see the one thing it is about. (The Dev-loop check
+    # above already scoped to its fence and said why; this one did not, which is why it is the one
+    # that shipped a hole.)
+    section = m.group(1)
+    # The entries the delegation's authority rests on. `dream_procedure.py` first by weight:
+    # it was absent from AGENTS.md ENTIRELY before v0.4.77, so it is the entry whose loss
+    # would be silent — a reader of the pointer would never learn the file exists.
+    for entry in ("dream_procedure.py", "local_ingress.py", "docs/adr/", "docs_links.py"):
+        if entry not in section:
+            err(f"AGENTS.md's `## Layout` section no longer names {entry!r}, but CLAUDE.md points "
+                f"at that section as the authoritative tree — a gap here is a gap in the "
+                f"always-loaded tier")
+    return 1
+
+
 def main() -> int:
     check_badge()
     check_links()
@@ -1374,6 +1612,9 @@ def main() -> int:
     plugin_rows = check_plugin_table()
     status_headers = check_plugin_status_docs()
     spec_status = check_spec_status()
+    check_cost_claim_agreement()
+    check_dev_loop_completeness()
+    check_layout_pointer()
     check_preview()
     if errors:
         print("✗ documentation gate FAILED:")

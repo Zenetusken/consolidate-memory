@@ -1,6 +1,6 @@
 # consolidate-memory — project conventions
 
-**v0.4.76.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
+**v0.4.77.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
 Claude Code's built-in Auto Dream (per-project consolidation), adding a governed cross-project store +
 verification against the live code. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -8,6 +8,10 @@ end users install it with `/plugin marketplace add Zenetusken/consolidate-memory
 way against this local checkout (`claude plugin marketplace add ./` — see below). See `README.md` for the
 user-facing pitch and `plugins/consolidate-memory/skills/consolidate-memory/SKILL.md`
 + its `references/harness-map.md` for the full design.
+
+**`AGENTS.md` is this repo's operating manual** — the authoritative tree, the full command inventory,
+the CI job breakdown, and the dense reference. Read it when you work here. This file carries only what
+must be enforced in EVERY session, so it stays short on purpose.
 
 ## The one gotcha that matters
 
@@ -34,75 +38,16 @@ When iterating on the published artifact, re-validate it:
 
 ## Layout
 
-```
-.claude-plugin/marketplace.json   the marketplace catalog (relative source → plugins/…)
-plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
-  .claude-plugin/plugin.json       plugin manifest (name, version, author, license)
-  skills/consolidate-memory/
-    SKILL.md                       6-phase workflow + the context-loading-tier model
-    references/harness-map.md      paths, fact schema, verification recipes, cross-project model
-  hooks/hooks.json                 SessionStart beacon (startup+resume, 2s timeout) → session_beacon.py
-  scripts/
-    session_beacon.py              ≤1 factual context-injected line when THIS store is behind the fleet
-                                   (read-only, no-nag tiers, silent-exit-0 on failure; stacks via the
-                                   --pull-written state cache — never detect_stacks, measured 2s on big repos)
-    memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
-    preflight.py                   environment PRE-FLIGHT (v0.4.16): deterministic no-happy-path
-                                   checks (python/sqlite/POSIX/git/plugin-self/write-access) —
-                                   `cm doctor` embeds it, the beacon reads the cached verdict,
-                                   Phase 0 seeds the record's `preflight` block
-    extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
-    sync_global.py                 cross-project: --list/--pull [--evict=F | --allow-net-grow]/--promote/
-                                   --gc [--edges] [--apply] (FROZEN reason tokens; clean-vs-edited reclaim)/--tokens/--utility/--harvest/--staleness/
-                                   --workflows/--network + provenance
-    distill_scan.py                Phase 5 distill: recurring Bash-command templates + compound-command chains (workflow signal); `--into`/`--from` inject script-truth counts into a cycle record
-    dream_procedure.py             v0.4.19 narration teeth: NAR (dream beats must narrate in the transcript's
-                                   assistant text blocks) + EXT (extractor accountability) + the honest degrade,
-                                   invoked by render_dashboard --persist (exit 4/3 arms); docs/dream-narration-teeth.spec.md
-    render_dashboard.py            the data-driven ASCII dashboard (renders ONE cycle record)
-    render_html.py                 the self-contained HTML archive (all cycles, rich; + dashboards/diffs sidecars)
-    dashboard.template.html        the HTML shell render_html.py fills
-    render_log.py                  the lean per-dream audit TABLE (all cycles; powers `cm log`) — the 3rd log view
-    store_context.py               sole native/canonical path constructor (ADR 002; managed settings win)
-    domain_policy.py               domain/sensitivity admission (user-global is domain-global)
-    control_plane.py               SQLite registry + fcntl locks + operation journal under plugin-data
-    canonical_ingress.py           sole canonical writer (`cm canonical upsert`)
-    mirror_conflict.py             three-way classifier (never silently overwrite a local edit)
-    index_admission.py             native MEMORY.md 200-line/25KB admission (not the global catalog)
-    identifiers.py                 contained domain / fact-stem / project-id joins
-    capabilities.py / retention.py / cm_ops.py
-                                   doctor, conflicts, resolve, repair-mirror, migrate, data, project enroll,
-                                   group create/add/remove/delete/list/show
-    _ui.py                         shared visual vocabulary (color/rule/kv/bar/glyphs + the CM_DREAM_ARC dream-cue);
-                                   render_dashboard keeps its OWN copies of this vocabulary, behaviorally
-                                   drift-pinned against it by a smoke test (output equality, not literal source bytes)
-cm                                 dev CLI over the scripts (uses explicit paths, not ${CLAUDE_PLUGIN_ROOT}).
-                                   symlink-safe (readlink -f) → install on PATH for frictionless per-repo use:
-                                   `ln -s "$(pwd)/cm" ~/.local/bin/cm` (then `cm report`/`cm status`/`cm log`
-                                   from ANY repo, CWD-defaulting to that project). MAINTAINER tool — end users
-                                   open ~/.claude/projects/<slug>/dashboards/index.html (see SKILL Phase 5).
-tests/                             zero-dependency smoke + accumulation sim + manifest validation
-memory/                            GITIGNORED placeholder (.gitkeep only) — the global store lives at ~/.claude/consolidate-memory/domains/<domain>/
+The authoritative tree is **`AGENTS.md` § Layout** — it carries `docs/adr/` (24 ADRs) and the full
+`tests/` inventory, which this file never did. The directives that live HERE:
 
-plugins/dream-beta-tester/         QA companion plugin — beta-tests the dream skill itself
-  .claude-plugin/plugin.json       plugin manifest
-  skills/dream-beta-test/SKILL.md  the judgment-lens pass (/dream-beta-test) + references/lenses.md
-                                   (the 7 judgment lenses)
-  scripts/                         the deterministic oracle (beta_checks.py) + snapshot/report/run
-  fixtures/                        make_fixture.py (generates the frozen synthetic gate-repo store) +
-                                   make_cycle_probe.py (the frozen contaminated cycle record) +
-                                   canary-v0.1.19/ (VENDORED known-bad scripts, byte-faithful to the
-                                   v0.1.19 tag, SHA256SUMS-manifested) — the generated STORES are
-                                   grafted at install time under ~/.dream-beta-test/, never committed
-  maintainer/                      the continuous-QA pre-push gate (ci_check.sh/install-gate.sh)
-  docs/SPEC.md                     design-of-record (STATUS.md hands design off to this file)
-  docs/CONTRACT.md                 reports/latest.json schema + the deterministic self-heal contract
-  docs/STATUS.md                   validation matrix + fixed-vs-open defect log
-```
-
-LOCAL-only maintainer artifacts (GITIGNORED, never published): the `release.sh` release
-tool (see "Releasing") and the `security/` directory (pentest tooling + audit findings).
-Only `SECURITY.md` at the repo root is public.
+- **`${CLAUDE_PLUGIN_ROOT}`** = `plugins/consolidate-memory/` — the plugin root; the skill lives at
+  `plugins/consolidate-memory/skills/consolidate-memory/`.
+- **`cm` is a MAINTAINER tool.** Symlink it on PATH (`ln -s "$(pwd)/cm" ~/.local/bin/cm`); end users
+  open `~/.claude/projects/<slug>/dashboards/index.html`, never `cm`.
+- **The global store** lives at `~/.claude/consolidate-memory/domains/<domain>/facts`; repo-root
+  `memory/` is a GITIGNORED placeholder — only `memory/.gitkeep` ships.
+- **`release.sh` and `security/` are LOCAL-only** — gitignored, never published.
 
 ## Conventions
 
@@ -143,9 +88,15 @@ Only `SECURITY.md` at the repo root is public.
 ```
 edit plugins/consolidate-memory/… → python3 tests/smoke.py → python3 tests/simulate_accumulation.py
 → mypy --config-file mypy.ini → ./cm <cmd> to spot-check → python3 tests/validate_manifests.py
-(portable, no flags — the `--strict` variant is the claude CLI: `claude plugin validate --strict`)
-→ (before go-live) run the local DevSecOps pentest harness → git commit && git push
+→ python3 tests/docs_links.py → (before go-live) the local DevSecOps pentest harness
+→ git commit && git push
 ```
+
+⚠ `docs_links.py` is one of the four validators the release harness runs (see "Releasing"), and it is
+the one most easily forgotten: run it after editing `README.md`, `CHANGELOG.md`, `AGENTS.md`, or any doc
+a reader links to. `validate_manifests.py` is portable and takes no flags — the `--strict` variant
+belongs only to the claude CLI (`claude plugin validate ./plugins/consolidate-memory --strict`, used
+when iterating on the published artifact).
 
 `mypy --config-file mypy.ini` is a **dev-only** contract check (catches cycle-record
 drift on the producer side — a renamed/extra/wrong-typed key in a seed/demo literal). It
@@ -175,9 +126,8 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    (`0.N → 0.N+1.0`). (Pre-1.0, breaking changes ride a minor bump.)
 3. Otherwise — additive feature, enhancement, fix, or docs that stays
    **backward-compatible** (legacy cycle records still render, existing installs keep
-   working) → **patch** (`0.N.M → 0.N.M+1`). Releases v0.1.1–v0.2.1 were patches
-   under this policy. **v0.3.0 is the first minor:** it removes v0.2.1 unenrolled
-   A→B sharing. Full per-version precedent: `CHANGELOG.md`.
+   working) → **patch** (`0.N.M → 0.N.M+1`). Full per-version precedent, and the version each
+   rule was first exercised by: `CHANGELOG.md`.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG
@@ -202,7 +152,7 @@ phases with a human merge between them (GitHub requires PRs to `main`):
   merge commit if one exists, pushes the tag, and cuts the GH Release. Re-running reports
   already-done.
 - **Pre-bump REQUIRED:** `plugin.json` must already equal the CHANGELOG version on your
-  feature branch (as for v0.3.0) before `--stage` will pass — the bump rides your
+  feature branch before `--stage` will pass — the bump rides your
   feature PR, so there are zero release PRs. There is no last-minute-bump fallback:
   `--stage` refuses when `plugin.json` is behind the CHANGELOG, and the remedy it
   prints is the hand-bump.
@@ -212,9 +162,8 @@ phases with a human merge between them (GitHub requires PRs to `main`):
 It refuses a non-forward or multi-step version, an unfilled CHANGELOG stub, a dirty
 tree (untracked files count — move session exports out first), or an existing tag —
 and `--finalize` refuses when `main`'s version doesn't match the CHANGELOG or the
-release PR isn't merged. (This replaced a keyword-driven flow after a
-`minor`-vs-`patch` slip mis-shipped a version: the version is now structurally tied to the
-reviewed CHANGELOG, not a release-time judgment.)
+release PR isn't merged. (Deliberately structural: an earlier keyword-driven flow mis-shipped a
+`minor` as a `patch`, so the version is tied to the reviewed CHANGELOG, never a release-time judgment.)
 
 **Cycle closeout hygiene — `--finalize` ends the cycle, including the branch surface**
 (2026-09-05, the maintainer's standing rule). A completed release leaves NO stale
