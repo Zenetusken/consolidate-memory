@@ -16,14 +16,16 @@ SKILL — public, loaded by every session that uses the plugin — carried the r
 ⚠ **That sentence is written the long way round on purpose.** This entry's first cut QUOTED the clause
 verbatim, which put a second, false anchor above the real one and made the new `Cost:` pin read a
 quotation instead of the release's own line — it stayed green when `[0.4.76]`'s clause was mutated to
-`THREE`. The matcher now skips quoted mentions too (see `_COST_RE`), but not quoting it is cheaper. ⚠ **Nothing could see it:** `SKILL.md` is not among `mypy`'s inputs, and the cycle-record
-validator checks container types, never a scalar. MEASURED, both matchers, same answer:
+`THREE`. The matcher now skips quoted mentions too (see `_COST_RE`), but not quoting it is cheaper. ⚠ **No gate read this SCALAR** — not "nothing could see it": `SKILL.md` IS in `docs_links`' `LIVE_DOCS`
+and link-check sets, but that check reads only its opening version statement; `SKILL.md` is not among
+`mypy`'s inputs, and the cycle-record validator checks container types, never a scalar. MEASURED, both matchers, same answer:
 `^check(` sites **971 → 973** (D6 **+2**); suite totals **2394 → 2396**.
 
 **2 · `CLAUDE.md`'s Dev loop omitted a gate its own release harness runs.** It named smoke, sim, mypy,
 `cm` and manifests — but not `tests/docs_links.py`, which `release.sh --stage` runs as one of its four
 validators, and which this same file calls one of those four 48 lines below. A maintainer following the
-dev loop met that gate for the first time **at release**.
+dev loop never ran it locally — CI's `docs` job runs `tests/docs_links.py` on every PR, so the
+omission surfaced there rather than at the keyboard.
 
 **3 · `CLAUDE.md`'s `Layout` was a STALE PARTIAL COPY of `AGENTS.md`'s.** The always-loaded tier paid
 **1567 tok** — 38% of the file — to be the wrong copy: it omitted `docs/adr/` (24 ADRs),
@@ -42,7 +44,9 @@ enforcement-erosion failure, and `dream_procedure.py` was the one whose loss wou
 **Measured outcome:** `CLAUDE.md` **4140 → 2900 tok** (Layout alone 1567 → 193) — back under the 4000
 budget. ⚠ **"Back", not "for the first time"**: this entry's first cut said the latter, and the repo's
 own estimator refutes it — whole-file `est_tokens` by tag puts the file **under** 4000 from v0.2.0
-(3456) through **v0.4.18** (3931), crossing at v0.4.19 (4018) and staying over until now. A sole-claim
+(3456) through **v0.4.18** (3931), over from **v0.4.19** (4018) until this patch — and over once BEFORE
+that, v0.1.73–v0.1.85 (4116), recovered at v0.1.86. So v0.4.19 is the SECOND breach, not *the*
+crossing; the truncated census is corrected here rather than left to read as the first. A sole-claim
 needs a census, and this one had not been run (`a-sole-claim-needs-a-census-not-a-sighting`). ⚠ And
 "the other five sections are unchanged" was likewise false and is corrected here: three of them moved —
 preamble +67 (the `AGENTS.md` pointer), Dev loop +94 (the added gate and its note), Releasing −27. The
@@ -50,8 +54,11 @@ headline pair and the Layout figure are exact; the section arithmetic is `4140 �
 against an actual 2900, the difference being those three edits.
 
 An independent completeness audit verified that no fact carried by the old Layout is missing from the
-post-fix tree, and that all five always-loaded directives survive **inside `CLAUDE.md`** (not merely in
-`AGENTS.md`).
+post-fix tree, and that every directive the pointer block carries survives **inside `CLAUDE.md`** (not
+merely in `AGENTS.md`) — the five being `${CLAUDE_PLUGIN_ROOT}` · the `cm` symlink · end-users-open-the-
+dashboard-never-`cm` · the global-store path and the `memory/` placeholder · `release.sh`+`security/`
+LOCAL-only. ⚠ Enumerated, not counted: the next paragraph's "five architectural invariants" is a
+DIFFERENT five, and the first draft of this sentence said "five" for both.
 
 ⚠ **The tier trade, named rather than implied.** Five architectural invariants that a CLAUDE.md reader
 used to see are now on-demand only: `store_context.py` is the sole native/canonical path constructor ·
@@ -97,13 +104,20 @@ when first written and this commit's own edits moved it — a present-tense numb
 longer matched, which is the class under repair. Caught by the adversarial round.)
 
 ⚠ **RECORDED, NOT FIXED:** `memory_status._is_promotion_candidate` fires on `not fm.get("scope")`, but
-`local_ingress.py:388` stamps `scope: project-local` on **every** new fact. So the Phase-1 promotion
-re-audit is **structurally blind to every fact authored since the LocalFactV1 writer landed** — nothing
-it can surface post-dates that writer. ⚠ **The set is stated precisely, because this entry's first cut
-did not:** of the **42** facts lacking `scope`, **19** pass the seed's type filter (`feedback` /
-`reference`), and `_promotion_candidates` surfaces **8** — its own `_PROMO_CAP`. An early draft said
-"the 42 … are the only ones that can ever seed", which names the unfiltered set rather than the
-filterable one. Needs its own cycle.
+`local_ingress.py:388` stamps `scope: project-local` on **every** fact it writes — so the Phase-1
+promotion re-audit's population is exactly the facts that did **not** go through the single writer.
+Whether that is a coverage hole or a faithful signal depends on whether any legitimate path bypasses
+the writer; that question needs its own cycle.
+
+⚠ **Both this claim's earlier drafts were wrong, in opposite directions, and one census settles both.**
+Draft 1 said *"the 42 legacy unscoped facts are the only ones that can ever seed"* — naming the
+unfiltered set for the filterable one. Draft 2 said *"structurally blind to every fact authored since
+the writer landed"* — and that is **refuted by the same census**: all **42** facts here lacking `scope`
+were modified on or after the writer landed (2026-09-01; earliest 2026-09-13), so facts authored *after*
+it plainly do seed. The measured set, exactly: of those 42, **19** pass the seed's `feedback` /
+`reference` filter, and `_promotion_candidates` surfaces **8** — its own `_PROMO_CAP`. ⚠ Draft 2 was
+written to *correct* draft 1 and made the claim stronger and more falsifiable, which is why the census
+caught it; that is the shape this whole entry is about, twice over in one paragraph.
 
 ## [0.4.76] — 2026-09-26
 

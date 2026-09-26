@@ -1396,7 +1396,40 @@ _QUOTE_CHARS = '"\'`“”‘’'
 # `auditor-disagreement-names-the-operand` one layer in: two numbers over one suite, and only the
 # matcher says which. So a clause that carries a `N → M` pair must AGREE on the pair too, and on the
 # matcher spelling that precedes it.
-_COST_PAIR_RE = re.compile(r"`(\^?check\()`\s*sites\s*(\d+)\s*→\s*(\d+)")
+# ⚠ Tolerant of the shapes this repo actually writes: bold INSIDE the parenthetical (this entry's own
+# line 21 is `` `^check(` sites **971 → 973** ``) and an ASCII `->` as well as `→`. The first cut knew
+# neither, so it silently returned no pair — and a `->` mutation of the NUMBERS then escaped the
+# operand comparison entirely: a false green on the exact defect that comparison exists for
+# (`a-dropped-check-is-silent-a-false-red-is-not`). Tolerance here is not cosmetic; each token is a
+# shape a real change could take.
+_COST_PAIR_RE = re.compile(r"`(\^?check\()`\s*sites\s*\**\s*(\d+)\s*(?:→|->)\s*\**\s*(\d+)")
+# A clause that says `sites` is asserting a pair-shaped claim, so a failed PARSE is a fault to report,
+# never a skip. Without this, "my regex could not read it" and "there is nothing to read" are the same
+# state — and the second is the only one that may pass silently.
+_COST_SITES_RE = re.compile(r"Cost:.*?sites", re.S)
+
+
+def _cost_clause(body: str) -> "tuple | None":
+    """The first READABLE `Cost:` clause as `(text, word, pair_or_None)`, or None if there is none.
+
+    ⚠ ONE LOCATOR FOR BOTH EXTRACTIONS, and that is the whole point. An earlier cut resolved the pair
+    with an independent whole-file `search()`, so the two readings could land on DIFFERENT clauses —
+    and when `_COST_PAIR_RE` was later widened to tolerate the repo's bold-in-parens shape, the pair
+    search latched onto an EARLIER occurrence than the claim search did, and a mutation of the real
+    clause went undetected. MEASURED: mutation B was RED before that widening and GREEN after it. Two
+    searches over one file is two anchors; a claim and its operand must come from the same words.
+    """
+    for m in _COST_RE.finditer(body):
+        before = body[max(0, m.start() - 4):m.start()]
+        if any(c in _QUOTE_CHARS for c in before):
+            continue  # a quotation, not a claim — see _COST_RE's note
+        clause = body[m.start():m.start() + 300]
+        cut = clause.find(". ")
+        if cut != -1:
+            clause = clause[:cut]
+        pm = _COST_PAIR_RE.search(clause)
+        return clause, m.group(1).upper(), (pm.groups() if pm else None)
+    return None
 
 
 def _cost_claim(body: str) -> "str | None":
@@ -1408,12 +1441,8 @@ def _cost_claim(body: str) -> "str | None":
     `a-text-check-reads-prose-about-its-subject` names; extracting the clause is what gives
     this one something to fail on.
     """
-    for m in _COST_RE.finditer(body):
-        before = body[max(0, m.start() - 4):m.start()]
-        if any(c in _QUOTE_CHARS for c in before):
-            continue  # a quotation, not a claim — see _COST_RE's note
-        return m.group(1).upper()
-    return None
+    got = _cost_clause(body)
+    return got[1] if got else None
 
 
 def check_cost_claim_agreement() -> int:
@@ -1437,22 +1466,29 @@ def check_cost_claim_agreement() -> int:
     seen: dict[str, str] = {}
     pairs: dict[str, tuple] = {}
     for rel in ("plugins/consolidate-memory/skills/consolidate-memory/SKILL.md", "CHANGELOG.md"):
-        body = read(rel)
-        pm = _COST_PAIR_RE.search(body)
-        if pm is not None:
-            pairs[rel] = pm.groups()  # (matcher, from, to) — the operand, not just the word
-        v = _cost_claim(body)
+        got = _cost_clause(read(rel))
         # ⚠ THE MISSING-CLAUSE ARM, and it is load-bearing rather than defensive. Without it
         # a clause reworded out of the regex's reach yields None on that surface, and
         # `None == None` is GREEN — the drift this check exists to catch returns silently.
         # This is the rule `check_version_statements` already states for its own axis: a
         # missing statement is an error, not a skip, else the cheapest fix for a red gate
         # is deleting the line that tripped it.
-        if v is None:
+        if got is None:
             err(f"{rel} carries no readable `Cost: <n> checks` clause — a reworded clause is "
                 f"an error, not a skip; re-anchor `_COST_RE` rather than dropping the check")
             return len(seen)
-        seen[rel] = v
+        clause, word, pair = got
+        if pair is None and "sites" in clause:
+            # The clause asserts a `… sites N → M` claim this regex could not read. LOUD, never a
+            # skip: "I could not parse it" and "there is nothing to compare" must not be one state
+            # (`a-dropped-check-is-silent-a-false-red-is-not`). ⚠ Bounded — it keys on a `sites`
+            # token, so a pair-shaped claim in some other phrasing is still unread; this is the
+            # shape the repo writes, and the one whose silent skip was measured.
+            err(f"{rel}'s `Cost:` clause carries a `sites N → M` claim that `_COST_PAIR_RE` could "
+                f"not parse — a parse failure must not read as 'nothing to compare'")
+        seen[rel] = word
+        if pair is not None:
+            pairs[rel] = pair  # (matcher, from, to) — the operand, from the SAME clause
     if len(set(seen.values())) > 1:
         shown = ", ".join(f"{k.split('/')[-1]}={v}" for k, v in seen.items())
         err(f"the `Cost:` claim disagrees across surfaces — {shown}; the CHANGELOG is the "
@@ -1460,6 +1496,8 @@ def check_cost_claim_agreement() -> int:
     # ⚠ The word is HALF the claim. Both surfaces can read "TWO" while the pair disagrees — which is
     # what shipped: one clause named `^check(` and the other `check(` for the SAME 971→973. Compare
     # the operand too, and only when BOTH surfaces carry one (a clause with no pair is not a fault).
+    # Compare when BOTH surfaces parsed a pair. ⚠ One surface carrying none is not a fault (a clause
+    # may state only the word); one surface FAILING TO PARSE is, and that is reported above.
     if len(pairs) == len(seen) and len(set(pairs.values())) > 1:
         shown = ", ".join(f"{k.split('/')[-1]}={v}" for k, v in pairs.items())
         err(f"the `Cost:` clauses name DIFFERENT operands for the same figure — {shown}; a count is a "
