@@ -5,6 +5,47 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.72] — 2026-09-26
+
+**Patch — the merge lever's buildable half ships, and the SKILL says where to find it.** The lever
+has been argued about for weeks with **nothing to score candidates against**. v0.4.68's review
+narrowed §4 of `docs/pointer-role-and-merge-lever.spec.md` from *"no signal exists"* to *"these three
+signals do not recover the cluster"*, and found a stdlib token TF-IDF does have recall. This ships it
+as `memory_status.py --duplicates`.
+
+⚠ **`--duplicates` is deliberately NOT a cycle-record key.** The record is the contract (TypedDicts,
+the renderer, the SKILL schema block), and a report-contract addition needs its own pin and its own
+arm re-derivation — the reasoning `docs/periphery-parity.spec.md:587` gives for the residual it
+declines. It ships as a read-only report run at the moment of the judgment.
+
+⚠ **THE FIRST THRESHOLD WAS WRONG, AND MEASURING CAUGHT IT.** The constant started at `0.45`,
+carried over from the review's metric. On THIS metric that is a threshold **nothing can cross** —
+measured: **zero pairs at or above it**, over 87 facts and 3,741 scored pairs. ⚠ That is precisely
+the defect the review found in the proposal this replaces (`SequenceMatcher` maxing at 0.432 against
+a 0.6 floor), and inheriting a number from a different instrument would have re-committed it inside
+the fix. **A threshold must be set on the metric it governs.** Re-measured on its own distribution:
+
+```
+0.4205  a-cell-quoted-without-its-column ~ a-producer-scoped-zero-needs-its-column
+0.4046  number-provenance-tiers ~ verify-deltas-against-committed-shas
+0.3633  peer-findings-diffed-against-recorded-holes ~ shipping-copy-may-not-be-the-copy-…
+0.3186  … and a long tail below
+```
+
+`0.35` now sits above the tail and below the top pairs: it **fires**, on three pairs of the live
+store. ⚠ Stated as **provisional** — the cluster's intra-pair band in THIS metric is unmeasured
+because its membership is unenumerable (§4's own finding), so the claim is *"most similar by this
+measure"*, never *"these are merges"*. Report-then-apply, as all body work in this store is.
+
+⚠ **What it does not do**, in the code's own words: it finds facts that say the **same thing**. It
+does not recover a topical cluster, and merging one is not free — for the roadmap's cluster the
+measured relief was ~400 est tok and the cost was **eight distinct claims**. The relief and the cost
+were the same number. A duplicate is where the relief is real and the cost is **one** claim.
+
+`R9` is a PIN, read through `getattr` because `duplicate_candidates` does not exist pre-fix: a bare
+call would raise at module scope and take the run with it (no totals line, D6 never reached) — the
+crash-class this suite has been bitten by four times. D6 2376 → 2377.
+
 ## [0.4.71] — 2026-09-26
 
 **Patch — the sibling plugin's three pentest findings from 2026-07-06, CLOSED.** dream-beta-tester
