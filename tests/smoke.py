@@ -2277,11 +2277,16 @@ _id_html = rhtml.build_html(
                        "cross_project_allowed": True, "conflicts": 1})
 _id_m = _re.search(r'id="cm-data">(.*?)</script>', _id_html, _re.S)
 _id_embed = _json.loads(_id_m.group(1).replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")) if _id_m else {}
-check("v0.3.0 html: build_html embeds live identity + hook/cliff budgets (round-trip)",
+check("v0.3.0 html: build_html embeds live identity + hook/cliff/sj budgets (round-trip)",
       _id_embed.get("identity", {}).get("domain_id") == "personal"
       and _id_embed.get("identity", {}).get("conflicts") == 1
       and _id_embed.get("budgets", {}).get("hook_warn") == ms.HOOK_TOKEN_WARN
       and _id_embed.get("budgets", {}).get("cliff_near") == int(ms.CLIFF_NEAR_FRACTION * 100)
+      # ⚠ v0.4.73, added by the review round: the release claimed `sj_delta` is "plumbed, never hardcoded"
+      # and only THIS check can hold that — it was unpinned, so setting the template's fallback to 99 left
+      # the suite green (MEASURED by the reviewer). Same shape as the two budgets beside it, and the same
+      # reason: a live constant that reaches the template by a second path is a second thing to keep true.
+      and _id_embed.get("budgets", {}).get("sj_delta") == ms._STANDING_JUSTIFY_DELTA
       and (_id_embed.get("cycles") or [{}])[-1].get("cross_project", {}).get("held") == 2)
 _evil_id = rhtml.build_html({"project": "x", "identity": {"domain_id": "</script><img src=x>"}},
                             [], "t", identity={"domain_id": "</script>"})
@@ -4983,11 +4988,20 @@ with _tfB.TemporaryDirectory() as _tdB:
               _remLapB.get("standing_justified") is False and _remLapB.get("baseline_facts") == 2
               and _recLapB.get("standing_justified") is False and _recLapB.get("baseline_facts") == 2)
         check("v0.4.73 (PIN against the INTERMEDIATE revision — producer fixed, relay reverted; MEASURED, "
-              "not inferred): …and the RELAY drops no declared key, asserted in its general form so a future "
-              "key is caught the same way. ⚠ GREEN against HEAD, and the reason is a correction to this "
-              "release's own first diagnosis: pre-fix the PRODUCER never wrote the two keys on this path, so "
-              "the relay had NOTHING to drop — the allowlist's lossiness is real but LATENT, and only the "
-              "intermediate exposes it. The defect is BOTH halves, and the missing write is the first cause",
+              "not inferred): …and the RELAY drops no declared key, over every key the ctx and the record "
+              "spell IDENTICALLY. ⚠ TWO honest limits, both from the review round. (a) It is GREEN against "
+              "the BASE revision, and the reason corrects this release's own first diagnosis: pre-fix the "
+              "PRODUCER never wrote the two keys on this path, so the relay had NOTHING to drop — the "
+              "allowlist's lossiness is real but LATENT, observable only on the intermediate. The defect is "
+              "BOTH halves; the missing write is the first cause. (b) Its scope is NAME-IDENTITY, NOT the "
+              "relay in general: `seed_record` also RENAMES (`candidates` → `candidates_surfaced`), and a "
+              "drop on a renamed key is invisible here — MEASURED at the OVER-TARGET arm's own literal: "
+              "removing `\"candidates_surfaced\": rem[\"candidates\"],` there leaves this suite at 2384/0. "
+              "(⚠ The relay's SUPPRESSED arm is a different site and IS covered — removing its "
+              "`if \"candidates\" in rem:` reds two v0.4.61 layer-2 pins, 2379/5; measuring the wrong arm "
+              "first made this reviewer's finding look false, which is why the arm is named here.) The "
+              "'asserted in its general form' this label first claimed was FALSE, and correcting it is the "
+              "point rather than deleting the check",
               _relay_missing(_ctxLapB) == set())
         check("v0.4.73 (GUARD — it cannot redden on any shipped revision: `required` is already True on this "
               "path pre-fix, so only a mutation that made the fix suppress the gate would turn it): the gate "

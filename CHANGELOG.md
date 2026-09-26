@@ -27,15 +27,20 @@ it is green because there was nothing to drop. So a **LAPSED** justification (a 
 density is EARNED (do the relief, then **re-stamp**); a never-justified one has no baseline to restore.
 Measured on two adjacent records: the `01:18` seed carried both keys, the `05:49` seed carried neither.
 
-Fixed at the producer, and pinned in the **general** form the allowlist broke — *every key that is BOTH
-declared in `Remediation` AND produced by the triage must reach the record* — because a DROPPED key is
-invisible to every parity gate this repo has: `producer ⊆ Decl` still HOLDS when the key is merely
-missing, and `Decl ⊆ producer(canonical)` cannot apply to a `total=False` block that is legitimately
-partial per path. The pin reds on ANY future key the relay forgets, not only on these two.
+Fixed at the producer, and pinned **per-arm** — the lapsed and never-justified arms assert the keys
+directly — because a DROPPED key is invisible to every parity gate this repo has: `producer ⊆ Decl` still
+HOLDS when the key is merely missing, and `Decl ⊆ producer(canonical)` cannot apply to a `total=False`
+block that is legitimately partial per path. ⚠ A relay-completeness arm was added alongside, and the
+review round then MEASURED its honest limit: it covers the keys the ctx and the record spell
+**identically**, while the relay also **renames** (`candidates` → `candidates_surfaced`) — removing that
+key from the relay leaves the suite green. Stated rather than papered over, which is why the per-arm
+assertions carry the weight.
 
-⚠ **THE ERA LIMIT — stated rather than papered over.** The discriminator is key **presence**, and
-presence carries no era gate: every pre-v0.4.73 lapsed record has neither key, so the `05:49` record that
-motivated the fix still reads as unclassified. A three-valued `standing_justify_state` token was
+⚠ **THE ERA LIMIT — stated rather than papered over.** The discriminator is key **presence**, and — as
+`docs/record-duty-presence.spec.md` puts it for its own family — **absence carries no era gate**: every
+pre-v0.4.73 lapsed record has neither key, so the record cannot distinguish *this pass recorded no
+baseline* from *this record predates the field*, and the `05:49` record that motivated the fix still reads
+as unclassified. A three-valued `standing_justify_state` token was
 considered and **rejected** — it is *equally absent* on legacy records, so it would buy a schema change
 and a second field that can drift from the boolean without making one historical record decidable. What
 is fixed is the renderer's rule: it must never **assert** "never justified" on an absent key. Four arms
