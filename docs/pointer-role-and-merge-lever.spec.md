@@ -16,12 +16,14 @@ of its claims.
 correct here. A fact in the private memory store is named by stem and never given a path
 coordinate — the store is not in this repository, so no revision can answer for it.
 
-**STATUS (2026-09-26): the RULE and its reader convergence are IMPLEMENTED on
-`fix/v0.4.68-pointer-role`, measured (§5), and have been through one adversarial review round — which
-FALSIFIED two claims in this document (§3.2's boundary argument and §6's fleet measurement). Both are
-corrected above, with the falsified forms kept visible. NOT implemented: §4's skill amendment, and
-the named residuals in §6. Those are listed there rather than implied closed.**
-Target release: **v0.4.68 (patch)**, on the corrected measurement (§6). ⚠ The operand is worth
+**STATUS (2026-09-25): SHIPPED in v0.4.68** (tagged, released) — the rule, its reader convergence,
+and §4's skill amendment all landed, in PRs #273 and #275. The work went through one adversarial
+review round that **FALSIFIED two claims in this document** (§3.2's boundary argument and §6's fleet
+measurement); both are corrected above with the falsified forms kept visible, because the errors are
+more instructive than the corrections. ⚠ **Still NOT implemented, and named rather than implied
+closed:** the `_stored_pointer` / `existing_ptrs` / `sync_global` / `session_beacon` residuals in
+§3.3 (inert — they read `MEMORY.md`, which has no `---`), §1's adjacent disagreements, and the
+cluster enumeration §4 leaves open. Target release: **v0.4.68 (patch)** — shipped. ⚠ The operand is worth
 stating precisely, because the first revision stated it as 3529 and the honest figure is far smaller:
 **two stores in the fleet hold an archive-shaped document at all**, and exactly one of them changes.
 "One of two" and "one of 3529" support the same bump, but only the first is what was measured, and a
