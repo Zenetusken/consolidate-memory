@@ -263,6 +263,22 @@ class UnclassifiedReason(AssertionError):
     The type-agnostic shape sits at `_mint`'s check too (`except Exception` → a bool), so naming
     the class at one site while its siblings raise the bare base leaves the hole live at the
     WEAKEST site — which is exactly where the next edit re-opens it.
+    ⚠ **AND THE PIN ARRIVED AT v0.4.76, NOT WITH THE CLASS.** For THIRTEEN releases this docstring
+    promised a type a pin could assert while the NAMED class was asserted at NO site: `_mint` captured
+    the raise into a BOOL, `_served` tested only that SOMETHING came back, and `_miss` accepted the
+    BASE `AssertionError`. MEASURED on the v0.4.75 suite: rewriting the raises at `_mint` + `_served`
+    to `ValueError` left it GREEN (**2394/0**).
+    ⚠ **And what is NOT true — an earlier draft of this very note asserted it, and it was wrong — is
+    that the mutation went unnoticed ENTIRELY.** Rewriting **all three** raises reddens the `_miss` pin
+    (**2393/1**), because that pin's `except AssertionError` does not catch a `ValueError`. So the
+    v0.4.63 CHANGELOG entry's claim that this mutation is RED is **TRUE**; "the old pin was green on
+    it" holds only of the two sites this paragraph names. **That distinction IS the finding:** a
+    base-class `except` separates `AssertionError` from `ValueError` and CANNOT separate this module's
+    own class from a bare base or a sibling subclass — which is why the repair asserts the named class
+    at all three sites rather than the base at any.
+    ⚠ The lesson in the paragraph above, read literally: naming a class at a site is not enforcing it
+    there, and prose that describes an enforcement it lacks is indistinguishable from prose that has
+    it — until someone mutates the thing and measures. v0.4.76 did, at both granularities.
     """
 
 

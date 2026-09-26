@@ -5,6 +5,57 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.76] — 2026-09-26
+
+**Patch — the `UnclassifiedReason` pin promised for THIRTEEN releases, and asserted at neither site.**
+`facts_manifest` raises a named `UnclassifiedReason(AssertionError)` at three sites (`_mint`, `_served`,
+`_miss`) so a raise carries WHICH guard fired rather than merely that something did. Its docstring says
+so — and says that the type-agnostic shape at `_mint`'s check "leaves the hole live at the WEAKEST site".
+It was right about the hole and wrong about its own repair: **the class was named at all three sites and
+asserted at none**, because `_mint`'s check captured the raise into a **bool** and `_served`'s asserted
+only `_raised59 is not None`.
+
+⚠ **MEASURED, at BOTH granularities, because the first cut of this entry quoted one against the other:**
+
+| mutation | v0.4.75 suite | v0.4.76 suite |
+|---|---|---|
+| `_mint` + `_served` → `ValueError` | **GREEN 2394/0** ← the hole | **2394 / 2 reds** |
+| **all three** → `ValueError` | 2393 / 1 (the `_miss` pin) | **2393 / 3 reds** |
+| the class **RENAMED** | **GREEN 2394/0** ← no type check existed to red | **2392 / 4 reds** |
+| clean | 2394 / 0 | **2396 / 0** |
+
+⚠ **Every cell above carries the base it was measured on** — `2395/0` appeared in the rename cell of
+this table's first cut and belonged to a THIRD tree (this release's own first-cut suite, 2395 checks).
+A row's columns are two different revisions, and a figure from a third is a neighbour. The second review
+round caught the cell. ⚠ **And the sentence that first recorded the catch was itself unverifiable**: it
+called the cell "one column over from the error this note was written to record", but the earlier draft had
+no table for anything to be one column over from. The prose round measured that; the claim is replaced by
+what the tree supports.
+⚠ The **fallback** in the third row's v0.4.76 column is this release's OWN first cut — origin/main's
+`smoke.py` contains no reference to the class at all, so the v0.4.75 green is "no check existed", not "a
+fallback hid it". Two different mechanisms, one column apart, and the first draft labelled both with the
+second one's name.
+
+⚠ **The first cut of this entry claimed the all-three mutation was green, citing 2394/0.** That figure is
+the **TWO-site** mutation — a different experiment — and the claim it was cited against was **true**. The
+real hole is narrower: **two of the three sites asserted no type at all.** Correcting a true record with a
+neighbour's measurement is the error this repo's own entries keep naming, and this one was mine.
+
+**Fixed at all three sites.** `_mint`'s assertion now tests the TYPE (it could not, as a bool); `_served`
+and `_miss` gained the arm. `_miss` mattered most quietly: its `except AssertionError` **separates
+`AssertionError` from `ValueError` and cannot separate the module's own class from a bare base** — so a
+rename or a re-raise passed. ⚠ The class reference is `getattr(..., None)` plus an **assertion that it
+exists**; the first cut used a `getattr(..., AssertionError)` FALLBACK and claimed it made a pre-dating
+tree report a red. **MEASURED: RENAMING the class left the suite GREEN (2395/0)** — a fallback VALUE
+substitutes itself for the thing being asserted, so the check passes while measuring nothing. That is the
+opposite of the safety it claimed, and it is why the rename row above is in the table.
+
+⚠ **They are GUARDs, not PINs**: `UnclassifiedReason` IS an `AssertionError`, so the assertions are green
+on the pre-fix tree too. What they witness is the **MUTATION**, now reddening once per site — the verifying
+evidence for the docstring's own "RAISED AT ALL THREE SITES" claim, asserted by nobody until now.
+
+⚠ Cost: **TWO** checks, MEASURED (`check(` sites 971 → 973, D6 +2). The class's own existence is one; `_served`'s raise arm is the other. `_mint` and `_miss` were repaired by EDITING their assertions — a bool cannot carry a type, and `except AssertionError` cannot carry a subclass — so neither added a check. ⚠ An earlier draft of this line said THREE, counting the edits.
+
 ## [0.4.75] — 2026-09-26
 
 **Patch — `_remediation_section` survives a RECORD, which its own comment already promised.** The function's
@@ -694,6 +745,19 @@ audit for it is recorded; re-run it after every sweep.
   isolated trees: post-fix green; the recorded `ValueError` mutation **RED** (the old pin was green on it);
   pre-fix RED without crashing. ⚠ It is a **GUARD, not a PIN** by this repo's rule — its pre-fix red is
   still KEY-ABSENCE — and it is labelled so.
+  ⚠ **NARROWED at v0.4.76 — and the narrowing itself had to be corrected.** The clause above is
+  **TRUE for a three-site mutation** (that is what it says: every raise rewritten at once), MEASURED at
+  **2393/1**, red at the `_miss` pin. What was FALSE is narrower and is the real finding: **two of the
+  three sites asserted no type at all**, so mutating `_mint` + `_served` ALONE left the suite **GREEN
+  (2394/0)** — `_mint` captured the raise into a bool and `_served` tested only `_raised59 is not None`.
+  ⚠ **An earlier draft of THIS NOTE called the clause above false outright, quoting that 2394/0 as
+  evidence — a false correction, written while correcting, on four surfaces.** 2394/0 is a DIFFERENT
+  EXPERIMENT (two sites, not three); citing it against a claim about all three is the
+  measure-a-neighbour error this file's own entries keep recording. The claim was right; the hole was
+  narrower; and the sentence that misread them was mine.
+  ⚠ **The distinction is the finding:** a base-class `except` — what `_miss`'s pin used — separates
+  `AssertionError` from `ValueError` and **cannot** separate the module's own named class from a bare
+  base or a sibling subclass. v0.4.76 makes all THREE sites assert the named class.
 - **B2 — `try_acquire` is genuinely not closable, and the recorded reason was incomplete.** *"Cannot be
   closed without reintroducing the `blocking=` keyword"* names ONE design's cost. The blocker is the
   **signature**: `acquire`'s body *waits*, so every route through the override pays — wait; or pass a
