@@ -5136,6 +5136,14 @@ with _tfB.TemporaryDirectory() as _tdB:
              {"required": True, "lever": "prune", "index_tokens": None, "budget": None}, "?/1500 tok"),
             ("whitespace lever (truthiness is NOT blankness)",
              {"required": True, "lever": " "}, "lever -"),
+            # ⚠ Found by the DIFFERENTIAL PROBE, not by the review round — and it was the one fixed
+            # defect this table did NOT witness until now. `cur - base` guarded only its LEFT operand, so
+            # a present-but-null `baseline_facts` raised TypeError on the subtraction, and
+            # `rem.get("baseline_facts", 0)` published a SENTINEL ZERO for a baseline that does not
+            # exist. A fix with no arm is a fix nobody can revert safely.
+            ("null baseline_facts (a two-operand subtraction guarded on one)",
+             {"required": False, "standing_justified": True, "baseline_facts": None,
+              "current_facts": 9}, "baseline ?"),
         ):
             _r75, _e75 = _shape_probe(_payload75)
             check("v0.4.75 (PIN): `_remediation_section` survives " + _lbl75 + " — pre-change each of these "
@@ -27195,12 +27203,14 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     from BOTH pre-change; + 1 GUARD (mutation-sensitive) on the
                                        #     relay's `isinstance` arm, which the review round found
                                        #     MISSING from the first cut
-                            + 6        # v0.4.75 — `_remediation_section` survives every non-ctx shape:
-                                       #     5 PINs (both active arms AND the tail, plus the two
-                                       #     absent-operand cases the review round measured) + 1
-                                       #     CONTROL (the live-ctx shape still renders its REAL
-                                       #     operands). ⚠ The first cut was 2 checks probing ONE arm
-                                       #     — a pin for one arm wearing a whole-function label.
+                            + 7        # v0.4.75 — `_remediation_section` survives every non-ctx shape:
+                                       #     6 PINs (both active arms AND the tail; the two
+                                       #     absent-operand cases the review round measured; and
+                                       #     the null-baseline TypeError, which only the
+                                       #     DIFFERENTIAL PROBE found) + 1 CONTROL (the live-ctx
+                                       #     shape still renders its REAL operands). ⚠ The first
+                                       #     cut was 2 checks probing ONE arm — a pin for one arm
+                                       #     wearing a whole-function label.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
