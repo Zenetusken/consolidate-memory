@@ -23524,15 +23524,34 @@ try:
                 "# Target spec\n\n**Status:** revised for review — implemented in part. "
                 "Target release: **v0.1.0 (patch)**\n")
             _o9g64 = _o9ck64 == 1 and len(_o9e64) == 1
+            # M2 — the boundary's SIDE. The region must END at the note, excluding it. On the live
+            # corpus this is invisible (0 of 58 specs change their target set) — but only because
+            # the sweep's marker line happens to carry no declaration, no mention and no target.
+            # Put a target ON the marker and the off-by-one leaks it back into the operand.
+            # MEASURED: `k + 1` on the note term makes this fixture FIRE.
+            _o10ck64, _o10e64, _o10pm64 = _arm63(
+                "target.spec.md",
+                "# Target spec\n\n**Status:** revised for review.\n\n"
+                "> **Drafting-era status — never revisited after the arc closed.** Preserved "
+                "VERBATIM: Target release: **v0.1.0 (patch)**\n")
+            _o10g64 = _o10ck64 == 1 and not _o10e64
+            # M4 — the two arms stay EXCLUSIVE. A spec that matches BOTH must yield ONE error, not
+            # two: the citation arm is `if`, the target arm is `elif`. MEASURED: this fixture reads
+            # `checked=1, errors=1`; turning the `elif` into an `if` makes it TWO, so the arm reddens.
+            # ⚠ The cited spec is named `stale.spec.md` — the file the reset CHANGELOG cites.
+            _o11ck64, _o11e64, _o11pm64 = _arm63(
+                "stale.spec.md",
+                "# Stale spec\n\n**Status:** revised for review. Target release: **v0.1.0 (patch)**\n")
+            _o11g64 = _o11ck64 == 1 and len(_o11e64) == 1
         except Exception as _x63:               # a broken gate is RED, not a traceback
             _a1p63 = _a1c63 = _a2p63 = _a2c63 = _a3p63 = _a4p63 = _a4f63 = _a4s63 = False
             _a5p63 = _a5c63 = False
             _o1p64 = _o2p64 = _o4g64 = _o5c64 = _o6p64 = False
-            _o7g64 = _o8g64 = _o9g64 = False
+            _o7g64 = _o8g64 = _o9g64 = _o10g64 = _o11g64 = False
             _a1pm63 = _a2pm63 = _a3pm63 = _a4pm63 = _a5pm63 = f"could not exercise it: {type(_x63).__name__}: {_x63}"
             _a1cm63 = _a2cm63 = _a4fm63 = _a4sm63 = _a5cm63 = _a1pm63
             _o1pm64 = _o2pm64 = _o4pm64 = _o5pm64 = _o6pm64 = _a1pm63
-            _o7pm64 = _o8pm64 = _o9pm64 = _a1pm63
+            _o7pm64 = _o8pm64 = _o9pm64 = _o10pm64 = _o11pm64 = _a1pm63
     finally:
         _dl40.ROOT = _spsroot61                 # restored even if the arm itself blew up
         _shpsd40.rmtree(_spstmp61, ignore_errors=True)
@@ -23649,6 +23668,15 @@ check("v0.4.68 O9 guard (GUARD, NOT a pin — MEASURED: re-adding `and not spec_
       "`asserted-support.spec.md` read 'implemented and REVIEWED ... awaiting merge' and survived TWO "
       "merges because the done-token EXEMPTED it. A header stating BOTH states, with a shipped "
       f"target and no citation, must still FIRE): ⚠ {_o9pm64}", _o9g64)
+check("v0.4.68 O10 guard (GUARD, NOT a pin — the boundary's SIDE: the region must END at the note, "
+      "excluding it. Invisible on the live corpus (0 of 58 specs change their target set) only "
+      "because the sweep's marker line carries no declaration, mention or target — put a target ON "
+      "the marker and the off-by-one leaks it back into the operand. MEASURED: `k + 1` makes this "
+      f"fixture FIRE): ⚠ {_o10pm64}", _o10g64)
+check("v0.4.68 O11 guard (GUARD, NOT a pin — the two arms stay EXCLUSIVE: a spec matching BOTH must "
+      "yield ONE error, not two. The citation arm is `if`, the target arm is `elif`. MEASURED: this "
+      "fixture reads checked=1, errors=1; turning the `elif` into an `if` makes it TWO, so the arm "
+      f"reddens): ⚠ {_o11pm64}", _o11g64)
 
 # ── v0.4.63 (B4): the contiguity gate is PER-FILE now, and its needles are NEW ──────────────────
 # The v0.4.57 entry named `CLAUDE.md:32-33` as the wrapped-anchor instance and NOTED IT CLOSED — but a
@@ -26783,7 +26811,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     only docs_links.py + docs/ restored: pre-fix
                                        #     2350 passed / 5 failed (the five PINs, nothing else),
                                        #     post-fix 2355 passed / 0 failed.
-                            + 8        # v0.4.64-68 — the target arm's OPERAND (the provenance
+                            + 10       # v0.4.64-68 — the target arm's OPERAND (the provenance
                                        #     boundary + the preamble bound). TWO PINs, both
                                        #     asserting SILENCE post-fix and therefore RED
                                        #     pre-fix — the arm read raw `lines[:120]`, so it

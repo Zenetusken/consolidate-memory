@@ -37,7 +37,11 @@ witnessed. Named here, not implied.
 
 Measured: `tests/smoke.py` **2368 / 0** · `docs_links` **52** · `mypy` 0 in 42.
 
-## [0.4.67] — 2026-09-25
+### The comment density cut (folded in — never a separate release)
+
+⚠ **Why folded:** the version bump was mine, not a user-visible change. This work is
+comments in `tests/`, which the plugin never runs, so tagging it separately would ship a
+release that does nothing. Folded rather than tagged.
 
 **Patch — the comment density cut.** No behaviour change: smoke stays **2365 / 0** and `docs_links`
 stays **52**, measured identical rather than assumed.
