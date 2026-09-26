@@ -22,11 +22,31 @@ above it already used the safe `.get(…, '?')` idiom — so the new arm inherit
 sitting beside it. The repair is therefore **one helper both arms call** (`_over_budget_head`), not two
 edits, because two copies of a rule is how a second spelling gets acquired (the v0.4.70 precedent).
 
-⚠ **The absent operand renders as ABSENT, never as a plausible number.** A record's token count is `?` — the
-idiom the suppressed arm already used — while the denominator stays `INDEX_TOKEN_BUDGET`, because that is a
-**constant**, not a measurement, and the arms that reach it have already established the gate is active.
-`lever` uses the `or "-"` form rather than `.get(k, "-")`, so an empty-but-present string cannot slip an
-empty label through — the v0.4.34 correction, applied here for the reason it was applied there.
+⚠ **The absent operand renders as ABSENT, never as a plausible number** — through ONE accessor, `_operand`,
+because the review round MEASURED both of the shortcuts this release's first cut reached for:
+
+- `rem.get(k, DEFAULT)` is a **PRESENCE** test, so `index_tokens: null` rendered `(None/None tok)` and
+  `index_tokens: ""` rendered `(/ tok)` — an absent operand printed as though it were a reading;
+- `or "-"` is a **TRUTHINESS** test, so `lever: " "` slipped it and rendered `· lever  ·`, an empty label
+  where a name belongs. ⚠ **This is the one the first CHANGELOG entry claimed could not happen.**
+
+`_operand` is `_duty_blank` — the canonical "present and holds nothing" predicate `render_dashboard._recorded`
+is the negation of — deliberately NOT truthiness, because `0` and `False` are MEASUREMENTS and must survive.
+The denominator still falls back to `INDEX_TOKEN_BUDGET` for a **missing** one: that is a **constant**, not a
+measurement, and the arms reaching it have already established the gate is active.
+
+⚠ **And the fix's own first cut was INCOMPLETE, in the shape it was repairing.** It gated the two
+active-gate arms and left the **tail** reading `rem['budget']` behind a guard on `keep_core` ALONE — a
+guard keying on a NEIGHBOUR of the four operands its line reads. `KeyError: 'budget'`, measured. The
+docstring it shipped with — *"Every operand read below is presence-gated"* — **was false when written**,
+which makes three releases running in which the defect that survived was in the prose rather than the
+logic. The guard now keys on the same four operands the line reads, the `cur - base` subtraction is guarded
+on BOTH operands (a present-but-null `baseline_facts` raised `TypeError`), and `rem.get("baseline_facts", 0)`
+no longer publishes a **sentinel zero** for a baseline that does not exist.
+
+⚠ The pin table covers **both arms and the tail**, and its SHAPE was the round's fourth finding: the first
+cut probed only `standing_justified: False`, so reverting the generic arm alone left it green — a pin for
+one arm wearing a whole-function label.
 
 ⚠ **The pin is WRAPPED, and the wrap is the point.** An unwrapped `_remediation_section(record)` inside a
 `check(...)` argument raises out of module scope and kills the run — no totals line, and the D6 counter lost

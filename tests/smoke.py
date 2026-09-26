@@ -5110,20 +5110,47 @@ with _tfB.TemporaryDirectory() as _tdB:
             except Exception as e:                       # a crash IS a failed arm, never a skip
                 return "", type(e).__name__
 
-        _recShapeOut, _recShapeErr = _shape_probe(
-            {"required": True, "lever": "prune", "standing_justified": False,
-             "baseline_facts": 77, "current_facts": 91})     # a RECORD: no index_tokens, no budget
-        check("v0.4.75 (PIN): `_remediation_section` SURVIVES a record-shaped dict — the contract its own "
-              "tail states, which the two active-gate arms broke by direct indexing (pre-change this is "
-              "KeyError('index_tokens'), so the check reds on the ERROR NAME rather than on a wrong word)",
-              _recShapeErr is None and "index OVER budget" in _recShapeOut
-              and "?/1500 tok" in _recShapeOut)              # the absent operand renders as ABSENT
+        # ⚠ THE TABLE COVERS BOTH ACTIVE ARMS AND THE TAIL, and its SHAPE was the review round's fourth
+        # finding: the first cut probed only `standing_justified: False`, so reverting the generic arm
+        # alone left these green — a pin for one arm wearing a whole-function label. `tail-no-budget`
+        # is the third site: `keep_core` present while the four operands its LINE reads are not, which
+        # is the guard-on-a-neighbour defect, and it raised `KeyError: 'budget'`.
+        # ⚠ `null index_tokens` / `" " lever` / `null baseline_facts` are the round's first two
+        # findings — a PRESENCE test (`rem.get(k, D)`) and a TRUTHINESS test (`or "-"`) each published
+        # an absent operand as a reading (`(None/None tok)`, `· lever  ·`) or raised on a subtraction.
+        # ⚠ `*75` SUFFIXES ARE LOAD-BEARING, not tidiness: this suite is ~27k lines of single-letter
+        # temps, and `_want` is already bound as a BOOL by the firewall loop at `:1089` — reusing it here
+        # for a string made mypy report "expression has type str, variable has type bool" at the loop and
+        # "Unsupported operand types for in (bool, str)" at the assertion. Two errors, one cause, and the
+        # first cut of this table walked straight into it.
+        for _lbl75, _payload75, _want75 in (
+            ("record / never-justified (generic arm)",
+             {"required": True, "lever": "prune", "standing_justified": False}, "index OVER budget"),
+            ("record / lapsed (lapsed arm)",
+             {"required": True, "lever": "prune", "standing_justified": False,
+              "baseline_facts": 77, "current_facts": 91}, "justification LAPSED"),
+            ("tail with keep_core but no budget",
+             {"required": True, "lever": "prune", "keep_core": 82, "projected_index": 1,
+              "projected_recall": 1}, "index OVER budget"),
+            ("null operands (presence is NOT a measurement)",
+             {"required": True, "lever": "prune", "index_tokens": None, "budget": None}, "?/1500 tok"),
+            ("whitespace lever (truthiness is NOT blankness)",
+             {"required": True, "lever": " "}, "lever -"),
+        ):
+            _r75, _e75 = _shape_probe(_payload75)
+            check("v0.4.75 (PIN): `_remediation_section` survives " + _lbl75 + " — pre-change each of these "
+                  "either raised (KeyError('index_tokens') / KeyError('budget') / TypeError) or printed an "
+                  "absent operand as a reading, so the check reds on the ERROR NAME or on the fabricated "
+                  "text rather than on a wrong word",
+                  _e75 is None and _want75 in _r75)
         _ctxShapeOut, _ctxShapeErr = _shape_probe(
             {"required": True, "lever": "prune", "index_tokens": 4444, "budget": 1500,
-             "standing_justified": False, "baseline_facts": 77, "current_facts": 91})
+             "standing_justified": False, "baseline_facts": 77, "current_facts": 91,
+             "keep_core": 82, "projected_index": 4040, "projected_recall": 53289})
         check("v0.4.75 (CONTROL): …and the LIVE-CTX shape still renders its REAL operands — the repair is "
               "presence-gating, never a blanket `?` (green on both trees; the arm it must not disturb)",
-              _ctxShapeErr is None and "4444/1500 tok" in _ctxShapeOut)
+              _ctxShapeErr is None and "4444/1500 tok" in _ctxShapeOut
+              and "keep core 82" in _ctxShapeOut)
 
         # ── v0.4.61 (RC-1), SECOND LAYER: the record → dashboard relay ──
         # ⚠ The pins above cover `build_context` and `memory_status._remediation_section`. They do NOT
@@ -27168,10 +27195,12 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     from BOTH pre-change; + 1 GUARD (mutation-sensitive) on the
                                        #     relay's `isinstance` arm, which the review round found
                                        #     MISSING from the first cut
-                            + 2        # v0.4.75 — `_remediation_section` survives a record: 1 PIN (wrapped,
-                                       #     so a pre-change RAISE is asserted as a value rather than
-                                       #     killing the run) + 1 CONTROL (the live-ctx shape still
-                                       #     renders its real operands)
+                            + 6        # v0.4.75 — `_remediation_section` survives every non-ctx shape:
+                                       #     5 PINs (both active arms AND the tail, plus the two
+                                       #     absent-operand cases the review round measured) + 1
+                                       #     CONTROL (the live-ctx shape still renders its REAL
+                                       #     operands). ⚠ The first cut was 2 checks probing ONE arm
+                                       #     — a pin for one arm wearing a whole-function label.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

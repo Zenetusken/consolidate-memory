@@ -5201,6 +5201,24 @@ def duty_gaps(record: object) -> "list[DutyClause]":
     return [c for c in _DUTY_CLAUSES if c.fires(record)]
 
 
+def _operand(rem: dict, key: str) -> "object | None":
+    """The MEASURED value under `key`, or None when the operand is ABSENT.
+
+    ⚠ "Absent" is not `key not in rem`, and it is not `.get(key, DEFAULT)` either — the review round
+    measured both failures on this very function:
+      · `rem.get(k, D)` is a PRESENCE test, so `index_tokens: null` rendered `(None/None tok)` and
+        `index_tokens: ""` rendered `(/ tok)` — the absent operand printed as though it were a reading;
+      · `or "-"` is a TRUTHINESS test, so `lever: " "` slipped through and rendered `· lever  ·`, an
+        empty label where a name belongs.
+    The canonical predicate is `_duty_blank` — "the key is PRESENT and holds nothing": JSON null, or a
+    string that is empty/whitespace-only. It is the same test `render_dashboard._recorded` applies to
+    this family (`_recorded` IS `not _duty_blank`), and it is deliberately NOT `truthy`: `0` and `False`
+    are MEASUREMENTS and must survive, which is the distinction the whole family exists to keep.
+    """
+    v = rem.get(key)
+    return None if _duty_blank(v) else v
+
+
 def _over_budget_head(rem: dict) -> str:
     """The `⚠ index OVER budget (N/B tok) — GATE active · lever L` prefix of EVERY active-gate arm.
 
@@ -5216,14 +5234,18 @@ def _over_budget_head(rem: dict) -> str:
     made the two layers disagree about whether the triage had run. A tail that accepts records inside a
     function whose arms reject them is the weakest-enforcement-site shape this repo keeps paying for.
 
-    ⚠ PRESENCE-GATED, and the absent operand renders as ABSENT: `?` for a token count the record never
-    carries, and the target budget as the denominator's default because it is a CONSTANT rather than a
-    measurement (the arms that reach here have already established the gate is active). `lever` uses the
-    `or "-"` idiom, not `.get(k, "-")`, so an empty-but-present string cannot slip an empty label through
-    — the v0.4.34 correction, applied here for the same reason it was applied there.
+    ⚠ PRESENCE-GATED through `_operand`, so an operand that is ABSENT or holds NOTHING renders as
+    ABSENT (`?`) rather than as a reading. The default `INDEX_TOKEN_BUDGET` is applied to a MISSING
+    denominator only, and is a CONSTANT rather than a measurement — the arms that reach here have already
+    established the gate is active. `lever` falls back to `-` under the same test, so `""` and `" "`
+    both render a placeholder instead of an empty label.
     """
-    return (f"⚠ index OVER budget ({rem.get('index_tokens', '?')}/{rem.get('budget', INDEX_TOKEN_BUDGET)} tok)"
-            f" — GATE active · lever {str(rem.get('lever') or '-').upper()}")
+    tok = _operand(rem, "index_tokens")
+    bud = _operand(rem, "budget")
+    lev = _operand(rem, "lever")
+    return (f"⚠ index OVER budget ({tok if tok is not None else '?'}"
+            f"/{bud if bud is not None else INDEX_TOKEN_BUDGET} tok)"
+            f" — GATE active · lever {str(lev).upper() if lev is not None else '-'}")
 
 
 def _remediation_section(rem: dict) -> list:
@@ -5232,7 +5254,12 @@ def _remediation_section(rem: dict) -> list:
 
     ⚠ It renders BOTH shapes: the live ctx's `remediation` (its two production callers) and — by the stage
     block's own design, see `_over_budget_head` — a RECORD-shaped remediation. Every operand read below is
-    therefore presence-gated; direct indexing here is the defect `_over_budget_head` was hoisted to close."""
+    therefore gated through `_operand`, and the ONE direct index that remains is the deliberate early
+    return below, whose guard keys on the same four operands its line reads.
+    ⚠ That sentence was FALSE in the first cut of this release, which gated the two active-gate arms and
+    left the tail reading `rem['budget']` behind a guard on `keep_core` alone. The review round measured
+    the `KeyError` and named the guard a NEIGHBOUR of the operands it protects; the comment was corrected
+    with the code rather than after it."""
     if not rem:
         return []
     # v0.1.66 (Phase B): the hard-ceiling line renders in BOTH branches below — the ceiling is
@@ -5243,11 +5270,20 @@ def _remediation_section(rem: dict) -> list:
                   if rem.get("over_ceiling") else None)
     # v0.1.21 (D6/D7): a STANDING-JUSTIFIED over-budget index is suppressed — show the standing state, no triage.
     if rem.get("standing_justified"):
-        cur, base = rem.get("current_facts"), rem.get("baseline_facts", 0)
-        grew = f"+{cur - base}" if isinstance(cur, int) else "?"
+        # ⚠ `cur`/`base` go through `_operand` for two measured reasons: `rem.get("baseline_facts", 0)`
+        # published a SENTINEL ZERO (a record without the key rendered "vs baseline 0", a claim about a
+        # baseline that does not exist — the trap `a-producer-scoped-zero-needs-its-column` names), and
+        # `cur - base` then raised `TypeError` on a present-but-null `baseline_facts`, because
+        # `isinstance(cur, int)` guards only the LEFT operand of a subtraction with two.
+        cur, base = _operand(rem, "current_facts"), _operand(rem, "baseline_facts")
+        grew = f"+{cur - base}" if isinstance(cur, int) and isinstance(base, int) else "?"
+        _st = _operand(rem, "index_tokens")
+        _sb = _operand(rem, "budget")
         out = [_ui.kv("REMEDIATION", _ui.c(
-            f"✓ over budget ({rem.get('index_tokens', '?')}/{rem.get('budget', INDEX_TOKEN_BUDGET)} tok) but "
-            f"STANDING-JUSTIFIED · {cur} facts vs baseline {base} ({grew}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts or on index-token bloat)", "green"))]
+            f"✓ over budget ({_st if _st is not None else '?'}"
+            f"/{_sb if _sb is not None else INDEX_TOKEN_BUDGET} tok) but "
+            f"STANDING-JUSTIFIED · {cur if cur is not None else '?'} facts vs baseline "
+            f"{base if base is not None else '?'} ({grew}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts or on index-token bloat)", "green"))]
         if _ceil_line:
             out.append(_ceil_line)
         # v0.4.61 (RC-1): the ceiling is standing-justify-INDEPENDENT, and so is its REMEDY. The suppression
@@ -5278,7 +5314,7 @@ def _remediation_section(rem: dict) -> list:
         # On a record carrying `baseline_facts: "77"` the two surfaces therefore disagreed — this one said
         # NEVER-JUSTIFIED, the dashboard said LAPSED — which is the two-renderers-of-one-record class the
         # v0.4.34/RC-2 work is about. `_recorded` is the canonical "carries a MEASUREMENT" test; use it.
-        lapsed = "baseline_facts" in rem and not _duty_blank(rem["baseline_facts"])
+        lapsed = _operand(rem, "baseline_facts") is not None
         state = "LAPSED" if lapsed else "NEVER-JUSTIFIED"
         where = (f"baseline {base} facts" + (f" · now {cur}" if isinstance(cur, int) else "")
                  if lapsed else "no baseline on record")
@@ -5315,10 +5351,19 @@ def _remediation_section(rem: dict) -> list:
     # v0.4.61 (RC-2): `projected_index` now MEANS what it declares — the index after evicting the candidates —
     # so it is labelled as that. The old label said "relief" and printed `keep_core × _LEAN_HOOK_TOK`, a
     # different quantity; the number was never a relief and the label described the one it was not.
-    if "keep_core" not in rem:
-        return out      # a record-shaped dict carries the counts but not the live triage's keep_core
-    out.append(_ui.li(f"keep core {rem['keep_core']} · projected index after a full prune ≈{rem['projected_index']}/{rem['budget']} tok "
-                      f"(pointers) · recall body-hygiene −≈{rem['projected_recall']} tok (SEPARATE disk axis)",
+    # ⚠ THE GUARD KEYS ON THE SAME OPERANDS THE LINE READS. It tested `keep_core` alone while the line
+    # below reads FOUR (`keep_core`, `projected_index`, `budget`, `projected_recall`), so a dict carrying
+    # the first and missing any of the others reached a direct index and raised — `KeyError: 'budget'`,
+    # measured by the review round. A guard on a NEIGHBOUR of the operands it protects is the
+    # weakest-enforcement-site shape twice over: this line and the two arms `_over_budget_head` repairs.
+    # ⚠ A record-shaped dict still returns here, which is the design (v0.4.61): it carries the record's
+    # counts, not the live triage's `keep_core`.
+    _kc, _pi, _pb, _pr = (_operand(rem, "keep_core"), _operand(rem, "projected_index"),
+                          _operand(rem, "budget"), _operand(rem, "projected_recall"))
+    if None in (_kc, _pi, _pb, _pr):
+        return out
+    out.append(_ui.li(f"keep core {_kc} · projected index after a full prune ≈{_pi}/{_pb} tok "
+                      f"(pointers) · recall body-hygiene −≈{_pr} tok (SEPARATE disk axis)",
                       indent=4, bullet="→", bullet_color="cyan"))
     # D5 (v0.1.21): if a full prune can't reach budget, it's prune-the-safe-THEN-standing-justify the residual.
     if rem.get("standing_justified"):
@@ -5329,12 +5374,17 @@ def _remediation_section(rem: dict) -> list:
         # standing-justify the residual" below. Here the binding constraint is the ceiling.
         hint = ("the target gate is OFF (standing-justified) — the binding constraint is the CEILING, so "
                 "shrink by the staged candidates and re-justify the residual")
-    elif rem["lever"] == "prune" and not rem.get("reaches_budget", True):
+    elif _operand(rem, "lever") == "prune" and not rem.get("reaches_budget", True):
         hint = "prune the safe candidates, THEN standing-justify the residual (full prune can't reach budget — earned density)"
     else:
+        # `_operand` is typed `object | None` (it returns whatever the record holds), so the map lookup
+        # needs the key narrowed to `str` — an unknown lever falls through to the empty hint, which the
+        # `· detect-and-offer …` tail still renders, so nothing is silently dropped.
+        _lv = _operand(rem, "lever")
         hint = {"gc": "mirror-dominated → the GLOBAL demote/GC lever (a local prune is futile)",
                 "justify": "nothing safely prunable → justify-and-proceed (record an entries[] note)",
-                "prune": "confirm the candidates, then prune / rebuild the index lean"}.get(rem["lever"], "")
+                "prune": "confirm the candidates, then prune / rebuild the index lean"}.get(
+                    _lv if isinstance(_lv, str) else "", "")
     out.append(_ui.li(_ui.c(f"{hint} · detect-and-offer — confirm before any prune; NEVER auto-deleted", "dim"),
                       indent=6, bullet="·"))
     return out
