@@ -1561,7 +1561,20 @@ def check_layout_pointer() -> int:
     if "AGENTS.md" not in claude or "Layout" not in claude:
         return 0  # CLAUDE.md no longer delegates a tree; there is no pointer to keep honest
     if not re.search(r"AGENTS\.md`?\s*§\s*Layout", claude):
-        return 0  # delegates something else; not this check's contract
+        # ⚠ A SILENT SKIP HERE IS A HOLE, and the adversarial round drove it: rewording the pointer
+        # (`§ Layout` → ``under `## Layout` ``) turned this check into a no-op whose output was
+        # BYTE-IDENTICAL to a real green run — so the release's only mechanical check on the pointer
+        # could be disabled by a wording change while its own warning ("AGENTS.md could drop the
+        # section and CLAUDE.md would still read as authoritative while pointing at nothing") stayed
+        # reachable. MEASURED: reword the pointer AND delete AGENTS.md's `## Layout` → still rc=0,
+        # identical output. CLAUDE.md names BOTH `AGENTS.md` and `Layout`, so it IS delegating and
+        # this check's contract DOES apply — the regex merely stopped recognising the phrasing.
+        # Absence of the anchor is therefore an error, never a skip (`a-dropped-check-is-silent-a-
+        # false-red-is-not`), exactly as the Dev-loop and `Cost:` checks above already treat theirs.
+        err("CLAUDE.md names both `AGENTS.md` and `Layout` but carries no `AGENTS.md § Layout` anchor "
+            "this gate can read — a REWORDED pointer disables this check silently; re-anchor it or "
+            "drop the delegation")
+        return 0
     agents = read("AGENTS.md")
     m = re.search(r"^## Layout\s*$(.*?)(?=^## |\Z)", agents, re.M | re.S)
     if m is None:
