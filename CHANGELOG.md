@@ -21,8 +21,13 @@ only `_raised59 is not None`.
 |---|---|---|
 | `_mint` + `_served` → `ValueError` | **GREEN 2394/0** ← the hole | **2394 / 2 reds** |
 | **all three** → `ValueError` | 2393 / 1 (the `_miss` pin) | **2393 / 3 reds** |
-| the class **RENAMED** | **GREEN 2395/0** ← the fallback hole | **2392 / 4 reds** |
+| the class **RENAMED** | **GREEN 2394/0** ← the fallback hole | **2392 / 4 reds** |
 | clean | 2394 / 0 | **2396 / 0** |
+
+⚠ **Every cell above carries the base it was measured on** — `2395/0` appeared in the rename cell of
+this table's first cut and belonged to a THIRD tree (this release's own first-cut suite, 2395 checks).
+A row's columns are two different revisions, and a figure from a third is a neighbour: the second
+review round caught the cell, one column over from the error this note was written to record.
 
 ⚠ **The first cut of this entry claimed the all-three mutation was green, citing 2394/0.** That figure is
 the **TWO-site** mutation — a different experiment — and the claim it was cited against was **true**. The

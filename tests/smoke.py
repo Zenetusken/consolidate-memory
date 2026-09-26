@@ -25651,7 +25651,21 @@ check("v0.4.57 (PIN, structural): every reason `ensure` MINTS is declared in `_E
 # repair is the crash-class idiom this repo already uses — `getattr(..., None)` plus an ASSERTION
 # that the class exists — so a rename is a RED, never a substituted default.
 def _reason_cls76() -> "type | None":
-    return getattr(_fm44, "UnclassifiedReason", None)
+    """The module's reason class, or None if it is absent OR NOT A CLASS.
+
+    ⚠ `inspect.isclass` IS LOAD-BEARING, and the second review round measured why. A module that
+    rebound the name to a TUPLE would make this function's result legal-but-wrong in two directions at
+    once: `isinstance(x, (ValueError, AssertionError))` is a VALID isinstance argument, so
+    `_is_reason76` would answer True for EITHER member (a false-green), while `issubclass(tuple, X)`
+    raises `TypeError` — at MODULE SCOPE, taking the run down with 2,349 checks reported and no totals
+    line and no D6. **A false green and a crash from one input**, which is why the class test belongs
+    here rather than in either caller.
+    """
+    # ⚠ `_inspect`, the module-scope alias at `:272` — a bare `inspect` would be a NameError HERE, at
+    # module scope, which is the very crash-class this function's docstring is about. Caught by reading
+    # the import list rather than by running it.
+    c = getattr(_fm44, "UnclassifiedReason", None)
+    return c if _inspect.isclass(c) else None
 
 
 def _is_reason76(v: object) -> bool:
