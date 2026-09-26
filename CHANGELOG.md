@@ -5,6 +5,51 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.71] — 2026-09-26
+
+**Patch — the sibling plugin's three pentest findings from 2026-07-06, CLOSED.** dream-beta-tester
+goes **0.1.8 → 0.2.0**. No consolidate-memory script changes.
+
+The DevSecOps run of 2026-07-06 recorded 3 confirmed findings against dream-beta-tester and left its
+gate row reading **"BLOCK → not yet fixed"**. Re-triaged 2026-09-25: **all three were still open**,
+each reproduced live. All three are fixed, and each carries an arm measured **RED against the
+pre-fix code and GREEN after** — pre-fix **0 passed / 4 failed**, post-fix **4 passed / 0 failed**,
+same harness bytes on both trees.
+
+| # | Finding | Fix |
+|---|---|---|
+| F1a | symlinked repo doc followed on `snapshot()` → an out-of-repo secret copied into the persisted reports tree | `_regular_file()` — a symlink is never followed (`is_file()` RESOLVES it) |
+| F1b | `restore()` wrote THROUGH a retargeted symlink → an out-of-repo file clobbered | the write is **REFUSED** and named in `skipped`, not silently skipped |
+| F2 | `~/project/**/consolidate-memory/**` glob, winner chosen by a **self-declared** `plugin.json` version → a cloned repo is subprocessed AND imported in-process | the unauthenticated globs are **removed**; a scripts dir comes from an explicit `--skill` / `$CONSOLIDATE_MEMORY_SCRIPTS`, or a real install root |
+| F3 | `.restore-trash-{epoch-second}` — one shared dir, `shutil.move` renamed OVER it → the first quarantine destroyed, in the mechanism whose purpose is recoverability | `tempfile.mkdtemp` — atomic and collision-free |
+
+⚠ **Why arms were the point, not an extra.** `maintainer/ci_check.sh`'s oracle tests the
+**consolidate-memory** skill — it does not exercise `snapshot.py` or `beta_checks.py`. Without arms
+these fixes could be reverted with the gate green. The gate now runs
+`maintainer/selftest_hardening.py` as a **BLOCKING** stage: a failure reads *"HARDENING REGRESSION —
+a closed pentest finding has REOPENED. PUSH BLOCKED"*.
+
+⚠ **F2 is a behaviour change, and is why the sibling moves a MINOR not a patch.** A dev checkout
+under `~/project` no longer wins by being found; it must be **named** (`--skill` /
+`$CONSOLIDATE_MEMORY_SCRIPTS`, both honoured verbatim and unchanged). That is the deliberate cost of
+removing a path where writing a JSON file made you the winner. `maintainer/ci_check.sh` passes
+`--skill` explicitly and is unaffected.
+
+⚠ **Two arms were green for the WRONG reason before they were right**, both caught by measuring
+rather than reading. F1b first symlinked the file *before* the snapshot — which the F1a fix now
+skips, so there was no entry to restore and the arm proved nothing about the write-through leg. F2
+first stubbed three hand-picked scripts, but the filter reads `_REQUIRED_SCRIPTS`
+(`memory_status.py`, `sync_global.py`, `render_dashboard.py`), so the clone was rejected before the
+ranking under test ever ran. **A fixture that encodes its own copy of a predicate measures the copy.**
+⚠ F3's arm pins `time.time`, so the same-second collision is deterministic — a race left to chance
+would be a flake, and a flaky pin is not a pin.
+
+⚠ **And the F3 fix introduced a regression the repo's OWN smoke suite caught**: `mkdtemp` does not
+create parents, where the `.mkdir(parents=True, exist_ok=True)` it replaced did — so with
+`REPORTS_DIR` absent it raised `FileNotFoundError`, the `OSError` arm swallowed it, and the
+quarantine was silently SKIPPED. A fix for data loss that caused data loss. `tests/smoke.py`'s M5
+arms reddened (2374/2) and named it. Fixed, and 2376/0.
+
 ## [0.4.70] — 2026-09-26
 
 **Patch — R5's sibling, in two writers.** The security review of v0.4.68 closed with a LOW it had

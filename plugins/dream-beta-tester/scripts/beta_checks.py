@@ -141,11 +141,26 @@ def _candidate_dirs() -> list[Path]:
     the required scripts. De-duplicated (the dev `**` can match the nested
     `consolidate-memory/plugins/consolidate-memory` twice).
     """
+    # ⚠ TWO unauthenticated globs were REMOVED here (security/findings-2026-09-25.md, F2, High).
+    # `~/project/**/consolidate-memory/**/scripts/` matched any CLONE of this repo anywhere under
+    # `~/project`, with no install-time provenance check — and the winner was then chosen by
+    # `max(version)`, where the version is read from the CANDIDATE'S OWN `plugin.json`
+    # (`_skill_version`, below). A cloned repo could therefore self-declare `99.99.99`, win the
+    # `max()`, and then be BOTH subprocessed and `importlib.import_module`'d in-process. Verified
+    # by reproduction: a nested candidate inside a cloned repo satisfies the glob, passes the
+    # `_REQUIRED_SCRIPTS` filter, and wins.
+    #
+    # What replaces it is provenance rather than a wider predicate. A scripts dir is now accepted
+    # from exactly two sources, both of which an attacker cannot forge by writing a file:
+    #   1. an EXPLICIT operator choice — `--skill` / `$CONSOLIDATE_MEMORY_SCRIPTS`, honored
+    #      verbatim above ("the operator chose it"); and
+    #   2. the real plugin INSTALL root below, which Claude Code's own installer populates.
+    # ⚠ A dev checkout under `~/project` is still supported — it just has to be NAMED, via (1).
+    # That is the deliberate cost of the fix: convenience traded for the removal of a path where
+    # writing a JSON file makes you the winner. The maintainer gate already passes `--skill`
+    # explicitly (`maintainer/ci_check.sh`), so it is unaffected.
     pats = [
         str(Path.home() / ".claude" / "plugins" / "**" / "consolidate-memory" / "**" / "scripts" / "memory_status.py"),
-        str(Path.home() / "project" / "**" / "consolidate-memory" / "**" / "scripts" / "memory_status.py"),
-        # keep the prototype's flatter dev pattern too (a checkout without the plugins/ nesting)
-        str(Path.home() / "project" / "**" / "consolidate-memory" / "scripts" / "memory_status.py"),
     ]
     seen: set[Path] = set()
     out: list[Path] = []
