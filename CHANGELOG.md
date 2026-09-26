@@ -5,6 +5,46 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.74] — 2026-09-26
+
+**Patch — `current_facts` is declared, and the fact count gets one binding.** v0.4.73 shipped with a recorded
+debt: the key was written into `remediation` by `build_context` but declared in NEITHER the `Remediation`
+TypedDict nor the SKILL's schema block, and `seed_record`'s relays did not carry it into the record.
+
+⚠ **The honest scope, corrected by the review round.** This entry's first draft said the ASCII's `· now N`
+"silently vanishes on every record predating this patch". **That is false, and the reviewer measured it.**
+`print_report` passes the LIVE CTX to `_remediation_section` (`:5668`), and the ctx always carried the key —
+so **no rendered surface was broken**. What was actually missing is the **recorded** value: the key reached
+neither record shape, so the archive's evidence dump and any future record-side reader saw nothing. The
+declaration is the fix; the relays are what make it true of the record. A comment claiming a symptom that
+does not exist is worse than no comment — it teaches the next reader to trust a mechanism for a reason that
+was never tested — so the correction is recorded rather than quietly applied.
+
+⚠ **Two things the census overturned, recorded rather than quietly dropped.**
+
+**(1) The requested validator clause would have been DECORATION, so there is none.** The first draft proposed
+a family-2 DISAGREE clause binding `remediation.current_facts` to `budget.recall_facts.before`, argued
+non-vacuous because the two *record* keys travel through different relays. **That is wrong, and the advisor
+pass supplied the mechanism:** both are `len()` of ONE list — `fact_files`, bound once and published as
+`ctx["fact_files"]` — so they are **equal by construction and cannot diverge**. v0.4.73's actual loss mode
+produces *absence*, which the clause's own presence-gate would silence; the only thing that could fire it is
+re-adding the second computation this release deletes. A clause whose sole firing condition is "undo the fix"
+is precisely what `a-check-that-cannot-fail-is-not-a-check` names — and v0.4.73 amended that fact one release
+ago. The reasoning now lives **in the `Remediation` declaration itself**, because the next reader will ask why
+this particular pair is unguarded.
+
+**(2) "Both renderers read the declared key" was REFUSED as a regression.** Switching
+`dashboard.sections.js` from `budget.recall_facts.before` to `rem.current_facts` would drop the lapsed
+crossing on EVERY archived v0.4.73 record — they carry one key and not the other — falsifying the
+backward-compatibility claim this patch's own version argument rests on. It is also not "both renderers": the
+template's KPI strip and the per-cycle before→after table read `budget.recall_facts` too, and
+`memory_status.py` itself calls the archive a THIRD renderer. The HTML keeps the key every record carries; the
+declared key's consumers are the ASCII and the schema.
+
+Also: `build_context`'s three `len(fact_files)` calls collapse to one binding — the same expression on the
+same list, so never a wrong number, but three textual readings of one quantity. ⚠ Deliberately NOT published
+as a new ctx scalar: a derived scalar beside its own source is a duplicate KEY, not one home.
+
 ## [0.4.73] — 2026-09-26
 
 **Patch — the justification COLUMN: `required: true` now says WHICH kind of unresolved it is.** The

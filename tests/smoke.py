@@ -5026,6 +5026,50 @@ with _tfB.TemporaryDirectory() as _tdB:
               _sjB["remediation"].get("standing_justified") is True
               and _sjB["remediation"].get("baseline_facts") == 1)
 
+        # ── v0.4.74: `current_facts` DECLARED, and the relay that now has to carry it ──────────────
+        # ⚠ Both arms below are PINs, NOT controls: pre-change the key is absent from BOTH record shapes,
+        # so each reds on its own. v0.4.73 declared `baseline_facts`/`standing_justified` and left
+        # `current_facts` emitted-but-undeclared, so the RECORD carried no fact count.
+        # ⚠ NOT "the ASCII's `· now N` vanishes on every record predating this patch" — that was this
+        # patch's FIRST claim, and the review round MEASURED it false on two independent passes:
+        # `print_report` hands `_remediation_section` the LIVE CTX (`memory_status.py:5668`), which always
+        # carried the key, so NO rendered surface was broken and the lapsed line reads its `· now N` on
+        # BOTH trees. What was missing is the RECORDED value. The false version of this sentence stood in
+        # four surfaces; it is corrected in all four, and the correction is kept rather than quieted
+        # because a comment that teaches a mechanism for an untested reason outlives the patch.
+        (_stB / ".consolidation-state.json").write_text(_jsonB.dumps(
+            {"commit": "x", "timestamp": "2026-07-01T00:00:00Z"}), encoding="utf-8")
+        _ctxCF = _ctxAt(4000)                        # over-target, never justified
+        _remCF = _ctxCF["remediation"]
+        _recCF = ms.seed_record(_ctxCF).get("remediation") or {}
+        check("v0.4.74 (PIN, OVER-TARGET arm): `current_facts` reaches the RECORD and equals the ctx's — "
+              "pre-change the relay's allowlist drops it, so the key is absent and this reds",
+              isinstance(_remCF.get("current_facts"), int)
+              and _recCF.get("current_facts") == _remCF["current_facts"]
+              and _recCF["current_facts"] == len(_ctxCF["fact_files"]))
+        (_stB / ".consolidation-state.json").write_text(_jsonB.dumps(
+            {"commit": "x", "timestamp": "2026-07-01T00:00:00Z",
+             "standing_justify": {"facts": 99, "index_tokens": 10 ** 9}}), encoding="utf-8")
+        _ctxCFs = _ctxAt(4000)                       # over-target AND suppressed (generous baseline)
+        _recCFs = ms.seed_record(_ctxCFs).get("remediation") or {}
+        check("v0.4.74 (PIN, SUPPRESSED arm): a suppressed record carries `current_facts` too — that arm "
+              "builds its OWN small literal, so the over-target relay above cannot reach it (pre-change "
+              "absent here as well)",
+              _ctxCFs["remediation"].get("standing_justified") is True
+              and isinstance(_recCFs.get("current_facts"), int)
+              and _recCFs["current_facts"] == len(_ctxCFs["fact_files"]))
+        # ⚠ GUARD, not a PIN — it is green pre-change too, where the relay does not exist and the key is
+        # simply absent. It guards a MUTATION instead: deleting the `isinstance` arm turns it red.
+        # ⚠ The value chosen is `True`, deliberately: `bool` IS an `int` subclass, so `isinstance(x, int)`
+        # alone admits it and a hand-set `true` would persist as `1` in a field the TypedDict declares
+        # `int`. This is the same trap `mirror_share`'s relay documents, and mypy cannot see it because
+        # `ctx` is a plain `dict`. The review round found this arm's ABSENCE in the first cut.
+        _ctxCFt = _ctxAt(4000)
+        _ctxCFt["remediation"]["current_facts"] = True
+        check("v0.4.74 (GUARD, mutation-sensitive): the relay is TYPE-gated — a `bool` (which IS an `int` "
+              "subclass) never reaches a field the contract declares `int`",
+              "current_facts" not in (ms.seed_record(_ctxCFt).get("remediation") or {}))
+
         # ── v0.4.61 (RC-1): the ceiling's INSTRUMENT is standing-justify-independent too ──
         # ⚠ TWO layers, and a pin on either ALONE passes on the other's tree: the GENERATOR must build the
         # stages on this path (pre-fix the suppressed branch returned a dict carrying no `stages` key at all,
@@ -27086,6 +27130,12 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     NEVER-JUSTIFIED — the review round's first finding, a real
                                        #     bug in the first cut) + 2 CONTROLs (the suppressed path,
                                        #     and the ABSENT key as UNCLASSIFIED — green on BOTH trees)
+                            + 3        # v0.4.74 — `current_facts` declared: 2 PINs, one per RELAY arm
+                                       #     (over-target and suppressed), because each arm builds the
+                                       #     record's remediation in its OWN place and the key is absent
+                                       #     from BOTH pre-change; + 1 GUARD (mutation-sensitive) on the
+                                       #     relay's `isinstance` arm, which the review round found
+                                       #     MISSING from the first cut
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
