@@ -5,7 +5,43 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
-## [0.4.67] — 2026-09-25
+## [0.4.68] — 2026-09-25
+
+**Patch — three behaviours mutation testing found unwitnessed.** Each mutation left the suite at
+**2365 / 0** before these arms existed, so each could be reverted with CI green.
+
+Two things fell out that matter more than the arms:
+
+- ⚠ **One of the reported gaps is not a gap.** "Deleting the cap term from the `min`" is an
+  **EQUIVALENT mutation**: `_note` comes from `range(min(_hd, _n))` with default `_n`, so `_note <= _n`
+  always and `min(_hd, _note)` agrees with `min(_hd, _note, _n)` on **0 of 58** specs. It is green by
+  **equivalence**, not by gap — and a report that conflates the two asks for an arm that cannot exist.
+  Only the cap that **binds** (120 → 10⁹) is asserted.
+- ⚠ **My first mutation harness was void and read as a result.** I copied the trees without `.git`,
+  so three `.git`-dependent citation pins failed **identically for all six mutations** — one number
+  for six different inputs. Caught by that sameness. The pins' own text calls it a fault, not a
+  verdict. Redone with `.git` preserved; the redo parses each mutated source before trusting it.
+
+**Added — three GUARDs** (green on both trees; their only witness is the mutation they name):
+
+| arm | mutation it catches | measured |
+|---|---|---|
+| **O7** | the status **window** unbound to the bare cap — only the target scan's use of the region was witnessed | `_win = lines[:CAP]` → **O7 reds** |
+| **O8** | the **cap** 120 → 10⁹ (must not examine a declaration past line 120) | **O8 reds** |
+| **O9** | re-adding `and not spec_done(stated)` — **the exact defect v0.4.63 closed**, where a done-token exempted a header stating "implemented and REVIEWED … awaiting merge" | **O9 reds** |
+
+⚠ **Still open, and it is the harder half:** two further mutations resist a fixture designed so far —
+**M2** (the note term off by one, `k` → `k+1`) and **M4** (the two-arm `elif` → `if`). Both concern the
+boundary's *side* and the arms' *relationship* rather than either arm's matching, and neither is
+witnessed. Named here, not implied.
+
+Measured: `tests/smoke.py` **2368 / 0** · `docs_links` **52** · `mypy` 0 in 42.
+
+### The comment density cut (folded in — never a separate release)
+
+⚠ **Why folded:** the version bump was mine, not a user-visible change. This work is
+comments in `tests/`, which the plugin never runs, so tagging it separately would ship a
+release that does nothing. Folded rather than tagged.
 
 **Patch — the comment density cut.** No behaviour change: smoke stays **2365 / 0** and `docs_links`
 stays **52**, measured identical rather than assumed.
