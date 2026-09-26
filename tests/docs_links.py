@@ -1362,6 +1362,135 @@ def check_spec_status() -> int:
     return checked
 
 
+# ─── v0.4.77 — cross-surface agreement ────────────────────────────────────────────────────────
+# Nothing above compares one doc's NUMBER to another doc's NUMBER. `check_required_strings`
+# proves a string is FINDABLE; `check_version_statements` proves a version is CURRENT; neither
+# can see two prose surfaces disagree about the same figure. MEASURED: SKILL.md's v0.4.76 blurb
+# read "Cost: three checks" while CHANGELOG.md recorded TWO and explicitly named "three" as the
+# withdrawn draft. Both shipped. No matcher read either.
+
+# ⚠ Both files are reverse-chronological, so the FIRST `Cost:` clause in each is the most
+# recent one on that surface — which is what makes "first match" the right pairing rather than
+# an accident. If a future release adds the clause to one surface and not the other, these two
+# firsts stop naming the same release and the check reddens; that is a true alarm, not noise.
+_COST_RE = re.compile(r"Cost:\s*\**\s*([A-Za-z]+|\d+)\**\s+checks?")
+
+
+def _cost_claim(body: str) -> "str | None":
+    """The quantity a `Cost:` clause states, normalized; None when no clause is readable.
+
+    ⚠ Deliberately NOT a substring test for a word. MEASURED: SKILL.md's own blurb contains
+    "the all-three muta…" — prose ABOUT the defect — so `"three" in body` is green both before
+    and after the fix. That is a check no input can turn red, the shape
+    `a-text-check-reads-prose-about-its-subject` names; extracting the clause is what gives
+    this one something to fail on.
+    """
+    m = _COST_RE.search(body)
+    return m.group(1).upper() if m else None
+
+
+def check_cost_claim_agreement() -> int:
+    """The `Cost:` figure in SKILL.md and in CHANGELOG.md must be the SAME value.
+
+    ⚠ STATED BOUND — read it before trusting this. Two surfaces that are BOTH wrong stay
+    green. This catches DRIFT between them, not error in either: it is a consistency pin,
+    never an oracle.
+
+    ⚠ AND NO STRONGER OBSERVABLE EXISTS — said plainly so a reviewer stops looking. The
+    quantity is "how many checks did a PAST change add", a property of a DIFF, not of the
+    current tree. Today's suite total and today's `check(` stocks are all STOCKS, and none of
+    them is comparable to a historical delta; a shipped gate cannot check out the pre-fix
+    revision. Two-surface agreement against the CHANGELOG — the release-notes source of
+    record — is the ceiling.
+    """
+    seen: dict[str, str] = {}
+    for rel in ("plugins/consolidate-memory/skills/consolidate-memory/SKILL.md", "CHANGELOG.md"):
+        v = _cost_claim(read(rel))
+        # ⚠ THE MISSING-CLAUSE ARM, and it is load-bearing rather than defensive. Without it
+        # a clause reworded out of the regex's reach yields None on that surface, and
+        # `None == None` is GREEN — the drift this check exists to catch returns silently.
+        # This is the rule `check_version_statements` already states for its own axis: a
+        # missing statement is an error, not a skip, else the cheapest fix for a red gate
+        # is deleting the line that tripped it.
+        if v is None:
+            err(f"{rel} carries no readable `Cost: <n> checks` clause — a reworded clause is "
+                f"an error, not a skip; re-anchor `_COST_RE` rather than dropping the check")
+            return len(seen)
+        seen[rel] = v
+    if len(set(seen.values())) > 1:
+        pairs = ", ".join(f"{k.split('/')[-1]}={v}" for k, v in seen.items())
+        err(f"the `Cost:` claim disagrees across surfaces — {pairs}; the CHANGELOG is the "
+            f"release-notes source of record, so the other surface is the one to correct")
+    return len(seen)
+
+
+def check_dev_loop_completeness() -> int:
+    """CLAUDE.md's Dev-loop block must name every gate the release harness enforces.
+
+    MEASURED pre-fix: the block named smoke, sim, mypy, `cm` and manifests — but NOT
+    `docs_links.py`, which `release.sh --stage` runs as one of its four validators. A
+    maintainer following the dev loop met that gate for the first time AT RELEASE.
+
+    ⚠ LABEL: a PIN, not a GUARD. The string is ABSENT on the pre-fix revision, so this
+    reddens there. (A "green on both trees" shape would be `if present, then correct` —
+    which is not what this asserts, and is how a pin gets misfiled as a guard.)
+    """
+    body = read("CLAUDE.md")
+    # ⚠ Scoped to the FENCED block, never the whole file. CLAUDE.md names `docs_links.py`
+    # outside the fence too — the paragraph under it explains WHY the gate matters — so a
+    # whole-file containment test would pass on prose ABOUT the gate rather than on the
+    # block a maintainer actually copies. Same trap as `_cost_claim`'s.
+    m = re.search(r"^## Dev loop\s*\n\n```\n(.*?)```", body, re.S | re.M)
+    if m is None:
+        err("CLAUDE.md has no fenced `## Dev loop` block for this gate to read")
+        return 0
+    block = m.group(1)
+    for gate in ("tests/smoke.py", "tests/simulate_accumulation.py",
+                 "tests/validate_manifests.py", "tests/docs_links.py"):
+        if gate not in block:
+            err(f"CLAUDE.md's Dev-loop block does not name {gate} — the release harness runs "
+                f"it as one of its four validators, so the loop is incomplete")
+    return 1
+
+
+def check_layout_pointer() -> int:
+    """CLAUDE.md delegates its tree to `AGENTS.md` — assert the target still carries it.
+
+    v0.4.77 replaced CLAUDE.md's 1567-tok Layout with a pointer to `AGENTS.md` § Layout, which
+    is what brings the always-loaded tier under budget. ⚠ A pointer is a CLAIM ABOUT ANOTHER
+    FILE, and nothing else here reads two docs against each other: without this, AGENTS.md
+    could drop the section — or the entries the pointer's authority rests on — and CLAUDE.md
+    would still read as authoritative while pointing at nothing. That is the stale-duplicate
+    failure this change fixes, one hop out.
+
+    ⚠ LABEL: a GUARD, not a PIN — and the label was corrected after measuring, not reasoned
+    into. Its condition is `if CLAUDE.md delegates, THEN AGENTS.md must still carry the
+    target`, so on the PRE-FIX revision CLAUDE.md carries the tree itself, the precondition
+    is false, and this cannot redden there. MEASURED on a full pre-fix copy: the other two
+    checks red, this one stays green. A watcher that cannot fail before the change is a
+    regression guard; calling it a pin would be a label naming the intent rather than the
+    condition (`a-guards-label-is-not-its-predicate`). Validated the only way a guard can be
+    — by driving its mutation (see the v0.4.77 CHANGELOG entry).
+    """
+    claude = read("CLAUDE.md")
+    if "AGENTS.md" not in claude or "Layout" not in claude:
+        return 0  # CLAUDE.md no longer delegates a tree; there is no pointer to keep honest
+    if not re.search(r"AGENTS\.md`?\s*§\s*Layout", claude):
+        return 0  # delegates something else; not this check's contract
+    agents = read("AGENTS.md")
+    if not re.search(r"^## Layout\s*$", agents, re.M):
+        err("CLAUDE.md points at `AGENTS.md` § Layout, but AGENTS.md has no `## Layout` section")
+        return 0
+    # The entries the delegation's authority rests on. `dream_procedure.py` first by weight:
+    # it was absent from AGENTS.md ENTIRELY before v0.4.77, so it is the entry whose loss
+    # would be silent — a reader of the pointer would never learn the file exists.
+    for entry in ("dream_procedure.py", "local_ingress.py", "docs/adr/", "docs_links.py"):
+        if entry not in agents:
+            err(f"AGENTS.md no longer names {entry!r}, but CLAUDE.md points here as the "
+                f"authoritative tree — a gap here is a gap in the always-loaded tier")
+    return 1
+
+
 def main() -> int:
     check_badge()
     check_links()
@@ -1374,6 +1503,9 @@ def main() -> int:
     plugin_rows = check_plugin_table()
     status_headers = check_plugin_status_docs()
     spec_status = check_spec_status()
+    check_cost_claim_agreement()
+    check_dev_loop_completeness()
+    check_layout_pointer()
     check_preview()
     if errors:
         print("✗ documentation gate FAILED:")

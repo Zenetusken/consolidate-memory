@@ -5,6 +5,73 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.77] — 2026-09-26
+
+**Patch — the shipped surface that contradicted its own record, and the always-loaded file that was
+the stale copy.** Three findings, one class: a surface asserting a claim its source of record refutes.
+
+**1 · `SKILL.md` said v0.4.76 cost "three checks". It cost TWO.** `CHANGELOG.md` (this file) says
+"⚠ Cost: **TWO** checks, MEASURED" and explicitly records "an earlier draft of this line said THREE".
+The released SKILL — public, loaded by every session that uses the plugin — carried the retracted
+figure. ⚠ **Nothing could see it:** `SKILL.md` is not among `mypy`'s inputs, and the cycle-record
+validator checks container types, never a scalar. MEASURED, both matchers, same answer:
+`^check(` sites **971 → 973** (D6 **+2**); suite totals **2394 → 2396**.
+
+**2 · `CLAUDE.md`'s Dev loop omitted a gate its own release harness runs.** It named smoke, sim, mypy,
+`cm` and manifests — but not `tests/docs_links.py`, which `release.sh --stage` runs as one of its four
+validators, and which this same file calls one of those four 48 lines below. A maintainer following the
+dev loop met that gate for the first time **at release**.
+
+**3 · `CLAUDE.md`'s `Layout` was a STALE PARTIAL COPY of `AGENTS.md`'s.** The always-loaded tier paid
+**1567 tok** — 38% of the file — to be the wrong copy: it omitted `docs/adr/` (24 ADRs),
+`local_ingress.py`, and 6 of the 9 `tests/` modules. `AGENTS.md` is the on-demand operating manual and
+self-declares `CLAUDE.md` as holding "the same conventions with more narrative" — after this change
+that sentence is false, so it and `CONTRIBUTING.md`'s twin are corrected here too.
+
+⚠ **THE MERGE LANDED FIRST, because the pointer is only safe once the target is complete — and
+`AGENTS.md` was NOT complete.** Thirteen facts lived only in CLAUDE.md's copy; two were absent from
+`AGENTS.md` *entirely*: **`dream_procedure.py`** (its name, purpose, the NAR/EXT narration teeth, the
+`render_dashboard --persist` invocation, the exit 4/3 arms, its spec pointer) and the **`security/`
+LOCAL-only rule**. All thirteen were merged into `AGENTS.md` § Layout before the pointer went in. A
+pointer that drops a binding rule moves it from always-loaded to on-demand *silently*, which is the
+enforcement-erosion failure, and `dream_procedure.py` was the one whose loss would have been silent.
+
+**Measured outcome:** `CLAUDE.md` **4140 → 2900 tok** (Layout alone 1567 → 193) — under the 4000 budget
+for the first time. The other five sections are unchanged; nothing binding was dropped, and the
+"binding" set is the enumeration above rather than an assurance.
+
+### Arms
+
+| arm | shape | pre-fix | post-fix |
+|---|---|---|---|
+| **PIN** — `Cost:` agreement across SKILL.md ↔ CHANGELOG.md | two-surface | **RED** (`SKILL=THREE`, `CHANGELOG=TWO`) | GREEN |
+| **PIN** — CLAUDE.md's Dev-loop block names `docs_links.py` | presence in a fence | **RED** | GREEN |
+| **GUARD** — CLAUDE.md's Layout pointer still resolves | conditional | green (cannot redden) | green |
+
+⚠ **The third arm is a GUARD and was mislabelled a PIN in the plan** — corrected by measuring, not by
+reasoning. Its condition is `if CLAUDE.md delegates, THEN AGENTS.md carries the target`; pre-fix
+CLAUDE.md carries the tree itself, so the precondition is false and it cannot redden there
+(`a-check-added-by-a-fix-may-not-flip`). Validated the only way a guard can be: by driving its mutation.
+Renaming `## Layout` in `AGENTS.md` → RED. Renaming `dream_procedure.py` → RED. Both revert to GREEN.
+All three arms were measured on a **full pre-fix copy with every marker verified at 0** before running.
+
+⚠ **The `Cost:` pin carries a stated bound and an unavailable-strength note.** Two surfaces that are
+*both* wrong stay green — it catches DRIFT, not error. And no stronger observable exists: the quantity
+is "how many checks did a PAST change add", a property of a diff, not of the current tree; today's
+suite total and today's `check(` stocks are all stocks, and a shipped gate cannot check out the pre-fix
+revision. Two-surface agreement against this file is the ceiling. ⚠ It also carries a **missing-clause
+arm** — a reworded clause yields `None` on both sides, and `None == None` is green, which is how the
+drift would return silently. Absence is an error, never a skip.
+
+⚠ **Do NOT restructure `SKILL.md`'s release-log blurb in this patch.** Lines 20–21 are **39,815 bytes —
+two single-line paragraphs, 21.18% of the file, ≈9,953 est tok** — which is *why* the number drifted:
+prose no gate reads. That is its own cycle.
+
+⚠ **RECORDED, NOT FIXED:** `memory_status._is_promotion_candidate` fires on `not fm.get("scope")`, but
+`local_ingress.py:388` stamps `scope: project-local` on **every** new fact. So the Phase-1 promotion
+re-audit is **structurally blind to every fact authored since the LocalFactV1 writer landed** — the 42
+legacy unscoped facts are the only ones that can ever seed. Needs its own cycle.
+
 ## [0.4.76] — 2026-09-26
 
 **Patch — the `UnclassifiedReason` pin promised for THIRTEEN releases, and asserted at neither site.**

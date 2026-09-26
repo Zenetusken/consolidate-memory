@@ -74,7 +74,7 @@ viewport widths, plus a print emulation.
 | Read this | For |
 | :--- | :--- |
 | [AGENTS.md](AGENTS.md) | The agent operating manual: layout, dev loop, CI jobs, the traps |
-| [CLAUDE.md](CLAUDE.md) | The same conventions with more narrative |
+| [CLAUDE.md](CLAUDE.md) | The binding directives only — the always-loaded tier, deliberately short |
 | [SKILL.md](plugins/consolidate-memory/skills/consolidate-memory/SKILL.md) | The six-phase workflow and the context-tier model |
 | [harness-map.md](plugins/consolidate-memory/skills/consolidate-memory/references/harness-map.md) | Store topology, fact schema, verification recipes |
 | [docs/](docs) | Design-of-record specs, one per feature, and the ADRs |
