@@ -2277,11 +2277,16 @@ _id_html = rhtml.build_html(
                        "cross_project_allowed": True, "conflicts": 1})
 _id_m = _re.search(r'id="cm-data">(.*?)</script>', _id_html, _re.S)
 _id_embed = _json.loads(_id_m.group(1).replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")) if _id_m else {}
-check("v0.3.0 html: build_html embeds live identity + hook/cliff budgets (round-trip)",
+check("v0.3.0 html: build_html embeds live identity + hook/cliff/sj budgets (round-trip)",
       _id_embed.get("identity", {}).get("domain_id") == "personal"
       and _id_embed.get("identity", {}).get("conflicts") == 1
       and _id_embed.get("budgets", {}).get("hook_warn") == ms.HOOK_TOKEN_WARN
       and _id_embed.get("budgets", {}).get("cliff_near") == int(ms.CLIFF_NEAR_FRACTION * 100)
+      # ⚠ v0.4.73, added by the review round: the release claimed `sj_delta` is "plumbed, never hardcoded"
+      # and only THIS check can hold that — it was unpinned, so setting the template's fallback to 99 left
+      # the suite green (MEASURED by the reviewer). Same shape as the two budgets beside it, and the same
+      # reason: a live constant that reaches the template by a second path is a second thing to keep true.
+      and _id_embed.get("budgets", {}).get("sj_delta") == ms._STANDING_JUSTIFY_DELTA
       and (_id_embed.get("cycles") or [{}])[-1].get("cross_project", {}).get("held") == 2)
 _evil_id = rhtml.build_html({"project": "x", "identity": {"domain_id": "</script><img src=x>"}},
                             [], "t", identity={"domain_id": "</script>"})
@@ -4946,6 +4951,81 @@ with _tfB.TemporaryDirectory() as _tdB:
               and _sjB["remediation"].get("required") is False
               and _sjB["remediation"].get("over_ceiling") is True)
 
+        # ── v0.4.73: the justification COLUMN — and the RELAY it has to survive ──────────────────────
+        # ⚠ THE DEFECT: `required: true` could not say WHICH kind of unresolved it was. The triage DOES
+        # compute the distinction (`_sj_baseline is not None` ⇒ a baseline exists), but `seed_record`'s
+        # over-target arm enumerates keys rather than forwarding them, and it dropped `standing_justified`
+        # and `baseline_facts` — BOTH DECLARED in `Remediation`. So a LAPSED justification and a
+        # NEVER-JUSTIFIED store produced byte-identical records (both keys absent) with OPPOSITE remedies:
+        # a lapsed store's density is EARNED (relief, then re-stamp), a never-justified one has no baseline
+        # to restore. Measured live 2026-09-26: the pass read the lapsed store as fresh bloat, did the
+        # relief, skipped the sanctioned close, and the archive rendered "Unresolved index remediation"
+        # with no way to tell the two apart.
+        # ⚠ THE ASSERTION IS RELAY-COMPLETENESS, NOT "two keys are present": every key that is BOTH
+        # declared in `Remediation` AND produced by the triage must survive into the record. That is the
+        # rule the allowlist has to satisfy — and a DROPPED key is invisible to a subset test, because
+        # `producer ⊆ Decl` still HOLDS when the key is merely missing. So it reds on ANY future key the
+        # relay forgets, which is the general form of this defect rather than its two instances.
+        _declB = set(ms.Remediation.__annotations__)
+
+        def _relay_missing(ctx: dict) -> set:
+            """Declared keys the triage PRODUCED that the record's remediation block did NOT receive."""
+            return ((_declB & set(ctx.get("remediation") or {}))
+                    - set((ms.seed_record(ctx).get("remediation") or {})))
+
+        # (a) A LAPSED store: a baseline EXISTS and the index has grown past it. The TOKEN axis is tripped
+        # here rather than the fact axis only because the fixture holds 2 facts and Δ is 10 — both axes
+        # land in the SAME record shape (decision: the record carries the baseline, never the axis).
+        (_stB / ".consolidation-state.json").write_text(_jsonB.dumps(
+            {"commit": "x", "timestamp": "2026-07-01T00:00:00Z",
+             "standing_justify": {"facts": 2, "index_tokens": 1}}), encoding="utf-8")
+        _ctxLapB = _ctxAt(4000)
+        _remLapB = _ctxLapB["remediation"]
+        _recLapB = (ms.seed_record(_ctxLapB).get("remediation") or {})
+        check("v0.4.73 (PIN): a LAPSED justification says so — `standing_justified` False with the baseline "
+              "CARRIED, in the triage AND in the record (pre-fix both keys are absent from the record, so "
+              "this reds on the value)",
+              _remLapB.get("standing_justified") is False and _remLapB.get("baseline_facts") == 2
+              and _recLapB.get("standing_justified") is False and _recLapB.get("baseline_facts") == 2)
+        check("v0.4.73 (PIN against the INTERMEDIATE revision — producer fixed, relay reverted; MEASURED, "
+              "not inferred): …and the RELAY drops no declared key, over every key the ctx and the record "
+              "spell IDENTICALLY. ⚠ TWO honest limits, both from the review round. (a) It is GREEN against "
+              "the BASE revision, and the reason corrects this release's own first diagnosis: pre-fix the "
+              "PRODUCER never wrote the two keys on this path, so the relay had NOTHING to drop — the "
+              "allowlist's lossiness is real but LATENT, observable only on the intermediate. The defect is "
+              "BOTH halves; the missing write is the first cause. (b) Its scope is NAME-IDENTITY, NOT the "
+              "relay in general: `seed_record` also RENAMES (`candidates` → `candidates_surfaced`), and a "
+              "drop on a renamed key is invisible here — MEASURED at the OVER-TARGET arm's own literal: "
+              "removing `\"candidates_surfaced\": rem[\"candidates\"],` there leaves this suite at 2384/0. "
+              "(⚠ The relay's SUPPRESSED arm is a different site and IS covered — removing its "
+              "`if \"candidates\" in rem:` reds two v0.4.61 layer-2 pins, 2379/5; measuring the wrong arm "
+              "first made this reviewer's finding look false, which is why the arm is named here.) The "
+              "'asserted in its general form' this label first claimed was FALSE, and correcting it is the "
+              "point rather than deleting the check",
+              _relay_missing(_ctxLapB) == set())
+        check("v0.4.73 (GUARD — it cannot redden on any shipped revision: `required` is already True on this "
+              "path pre-fix, so only a mutation that made the fix suppress the gate would turn it): the gate "
+              "is NOT relaxed — `required` stays True on the lapsed path (this release buys LEGIBILITY, never "
+              "suppression)",
+              _recLapB.get("required") is True)
+
+        # (b) A NEVER-JUSTIFIED store: no baseline at all ⇒ the key is ABSENT, deliberately not zero.
+        # Presence is the second coordinate; a sentinel 0 would re-commit
+        # `a-producer-scoped-zero-needs-its-column` inside the repair for that very trap.
+        (_stB / ".consolidation-state.json").write_text(_jsonB.dumps(
+            {"commit": "x", "timestamp": "2026-07-01T00:00:00Z"}), encoding="utf-8")
+        _recNvB = (ms.seed_record(_ctxAt(4000)).get("remediation") or {})
+        check("v0.4.73 (PIN): a NEVER-JUSTIFIED store is distinguished from a lapsed one — False, and NO "
+              "`baseline_facts` at all (absence is the coordinate, never a sentinel zero)",
+              _recNvB.get("standing_justified") is False and "baseline_facts" not in _recNvB)
+
+        # (c) CONTROL — the SUPPRESSED path is untouched by this release: its record carried both keys
+        # before v0.4.73 and still does. Green on BOTH trees, by construction.
+        check("v0.4.73 (CONTROL): a SUPPRESSED store's record is unchanged — `standing_justified` True "
+              "with its baseline (green on both trees; it is the arm this release must not disturb)",
+              _sjB["remediation"].get("standing_justified") is True
+              and _sjB["remediation"].get("baseline_facts") == 1)
+
         # ── v0.4.61 (RC-1): the ceiling's INSTRUMENT is standing-justify-independent too ──
         # ⚠ TWO layers, and a pin on either ALONE passes on the other's tree: the GENERATOR must build the
         # stages on this path (pre-fix the suppressed branch returned a dict carrying no `stages` key at all,
@@ -5049,6 +5129,29 @@ check("v0.1.66 render: over_ceiling False and legacy (no key) both render NO cei
                           "projected_index": 100, "over_ceiling": False}}))
       and "CEILING" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {},
           "entries": [], "budget": {"index": {"after_tokens": 1504, "budget_tokens": 1500, "over": True}}})))
+
+# ── v0.4.73: the justification COLUMN on the DASHBOARD's ASCII — TWO arms, not one ──────────────────
+# ⚠ The review round's FIRST finding was a real bug in the release it reviewed: the arm was gated on
+# `standing_justified` ALONE, so a NEVER-justified record (`false`, no `baseline_facts`) rendered as
+# "a density baseline EXISTS … EARNED density" — a claim about a baseline that does not exist, and the
+# OPPOSITE of the remedy that state needs. `baseline_facts`' PRESENCE is the second coordinate; a
+# renderer that ignores it re-commits the very defect this release repairs, one layer up.
+_remASCII = {"required": True, "lever": "prune", "candidates_surfaced": 1}
+_njOut = rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+    "remediation": {**_remASCII, "standing_justified": False}}))
+_lapOut = rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+    "remediation": {**_remASCII, "standing_justified": False, "baseline_facts": 77}}))
+check("v0.4.73 (PIN): the dashboard ASCII tells LAPSED from NEVER-JUSTIFIED — a no-baseline record must NOT "
+      "borrow the lapsed arm's 'density baseline EXISTS … EARNED density' claim (pre-fix BOTH render the "
+      "generic over-budget arm, so this reds on the LAPSED line being absent rather than on a wrong word)",
+      "LAPSED" in _lapOut and "density baseline EXISTS" in _lapOut
+      and "NEVER-JUSTIFIED" in _njOut and "density baseline EXISTS" not in _njOut)
+check("v0.4.73 (CONTROL): `standing_justified` ABSENT is UNCLASSIFIED — it takes NEITHER new arm, because "
+      "absence carries no era gate (green on both trees: this is the arm the release must leave alone)",
+      "LAPSED" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {},
+          "entries": [], "remediation": dict(_remASCII)}))
+      and "NEVER-JUSTIFIED" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {},
+          "entries": [], "remediation": dict(_remASCII)})))
 
 # (6) the run() call-site re-key — the actual behavior change, end to end (fixtured GLOBAL + HOME)
 with _tfB.TemporaryDirectory() as _tdB2:
@@ -26976,6 +27079,13 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     must be read WHOLE — a PIN against the INTERMEDIATE
                                        #     81a197b, a CONTROL against f0b8767) and R4 (the two
                                        #     readers agree).
+                            + 7        # v0.4.73 — the justification COLUMN: 4 on the producer (lapsed ·
+                                       #     the RELAY drops no declared key, PIN against the
+                                       #     INTERMEDIATE · never-justified · a GUARD that `required`
+                                       #     is never relaxed) + 2 on the dashboard ASCII (LAPSED vs
+                                       #     NEVER-JUSTIFIED — the review round's first finding, a real
+                                       #     bug in the first cut) + 2 CONTROLs (the suppressed path,
+                                       #     and the ABSENT key as UNCLASSIFIED — green on BOTH trees)
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

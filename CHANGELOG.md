@@ -5,6 +5,68 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.73] — 2026-09-26
+
+**Patch — the justification COLUMN: `required: true` now says WHICH kind of unresolved it is.** The
+2026-09-26 dream pass rendered **"Unresolved index remediation"**, and the verdict was *correct* — the
+record simply could not say why. A store that earns a standing justification suppresses its over-budget
+gate until it grows past **either** axis (`baseline + 10 facts`, or index tokens past `baseline × 1.25`).
+This store's baseline was `{facts: 77, index_tokens: 3782}` (2026-09-20); it holds **91 facts**, so the
+fact axis tripped by 4 and `required` correctly re-armed.
+
+⚠ **The mechanism was TWO halves, and the first is the missing write.** `Remediation` declares
+`standing_justified: bool` and `baseline_facts: int` and the SKILL schema block spells both — but the
+producer's **over-target** arm never wrote them (only the suppressed arm did). Behind that sat a second,
+**latent** cause: `seed_record`'s key relay enumerates its own key set and would have dropped both
+anyway. *Latent* is the measured word, and correcting this release's own first diagnosis is the point:
+restoring the producer alone leaves the record keyless, and restoring the relay alone leaves it keyless
+too — the relay's lossiness cannot be OBSERVED until the write exists. So the relay's pin is asserted
+against the **INTERMEDIATE** revision (producer fixed, relay reverted) rather than against `HEAD`, where
+it is green because there was nothing to drop. So a **LAPSED** justification (a baseline exists, outgrown) and a
+**NEVER-JUSTIFIED** store produced byte-identical records — with OPPOSITE remedies: a lapsed store's
+density is EARNED (do the relief, then **re-stamp**); a never-justified one has no baseline to restore.
+Measured on two adjacent records: the `01:18` seed carried both keys, the `05:49` seed carried neither.
+
+Fixed at the producer, and pinned **per-arm** — the lapsed and never-justified arms assert the keys
+directly — because a DROPPED key is invisible to every parity gate this repo has: `producer ⊆ Decl` still
+HOLDS when the key is merely missing, and `Decl ⊆ producer(canonical)` cannot apply to a `total=False`
+block that is legitimately partial per path. ⚠ A relay-completeness arm was added alongside, and the
+review round then MEASURED its honest limit: it covers the keys the ctx and the record spell
+**identically**, while the relay also **renames** (`candidates` → `candidates_surfaced`) — removing that
+key from the relay leaves the suite green. Stated rather than papered over, which is why the per-arm
+assertions carry the weight.
+
+⚠ **THE ERA LIMIT — stated rather than papered over.** The discriminator is key **presence**, and — as
+`docs/record-duty-presence.spec.md` puts it for its own family — **absence carries no era gate**: every
+pre-v0.4.73 lapsed record has neither key, so the record cannot distinguish *this pass recorded no
+baseline* from *this record predates the field*, and the `05:49` record that motivated the fix still reads
+as unclassified. A three-valued `standing_justify_state` token was
+considered and **rejected** — it is *equally absent* on legacy records, so it would buy a schema change
+and a second field that can drift from the boolean without making one historical record decidable. What
+is fixed is the renderer's rule: it must never **assert** "never justified" on an absent key. Four arms
+now render (suppressed · lapsed · never-justified · **unclassified**), and the last claims nothing.
+
+Also shipped: a lapsed arm on both ASCII surfaces (naming the baseline and the refire RULE, never the
+axis — the token axis has no operand in the record at all, so naming one would be this release's own
+defect one layer up); `sj_delta` plumbed into the HTML `budgets` rather than hardcoded, following the
+`hook_warn` precedent; and the SKILL's refire clause corrected — it described the gate as re-firing on
+*fact-count* alone, while the code and `docs/index-usage-and-budget-ladder.spec.md` have always had two
+axes. ⚠ Recorded, not fixed: `current_facts` is emitted on the suppressed path but DECLARED nowhere — a
+pre-existing producer⊇declaration violation that must not ride a patch.
+
+⚠ **This release's own review round then found TWO REAL BUGS in the first cut, both of them the class the
+release is about** — and both are fixed here, with pins. The dashboard ASCII arm was gated on
+`standing_justified` ALONE, so a **never-justified** record rendered *"a density baseline EXISTS … EARNED
+density"* — a claim about a baseline that does not exist, and the OPPOSITE of the remedy that state needs.
+And the HTML label printed the fact-axis crossing **unconditionally**, so a TOKEN-axis lapse rendered
+`baseline lapsed: 91 > 130`: a comparison that is false, and one that reader cannot adjudicate because the
+token baseline has no operand in the record. The second is the release's own defect — *a value asserted
+without the coordinate that makes it true* — re-committed in the very line written to repair it. Three
+further corrections: the "never the axis" rule held on the ASCII and was violated in the HTML; the
+renderers disagreed on a non-int `baseline_facts` (`isinstance(..., int)` vs `_recorded`) — now ONE
+predicate; and the SKILL's schema `_` note, whose prose must remain valid JSON (the pin that parses it
+caught a pair of quotes), no longer lets `baseline_facts: 0` read as the sentinel this design rejects.
+
 ## [0.4.72] — 2026-09-26
 
 **Patch — the merge lever's buildable half ships, and the SKILL says where to find it.** The lever

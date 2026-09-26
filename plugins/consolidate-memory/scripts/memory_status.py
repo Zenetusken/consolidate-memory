@@ -3753,6 +3753,21 @@ def build_context(project_dir: Path) -> dict:
             remediation.update({"required": False, "standing_justified": True,
                                 "baseline_facts": _sj_baseline, "index_tokens": index_lb[2],
                                 "budget": INDEX_TOKEN_BUDGET, "current_facts": len(fact_files)})
+        else:
+            # v0.4.73: the justification COLUMN. An over-target store that is NOT suppressed is either
+            # LAPSED (a baseline exists — `_sj_baseline is not None` — but the store grew past the fact
+            # axis OR the token axis) or NEVER-JUSTIFIED (no baseline at all). Without this stamp the two
+            # spell IDENTICALLY in the record (both keys absent), and they demand OPPOSITE remedies: a
+            # lapsed store's density is EARNED, so the close is relief-then-RE-STAMP; a never-justified one
+            # has no baseline to restore and needs real work. Measured 2026-09-26: a lapsed store read as
+            # fresh bloat, the pass did the relief and skipped the sanctioned close, and the archive
+            # rendered "Unresolved index remediation" with no way to tell which case it was.
+            # ⚠ KEY PRESENCE is the second coordinate — `baseline_facts` written ⟺ a baseline EXISTS.
+            # Never a sentinel zero: `baseline_facts: 0` must not mean "no baseline"
+            # (a-producer-scoped-zero-needs-its-column — the same trap, re-committed in the producer).
+            remediation.update({"standing_justified": False, "current_facts": len(fact_files)})
+            if _sj_baseline is not None:
+                remediation.update({"baseline_facts": _sj_baseline})
     # v0.1.66 (Phase B): the hard-ceiling flag — a SIBLING assignment, deliberately OUTSIDE both branches
     # above so it never enters the `required`/standing-justify computation (the sibling-signal design the
     # 3-lens spec-review gate mandated; docs/index-usage-and-budget-ladder.spec.md §Phase B). Any store over
@@ -4211,6 +4226,28 @@ def seed_record(ctx: dict) -> CycleRecord:
             "reaches_budget": rem.get("reaches_budget", True),   # D5: False ⇒ prune-then-standing-justify
             "over_ceiling": bool(rem.get("over_ceiling")),       # v0.1.66 (Phase B): sibling of required, never a re-key
         }
+        # v0.4.73: ⚠ THE JUSTIFICATION COLUMN, and the rule that keeps losing it. This arm is an
+        # ALLOWLIST, and until v0.4.73 it relayed neither `standing_justified` nor `baseline_facts` — both
+        # DECLARED in `Remediation`. So a store whose earned-density justification had LAPSED and one that
+        # had NEVER been justified produced byte-identical records, with opposite remedies.
+        # ⚠ ITS LOSSINESS WAS **LATENT**, and that is MEASURED rather than reasoned: the producer's
+        # over-target arm did not write the two keys either (only the suppressed arm did), so on the
+        # pre-fix tree there was NOTHING here to drop — a pin on this arm is GREEN against `HEAD` and reds
+        # only against the INTERMEDIATE (producer fixed, relay reverted). This release's FIRST diagnosis
+        # called the allowlist the whole mechanism; that was wrong. The defect is BOTH halves, and the
+        # missing write is the first cause. ⚠ RULE: **a key declared in `Remediation` must
+        # be relayed here.** A dropped declared key is invisible to every gate this repo has — the
+        # `producer ⊆ Decl` direction still HOLDS (the key is merely missing, which a subset test cannot
+        # see) and `Decl ⊆ producer(canonical)` cannot apply to a `total=False` block that is legitimately
+        # partial per path. That is why the pin for this lives per-arm in smoke.py, not as a parity check.
+        # ⚠ PRESENCE-GATED, exactly like the sibling suppressed arm: a legacy or hand-built `rem` leaves
+        # the keys ABSENT rather than asserting a state it never computed. Absent ⟺ the producer did not
+        # record it — so a pre-v0.4.73 record reads as UNCLASSIFIED, never as "never justified":
+        # **absence carries no era gate** (docs/record-duty-presence.spec.md).
+        if "standing_justified" in rem:
+            record["remediation"]["standing_justified"] = bool(rem["standing_justified"])
+        if "baseline_facts" in rem:
+            record["remediation"]["baseline_facts"] = rem["baseline_facts"]
         # v0.4.34 (E1): persist the mirror OPERAND. `lever` is the routing LABEL; without the share behind
         # it the renderer could not tell a mirror-dominated store (global demote/GC) from a locally-authored
         # overflow (local prune), so its gc-vs-prune claim was a lookup on a rewritable string. Written only
@@ -5146,6 +5183,34 @@ def _remediation_section(rem: dict) -> list:
         # opens the stage block; the tail below is presence-gated so a record-shaped dict cannot crash it.
         if not rem.get("stages") and "candidates_surfaced" not in rem:
             return out
+    elif "standing_justified" in rem:
+        # v0.4.73: the justification COLUMN — LAPSED vs NEVER-JUSTIFIED, and this reader must not confuse
+        # them either. Reached only when the key is PRESENT and falsy, so `baseline_facts`' presence is the
+        # second coordinate: `_sj_baseline is not None` upstream writes it, and no-baseline leaves it out.
+        # ⚠ The line states the refire RULE and the baseline; it deliberately does NOT assert which axis
+        # crossed. `current_facts` is on the live ctx but not on an archived record, and the token axis has
+        # no baseline operand here at all — naming a crossing this reader cannot see would re-commit the
+        # (required, justification-state) defect this release repairs, one layer up.
+        base = rem.get("baseline_facts")
+        cur = rem.get("current_facts")
+        # ⚠ ONE PREDICATE FOR BOTH RENDERERS (review round, fourth finding): this arm read `isinstance(base, int)`
+        # while `render_dashboard` reads `_recorded` (which is `not _duty_blank`, so a NON-EMPTY STRING counts).
+        # On a record carrying `baseline_facts: "77"` the two surfaces therefore disagreed — this one said
+        # NEVER-JUSTIFIED, the dashboard said LAPSED — which is the two-renderers-of-one-record class the
+        # v0.4.34/RC-2 work is about. `_recorded` is the canonical "carries a MEASUREMENT" test; use it.
+        lapsed = "baseline_facts" in rem and not _duty_blank(rem["baseline_facts"])
+        state = "LAPSED" if lapsed else "NEVER-JUSTIFIED"
+        where = (f"baseline {base} facts" + (f" · now {cur}" if isinstance(cur, int) else "")
+                 if lapsed else "no baseline on record")
+        # ⚠ The line states the refire RULE, and deliberately does NOT assert a crossing: the bound is
+        # TWO-axis, so on a TOKEN-axis lapse the fact count sits inside Δ and any "N > B+Δ" phrasing would
+        # be a measurement this reader cannot make (its token baseline has no operand in the record).
+        out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
+                                           f"— GATE active · lever {rem['lever'].upper()} · justification "
+                                           f"{state} ({where}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts "
+                                           "or on index-token bloat)", "red"))]
+        if _ceil_line:
+            out.append(_ceil_line)
     else:
         out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
                                            f"— GATE active · lever {rem['lever'].upper()}", "red"))]

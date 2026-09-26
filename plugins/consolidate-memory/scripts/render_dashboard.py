@@ -1069,6 +1069,48 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
             # the candidates cannot free nearly the whole index — the common mature-store case — so this
             # was newly reachable, not hypothetical.
             out.append("    " + _c(_D5_REMEDY_SUPPRESSED, "dim"))
+    elif rem and rem.get("required") and _recorded(rem, "standing_justified"):
+        # v0.4.73: the justification COLUMN, LAPSED — an over-budget gate whose earned-density baseline
+        # was recorded and has since been outgrown. Before this release it rendered in the generic arm
+        # below, i.e. as FRESH BLOAT, and the two states demand opposite remedies (this one is EARNED:
+        # relief, then re-stamp; fresh bloat needs real work).
+        # ⚠ `_recorded` IS the era gate, and it is why this arm is safe: it is False for an ABSENT key
+        # (`_duty_blank(False)` is False, so a recorded `false` still counts, while a missing key does
+        # not), so a pre-v0.4.73 record falls THROUGH to the generic arm and is never asserted to be
+        # "never justified". Absence carries no era gate (docs/record-duty-presence.spec.md) — the
+        # honest reading of an absent key is UNCLASSIFIED, which is exactly what falling through renders.
+        # ⚠ It names the BASELINE and the refire RULE, never the axis that crossed: the token axis has no
+        # operand in the record at all, so naming a crossing would be the (required, justification-state)
+        # defect this release repairs — one layer up, in the renderer.
+        # ⚠ TWO arms, NOT one — the review round's first finding, and it was a real bug here: gating this
+        # on `standing_justified` ALONE sent a NEVER-justified record (`False`, no `baseline_facts`) into
+        # a line asserting "a density baseline EXISTS … EARNED density", a claim about a baseline that does
+        # not exist. `baseline_facts`' PRESENCE is the second coordinate, and a renderer that ignores it
+        # re-commits the very defect this release repairs. (The CHANGELOG said "four arms" while this file
+        # had three; corrected there too.)
+        # ⚠ And the cause is stated as "the gate has RE-ARMED", not "the store has grown past the refire
+        # bound": the bound is two-axis, so a TOKEN-axis lapse leaves the fact count inside Δ, and the
+        # second phrasing was a measurement this reader cannot make (the review round's third finding).
+        _lapsed = _recorded(rem, "baseline_facts")
+        out.append("")
+        out.append("  " + _c("REMEDIATION", "bold")
+                   + _c("   · over-budget gate · justification "
+                        + ("LAPSED" if _lapsed else "NEVER-JUSTIFIED"), "dim"))
+        if _lapsed:
+            out.append(f"    {_c('⚠', 'yellow')} a density baseline EXISTS (baseline "
+                       f"{_g(_num(rem.get('baseline_facts')))} facts) and the gate has RE-ARMED — EARNED "
+                       "density, not fresh bloat: do the safe relief, THEN re-stamp the baseline. "
+                       "Re-fires at +Δ facts or on index-token bloat.")
+        else:
+            out.append(f"    {_c('⚠', 'yellow')} NO density baseline is on record — there is nothing to "
+                       "restore, so this is real work, not a re-stamp. Re-fires at +Δ facts or on "
+                       "index-token bloat.")
+        if _ceil_ln:
+            out.append(_ceil_ln)
+        # The remedy is the ACTIVE-gate one (not the suppressed sibling above): the gate really is on,
+        # and `_D5_REMEDY` already names this exact sequence — prune-safe, then re-stamp.
+        if rem.get("reaches_budget") is False:
+            out.append("    " + _c(_D5_REMEDY, "dim"))
     elif rem and rem.get("required"):
         # v0.1.36: gate on `required`, NOT mere presence — a healthy record may carry remediation={required:false}
         # (the schema default), which must NOT render an over-budget block (it did pre-v0.1.36: `elif rem:`). The

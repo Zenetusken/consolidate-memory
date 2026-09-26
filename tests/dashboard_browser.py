@@ -569,6 +569,31 @@ def main(out,capture=False):
         check('partial claims never infer healthy zeroes','4' in page.locator('#verify').inner_text() and page.locator('#verify').inner_text().lower().count('not captured')>=3 and 'Partially captured' in page.locator('#verification-evidence > summary').inner_text())
         check('readable preflight time, exact IDs and unresolved attention remain conspicuous',all(t in page.locator('#store-evidence').inner_text() for t in ['Sep 5, 2026','sqlite-module','no-git']) and all(t in page.locator('#attention-items').inner_text() for t in ['Hard ceiling','Unresolved index remediation','missing-source']))
         check('partial physical changes and reads remain partial','not fully captured' in page.locator('#audit').inner_text() and 'not captured' in page.locator('#usage-evidence').inner_text().lower())
+        # v0.4.73: the justification COLUMN — three states, plus the ERA gate that keeps a fourth (the
+        # key ABSENT, i.e. every pre-v0.4.73 record) from being read as the second. The `partial` fixture
+        # just above carries `required` and no `standing_justified` at all, which IS that legacy shape;
+        # these pin what the column buys and that the absent arm still claims nothing about which it was.
+        # ⚠ `sj-lapsed` is the arm that would have caught the defect: pre-fix the store renders the bare
+        # label, so `baseline lapsed` is absent and this reds on the LABEL rather than on any count.
+        for _n,_rem,_want,_avoid in (
+            ('sj-lapsed',{'required':True,'over_ceiling':True,'standing_justified':False,'baseline_facts':77},
+             ['Unresolved index remediation (baseline lapsed: 91 > 87','earned density, re-stamp after relief'],['never justified']),
+            # ⚠ The review round's SECOND finding, pinned: the first cut rendered the crossing
+            # unconditionally, so a TOKEN-axis lapse printed `baseline lapsed: 91 > 130` — a comparison
+            # that is FALSE, and one this reader cannot adjudicate (the token baseline has no operand in
+            # the record). `130` appearing here at all is the failure.
+            ('sj-lapsed-token',{'required':True,'over_ceiling':True,'standing_justified':False,'baseline_facts':120},
+             ['Unresolved index remediation (baseline lapsed','earned density, re-stamp after relief'],['never justified','130']),
+            ('sj-never',{'required':True,'over_ceiling':True,'standing_justified':False},
+             ['Unresolved index remediation (never justified)'],['baseline lapsed']),
+            ('sj-legacy',{'required':True,'over_ceiling':True},
+             ['Unresolved index remediation'],['baseline lapsed','never justified']),
+        ):
+            _r=copy.deepcopy(record);_r['remediation']=_rem
+            _r['budget']=copy.deepcopy(_r.get('budget') or {});_r['budget']['recall_facts']={'before':91,'after':91}
+            fixture(_n,_r);open_evidence()
+            _txt=page.locator('#attention-items').inner_text()
+            check('v0.4.73 justification column — '+_n+' states its own case',all(t in _txt for t in _want) and all(t not in _txt for t in _avoid))
         zero=copy.deepcopy(record);zero.update(verification={'confirmed':0,'corrected':0,'unverifiable':0},audit={'operations':[]},usage={'reads':0,'mentions':0},scope={'git_commits':0,'session_candidates':0},entries=[])
         zero['budget']['claude_md']={'after_tokens':0};fixture('zero',zero);open_evidence()
         check('zero observations never acquire a fabricated one-unit range','0–1' not in page.locator('#trend').text_content() and '0–1' not in page.locator('#activity-inspector').inner_text())

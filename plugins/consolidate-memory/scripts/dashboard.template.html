@@ -952,6 +952,9 @@
   var BUD=(DATA.budgets&&typeof DATA.budgets==="object")?DATA.budgets:{index:1500,claude_md:4000,index_ceiling:3840};
   var IDXB=num(BUD.index,1500), CMB=num(BUD.claude_md,4000), CEIL=num(BUD.index_ceiling,3840);
   var HOOKW=num(BUD.hook_warn,60), CLIFFN=num(BUD.cliff_near,80);
+  // v0.4.73: the standing-justify refire margin, plumbed live (render_html `budgets.sj_delta`). The
+  // fallback is for a pre-v0.4.73 archive only; the value is never a second authored copy.
+  var SJD=num(BUD.sj_delta,10);
   var LIVEID=(DATA.identity&&typeof DATA.identity==="object"&&!Array.isArray(DATA.identity))?DATA.identity:{};
 
   function g(o,p,d){var c=o,a=p.split(".");for(var i=0;i<a.length;i++){if(c==null||typeof c!=="object")return d;c=c[a[i]];}return c==null?d:c;}
