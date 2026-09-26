@@ -269,6 +269,10 @@ def build_html(record: dict, history: list, generated_at: str, diffs: "dict | No
         "budgets": {"index": INDEX_TOKEN_BUDGET, "claude_md": CLAUDE_MD_TOKEN_BUDGET,
                     "index_ceiling": INDEX_CEILING_TOKENS,   # v0.1.66 (Phase B): the hard ceiling, for the meter
                     "hook_warn": ms.HOOK_TOKEN_WARN,        # v0.3.0: fat-hook threshold, live (not a hardcoded copy)
+                    # v0.4.73: the standing-justify refire margin. Plumbed, NEVER hardcoded in the
+                    # template — a second home for the constant is the two-bare-literals drift the
+                    # template's own `:833` comment already calls out.
+                    "sj_delta": ms._STANDING_JUSTIFY_DELTA,
                     "cliff_near": int(ms.CLIFF_NEAR_FRACTION * 100)},
         "total": total,
         "cap": _ARCHIVE_CAP,

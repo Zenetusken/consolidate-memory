@@ -293,7 +293,29 @@ var NocturneSections = (function(){
     add(['missing_node_type','malformed_scope','malformed_origin','index_mismatch'].some(function(k){return num(g(h,'schema_drift.'+k,0))>0 && (k!=='index_mismatch'||!(truthy(g(c,'budget.index.over',false))||truthy(rem.standing_justified)||truthy(g(c,'budget.index.unmeasurable',false))));}),'Schema drift recorded','store-checks');
     add(g(a,'conservation.possible_loss',false),'Conservation concern: possible lost relocation','file-changes');
     add(truthy(rem.over_ceiling),'Hard ceiling exceeded: new shares held','store-checks');
-    add(truthy(rem.required)&&!(measured(rem.achieved_index)&&rem.achieved_index<=IDXB),'Unresolved index remediation','store-checks');
+    // v0.4.73: the justification COLUMN. `required: true` alone cannot say WHICH kind of unresolved this
+    // is, and the two demand OPPOSITE remedies — a LAPSED justification is EARNED density (do the safe
+    // relief, then re-stamp the baseline); a NEVER-JUSTIFIED one has no baseline to restore and needs
+    // real work. Measured 2026-09-26: the two spelled identically, the pass read the lapsed store as
+    // fresh bloat, skipped the sanctioned close, and this line fired with no way to tell which it was.
+    // ⚠ THE ERA GATE IS `typeof === 'boolean'`, deliberately NOT `measured()`: `measured` is a NUMBER
+    // test (`typeof v==='number'&&isFinite(v)`), so it is FALSE for a recorded `false` and would send
+    // every lapsed store down the unclassified arm — re-committing this very bug inside its repair.
+    // ⚠ A pre-v0.4.73 record carries NEITHER key, so it falls to the bare label and is asserted NOTHING
+    // about: absence has no era gate (docs/record-duty-presence.spec.md), and the honest reading of an
+    // absent key is "unclassified", never "never justified".
+    // ⚠ The note names the BASELINE and the crossing, never the axis that crossed — the token axis has
+    // no operand in the record, so naming one would be this release's own defect one layer up.
+    var _sjBool=(typeof rem.standing_justified==='boolean'),_sjNote='';
+    if(_sjBool&&!truthy(rem.standing_justified)){
+      if(measured(rem.baseline_facts)){
+        var _sjNow=g(c,'budget.recall_facts.before'),_sjCross=measured(_sjNow)?(_sjNow+' > '+(num(rem.baseline_facts)+SJD)):null;
+        _sjNote=' (baseline lapsed'+( _sjCross?': '+_sjCross:'')+' — earned density, re-stamp after relief)';
+      }else{
+        _sjNote=' (never justified)';
+      }
+    }
+    add(truthy(rem.required)&&!(measured(rem.achieved_index)&&rem.achieved_index<=IDXB),'Unresolved index remediation'+_sjNote,'store-checks');
     add(num(id.conflicts)>0,id.conflicts+' mirror conflicts','store-checks');
     add(id.registry_state&&['healthy','absent'].indexOf(id.registry_state)<0,'Registry: '+id.registry_state,'store-checks');
     var claimKeys=['confirmed','corrected','unverifiable'], claimPresent=claimKeys.filter(function(k){return measured(v[k]);}).length;

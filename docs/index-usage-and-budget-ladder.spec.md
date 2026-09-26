@@ -240,7 +240,16 @@ rung                 threshold (this store today)          drives
 green                < 1500 est tok (target)               nothing — healthy
 amber · over target  ≥ INDEX_TOKEN_BUDGET (1500)           UNCHANGED: prune_pressure · Phase-5 sweep ·
                                                            triage OFFERED · standing-justify quiets repeats
-amber · SJ-refire    baseline +10 facts or ×1.25 tok       UNCHANGED: the triage conversation re-fires
+amber · SJ-refire    baseline +10 facts or ×1.25 tok       UNCHANGED: the triage conversation re-fires.
+                                                           ⚠ v0.4.73 — the record now carries the state
+                                                           it re-fired INTO: `standing_justified: false`
+                                                           WITH `baseline_facts` = LAPSED (density is
+                                                           EARNED ⇒ relief, then RE-STAMP); `false`
+                                                           WITHOUT it = never-justified (no baseline to
+                                                           restore). An ABSENT key is a pre-v0.4.73 record
+                                                           and asserts NEITHER — absence has no era gate
+                                                           (docs/record-duty-presence.spec.md), and that
+                                                           limit is permanent, not an oversight
 RED · over ceiling   > INDEX_CEILING_TOKENS (≈3840,        NEW, independent hard gate: may-not-net-grow ·
                      derived from 0.6 × native caps —      M1 hold (re-keyed) · --evict valve. Structurally
                      see B1's single-source note)          SJ-independent (nothing to suppress; see above)
