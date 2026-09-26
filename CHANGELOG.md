@@ -77,9 +77,11 @@ quotation of the clause it protects and stayed green when the real line was muta
 docstring records that a STRONGER, revision-anchored observable exists and is unbuilt — the tags
 re-derive 971→973 exactly; what blocks it is the `docs` CI job's shallow checkout, not a ceiling.
 
-⚠ **Do NOT restructure `SKILL.md`'s release-log blurb in this patch.** Lines 20–21 are two single-line
-paragraphs, roughly a fifth of the file and ≈10k est tok, which is *why* the number drifted: prose no
-gate reads. That is its own cycle.
+⚠ **Do NOT restructure `SKILL.md`'s release-log blurb in this patch.** ⚠ Scope, because the blurb and its
+fattest lines are different sizes: lines **20–21** are two single-line paragraphs, 41,083 chars, ≈21.7%
+of the file; the blurb itself runs on to line **123** (the `Public 1.0 stays HOLD.` sentinel) and is
+**51,729 chars / 27.3%**. Either way it is prose no gate reads, which is *why* the number drifted. That
+is its own cycle.
 
 ⚠ **RECORDED, NOT FIXED:** the Phase-1 promotion re-audit's population is exactly the facts that did
 NOT go through `local_ingress`'s single writer, which stamps `scope: project-local` on everything it
