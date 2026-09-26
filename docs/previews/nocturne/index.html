@@ -1880,9 +1880,16 @@ var NocturneSections = (function(){
     var _sjBool=(typeof rem.standing_justified==='boolean'),_sjNote='';
     if(_sjBool&&!truthy(rem.standing_justified)){
       if(measured(rem.baseline_facts)){
-        var _sjNow=g(c,'budget.recall_facts.before'),_sjCross=measured(_sjNow)?(_sjNow+' > '+(num(rem.baseline_facts)+SJD)):null;
-        _sjNote=' (baseline lapsed'+( _sjCross?': '+_sjCross:'')+' — earned density, re-stamp after relief)';
+        // ⚠ SHOW THE CROSSING ONLY WHEN IT IS TRUE (review round, second finding — the first cut printed
+        // it unconditionally, so a TOKEN-axis lapse rendered `baseline lapsed: 120 > 130`: a comparison
+        // that is FALSE, and one this reader cannot adjudicate because the token baseline has no operand
+        // in the record at all. That is this release's own defect — a value asserted without the
+        // coordinate that makes it true — re-committed in the line written to repair it.
+        var _sjNow=g(c,'budget.recall_facts.before'),_sjCap=num(rem.baseline_facts)+SJD;
+        _sjNote=' (baseline lapsed'+(measured(_sjNow)&&_sjNow>_sjCap?': '+_sjNow+' > '+_sjCap:'')+' — earned density, re-stamp after relief)';
       }else{
+        // A record that says `false` with NO `baseline_facts` is never-justified — there is nothing to
+        // restore, so the note must not borrow the lapsed arm's "earned density" remedy.
         _sjNote=' (never justified)';
       }
     }

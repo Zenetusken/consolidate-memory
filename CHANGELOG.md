@@ -49,6 +49,19 @@ defect one layer up); `sj_delta` plumbed into the HTML `budgets` rather than har
 axes. ⚠ Recorded, not fixed: `current_facts` is emitted on the suppressed path but DECLARED nowhere — a
 pre-existing producer⊇declaration violation that must not ride a patch.
 
+⚠ **This release's own review round then found TWO REAL BUGS in the first cut, both of them the class the
+release is about** — and both are fixed here, with pins. The dashboard ASCII arm was gated on
+`standing_justified` ALONE, so a **never-justified** record rendered *"a density baseline EXISTS … EARNED
+density"* — a claim about a baseline that does not exist, and the OPPOSITE of the remedy that state needs.
+And the HTML label printed the fact-axis crossing **unconditionally**, so a TOKEN-axis lapse rendered
+`baseline lapsed: 91 > 130`: a comparison that is false, and one that reader cannot adjudicate because the
+token baseline has no operand in the record. The second is the release's own defect — *a value asserted
+without the coordinate that makes it true* — re-committed in the very line written to repair it. Three
+further corrections: the "never the axis" rule held on the ASCII and was violated in the HTML; the
+renderers disagreed on a non-int `baseline_facts` (`isinstance(..., int)` vs `_recorded`) — now ONE
+predicate; and the SKILL's schema `_` note, whose prose must remain valid JSON (the pin that parses it
+caught a pair of quotes), no longer lets `baseline_facts: 0` read as the sentinel this design rejects.
+
 ## [0.4.72] — 2026-09-26
 
 **Patch — the merge lever's buildable half ships, and the SKILL says where to find it.** The lever

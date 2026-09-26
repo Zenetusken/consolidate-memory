@@ -578,6 +578,12 @@ def main(out,capture=False):
         for _n,_rem,_want,_avoid in (
             ('sj-lapsed',{'required':True,'over_ceiling':True,'standing_justified':False,'baseline_facts':77},
              ['Unresolved index remediation (baseline lapsed: 91 > 87','earned density, re-stamp after relief'],['never justified']),
+            # ⚠ The review round's SECOND finding, pinned: the first cut rendered the crossing
+            # unconditionally, so a TOKEN-axis lapse printed `baseline lapsed: 91 > 130` — a comparison
+            # that is FALSE, and one this reader cannot adjudicate (the token baseline has no operand in
+            # the record). `130` appearing here at all is the failure.
+            ('sj-lapsed-token',{'required':True,'over_ceiling':True,'standing_justified':False,'baseline_facts':120},
+             ['Unresolved index remediation (baseline lapsed','earned density, re-stamp after relief'],['never justified','130']),
             ('sj-never',{'required':True,'over_ceiling':True,'standing_justified':False},
              ['Unresolved index remediation (never justified)'],['baseline lapsed']),
             ('sj-legacy',{'required':True,'over_ceiling':True},

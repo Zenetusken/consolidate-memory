@@ -5193,10 +5193,18 @@ def _remediation_section(rem: dict) -> list:
         # (required, justification-state) defect this release repairs, one layer up.
         base = rem.get("baseline_facts")
         cur = rem.get("current_facts")
-        lapsed = isinstance(base, int)
+        # ⚠ ONE PREDICATE FOR BOTH RENDERERS (review round, fourth finding): this arm read `isinstance(base, int)`
+        # while `render_dashboard` reads `_recorded` (which is `not _duty_blank`, so a NON-EMPTY STRING counts).
+        # On a record carrying `baseline_facts: "77"` the two surfaces therefore disagreed — this one said
+        # NEVER-JUSTIFIED, the dashboard said LAPSED — which is the two-renderers-of-one-record class the
+        # v0.4.34/RC-2 work is about. `_recorded` is the canonical "carries a MEASUREMENT" test; use it.
+        lapsed = "baseline_facts" in rem and not _duty_blank(rem["baseline_facts"])
         state = "LAPSED" if lapsed else "NEVER-JUSTIFIED"
         where = (f"baseline {base} facts" + (f" · now {cur}" if isinstance(cur, int) else "")
                  if lapsed else "no baseline on record")
+        # ⚠ The line states the refire RULE, and deliberately does NOT assert a crossing: the bound is
+        # TWO-axis, so on a TOKEN-axis lapse the fact count sits inside Δ and any "N > B+Δ" phrasing would
+        # be a measurement this reader cannot make (its token baseline has no operand in the record).
         out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
                                            f"— GATE active · lever {rem['lever'].upper()} · justification "
                                            f"{state} ({where}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts "

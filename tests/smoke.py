@@ -5116,6 +5116,29 @@ check("v0.1.66 render: over_ceiling False and legacy (no key) both render NO cei
       and "CEILING" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {},
           "entries": [], "budget": {"index": {"after_tokens": 1504, "budget_tokens": 1500, "over": True}}})))
 
+# ── v0.4.73: the justification COLUMN on the DASHBOARD's ASCII — TWO arms, not one ──────────────────
+# ⚠ The review round's FIRST finding was a real bug in the release it reviewed: the arm was gated on
+# `standing_justified` ALONE, so a NEVER-justified record (`false`, no `baseline_facts`) rendered as
+# "a density baseline EXISTS … EARNED density" — a claim about a baseline that does not exist, and the
+# OPPOSITE of the remedy that state needs. `baseline_facts`' PRESENCE is the second coordinate; a
+# renderer that ignores it re-commits the very defect this release repairs, one layer up.
+_remASCII = {"required": True, "lever": "prune", "candidates_surfaced": 1}
+_njOut = rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+    "remediation": {**_remASCII, "standing_justified": False}}))
+_lapOut = rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+    "remediation": {**_remASCII, "standing_justified": False, "baseline_facts": 77}}))
+check("v0.4.73 (PIN): the dashboard ASCII tells LAPSED from NEVER-JUSTIFIED — a no-baseline record must NOT "
+      "borrow the lapsed arm's 'density baseline EXISTS … EARNED density' claim (pre-fix BOTH render the "
+      "generic over-budget arm, so this reds on the LAPSED line being absent rather than on a wrong word)",
+      "LAPSED" in _lapOut and "density baseline EXISTS" in _lapOut
+      and "NEVER-JUSTIFIED" in _njOut and "density baseline EXISTS" not in _njOut)
+check("v0.4.73 (CONTROL): `standing_justified` ABSENT is UNCLASSIFIED — it takes NEITHER new arm, because "
+      "absence carries no era gate (green on both trees: this is the arm the release must leave alone)",
+      "LAPSED" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {},
+          "entries": [], "remediation": dict(_remASCII)}))
+      and "NEVER-JUSTIFIED" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {},
+          "entries": [], "remediation": dict(_remASCII)})))
+
 # (6) the run() call-site re-key — the actual behavior change, end to end (fixtured GLOBAL + HOME)
 with _tfB.TemporaryDirectory() as _tdB2:
     _homeB2 = Path(_tdB2)
@@ -27042,10 +27065,13 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     must be read WHOLE — a PIN against the INTERMEDIATE
                                        #     81a197b, a CONTROL against f0b8767) and R4 (the two
                                        #     readers agree).
-                            + 5        # v0.4.73 — the justification COLUMN: 4 PINs (lapsed · the
-                                       #     RELAY drops no declared key · `required` is NOT relaxed ·
-                                       #     never-justified) + 1 CONTROL (the suppressed path is
-                                       #     unchanged — green on BOTH trees)
+                            + 7        # v0.4.73 — the justification COLUMN: 4 on the producer (lapsed ·
+                                       #     the RELAY drops no declared key, PIN against the
+                                       #     INTERMEDIATE · never-justified · a GUARD that `required`
+                                       #     is never relaxed) + 2 on the dashboard ASCII (LAPSED vs
+                                       #     NEVER-JUSTIFIED — the review round's first finding, a real
+                                       #     bug in the first cut) + 2 CONTROLs (the suppressed path,
+                                       #     and the ABSENT key as UNCLASSIFIED — green on BOTH trees)
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
