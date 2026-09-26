@@ -350,7 +350,11 @@ then score metrics against it.
   |---|---|---|---|---|---|
   | `f0b8767` — pre-fix | **2372 passed, 2 failed** | ✗ | ✗ | ✓ | ✓ |
   | `81a197b` — the INTERMEDIATE | **2373 passed, 1 failed** | ✓ | ✓ | ✗ | ✓ |
-  | working tree — post-fix | **2374 passed, 0 failed** | ✓ | ✓ | ✓ | ✓ |
+  | `b1e7fec` — post-fix | **2374 passed, 0 failed** | ✓ | ✓ | ✓ | ✓ |
+
+  ⚠ The post-fix row named "the working tree" in the first revision, which is not a revision — it
+  stops naming anything the moment the branch moves, and a reviewer flagged exactly that. Each row
+  now names a COMMIT, so all three points are re-runnable from this repository alone.
 
   R2 and R3 are PINs against `f0b8767`. **R3b is a PIN against the INTERMEDIATE and a CONTROL
   against `f0b8767`** — green there because no region rule existed at all — the same shape
