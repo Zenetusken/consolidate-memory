@@ -23489,7 +23489,7 @@ try:
                 "this line.\n\nTarget release: **v0.1.0 (patch)**\n")
             _o6p64 = _o6ck64 == 1 and len(_o6e64) == 1 and "Target release: v0.1.0" in _o6e64[0]
 
-            # ══ v0.4.68 — three behaviours mutation testing found UNWITNESSED ════════════════════
+            # ══ v0.4.67 — three behaviours mutation testing found UNWITNESSED ════════════════════
             # Each of these mutations left the suite at 2365/0 before these arms existed.
             # GUARD, NOT A PIN (all three are green on BOTH trees — their only witness is the
             # mutation they name, because the behaviour they assert already shipped).
@@ -23654,26 +23654,26 @@ check("v0.4.66 O6 pin (PIN — the provenance boundary anchors on the preserved 
       "quote, ending their regions at lines 3/3/9/5 rather than at their `## ` headings (5/5/11/8). "
       "A latent false negative: any pre-shipping clause in the lost continuation was invisible. "
       f"MEASURED pre-fix silent, post-fix fires): ⚠ {_o6pm64}", _o6p64)
-check("v0.4.68 O7 guard (GUARD, NOT a pin — MEASURED: unbinding the status WINDOW to the bare cap "
+check("v0.4.67 O7 guard (GUARD, NOT a pin — MEASURED: unbinding the status WINDOW to the bare cap "
       "leaves the suite GREEN, so no check saw the window's bound; only the TARGET scan's use of the "
       "region was witnessed. A declaration past the `## ` heading must NOT be examined — that is what "
       f"'the region is the preamble' means): ⚠ {_o7pm64}", _o7g64)
-check("v0.4.68 O8 guard (GUARD, NOT a pin — MEASURED: raising `_SPEC_PREAMBLE_CAP` 120 -> 10**9 "
+check("v0.4.67 O8 guard (GUARD, NOT a pin — MEASURED: raising `_SPEC_PREAMBLE_CAP` 120 -> 10**9 "
       "leaves the suite GREEN, so nothing saw the cap bind. A declaration past line 120 must not be "
       "examined; `identity-from-the-input.spec.md` (hd=149) is the live shape. ⚠ Deleting the cap "
       "term from the `min` is NOT a gap — it is an EQUIVALENT mutation (`_note <= _n` always, 0 of 58 "
       f"differ), so no arm can witness it): ⚠ {_o8pm64}", _o8g64)
-check("v0.4.68 O9 guard (GUARD, NOT a pin — MEASURED: re-adding `and not spec_done(stated)` to the "
+check("v0.4.67 O9 guard (GUARD, NOT a pin — MEASURED: re-adding `and not spec_done(stated)` to the "
       "target arm leaves the suite GREEN. ⚠ This is the defect v0.4.63 CLOSED: "
       "`asserted-support.spec.md` read 'implemented and REVIEWED ... awaiting merge' and survived TWO "
       "merges because the done-token EXEMPTED it. A header stating BOTH states, with a shipped "
       f"target and no citation, must still FIRE): ⚠ {_o9pm64}", _o9g64)
-check("v0.4.68 O10 guard (GUARD, NOT a pin — the boundary's SIDE: the region must END at the note, "
+check("v0.4.67 O10 guard (GUARD, NOT a pin — the boundary's SIDE: the region must END at the note, "
       "excluding it. Invisible on the live corpus (0 of 58 specs change their target set) only "
       "because the sweep's marker line carries no declaration, mention or target — put a target ON "
       "the marker and the off-by-one leaks it back into the operand. MEASURED: `k + 1` makes this "
       f"fixture FIRE): ⚠ {_o10pm64}", _o10g64)
-check("v0.4.68 O11 guard (GUARD, NOT a pin — the two arms stay EXCLUSIVE: a spec matching BOTH must "
+check("v0.4.67 O11 guard (GUARD, NOT a pin — the two arms stay EXCLUSIVE: a spec matching BOTH must "
       "yield ONE error, not two. The citation arm is `if`, the target arm is `elif`. MEASURED: this "
       "fixture reads checked=1, errors=1; turning the `elif` into an `if` makes it TWO, so the arm "
       f"reddens): ⚠ {_o11pm64}", _o11g64)
