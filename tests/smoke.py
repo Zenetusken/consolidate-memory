@@ -23420,14 +23420,11 @@ try:
             _a5c63 = _a5cck63 == 1 and len(_a5ce63) == 1
 
             # ══ v0.4.64 — the target arm's OPERAND ══════════════════════════════════════════════
-            # A4's arm read raw `lines[:120]`: no provenance boundary and no preamble bound. It read
-            # the preserved drafting-era blockquote — MEASURED: most target-bearing specs carry
-            # their version ONLY there (the corpus count is in the CHANGELOG and beside the operand,
-            # not restated in every arm that cites it) — and up to 120 lines of BODY. Both now come from
-            # `_spec_header_end`. ⚠ The three v0.4.63 A4 fixtures are heading-free and provenance-free
-            # (their `Target release:` sits at index 2), so every existing outcome and every `checked`
-            # number is IDENTICAL across this change — verified by reading them, not assumed. That is
-            # exactly why these new arms are needed: the narrowing is un-pinned without them.
+            # A4's arm read raw `lines[:120]` — no provenance boundary, no preamble bound — so it read
+            # the preserved drafting-era blockquote as the header's own target. Both bounds now come
+            # from `_spec_header_end`. ⚠ The pre-existing A4 fixtures are heading- and provenance-free,
+            # so every one of their outcomes is IDENTICAL across this change — which is exactly why
+            # these new arms are needed: the narrowing is un-pinned without them.
             #
             # PIN — the PROVENANCE BOUNDARY. The live declaration states a pending status; BELOW it
             # sits the sweep's preserved quote, which names a target that HAS shipped. PRE-FIX the
@@ -23439,11 +23436,8 @@ try:
                 "# Target spec\n\n**Status:** revised for review.\n\n"
                 "> **Drafting-era status — never revisited after the arc closed.** Preserved VERBATIM:\n\n"
                 "> **Status: revised for review.** Target release: **v0.1.0 (patch)**\n")
-            # ⚠ asserts the DENOMINATOR too. Both pins below assert SILENCE, and an ABSENCE-shaped pin
-            # whose `checked` is unasserted is satisfied by a gate that simply stopped reading — the
-            # rule this file's own A2 pin states, and the same gap defect 4 closes in A1/A4. ⚠ Caught
-            # by an advisor pass AFTER the first commit: defect 4 was fixed in two places and
-            # re-committed here, in the commit that describes fixing it.
+            # ⚠ asserts the DENOMINATOR too: both pins below assert SILENCE, and an absence-shaped pin
+            # whose `checked` is unasserted is satisfied by a gate that stopped reading.
             _o1p64 = _o1ck64 == 1 and not _o1e64
             # PIN — the PREAMBLE BOUND. A clean pending header, then a `## ` heading, and the target in
             # the BODY below it. PRE-FIX `lines[:120]` reached it and fired; post-fix the heading ends
@@ -23453,24 +23447,13 @@ try:
                 "# Target spec\n\n**Status:** revised for review.\n\n## Body\n\n"
                 "Target release: **v0.1.0 (patch)**\n")
             _o2p64 = _o2ck64 == 1 and not _o2e64
-            # ⚠ v0.4.65: an "O3 control" stood here asserting that the arm still FIRES on a shipped
-            # target in the real preamble. It was REMOVED because it was **byte-identical to the
-            # v0.4.63 A4 pin's own fixture** (`smoke.py:23379` — those two fixtures were
-            # BYTE-IDENTICAL; ⚠ this tombstone first said "the string occurs 4x", which counted a
-            # SUBSTRING: four fixtures in this file CONTAIN that target line but have four different
-            # tails, and only the deleted one matched the A4 pin exactly — the same wrong-operand
-            # error the release is about),
-            # so it asserted what an existing pin already asserts, added no coverage, and inflated
-            # the D6 count by one. ⚠ Its stated job — being the guard against the narrowing's own
-            # over-correction — was never one it could do anyway: its fixture carries no provenance
-            # note, and over-cutting in the note's PRESENCE is the only over-correction the new
-            # helper introduces. That job belongs to O5 below, whose fixture has one.
-            # GUARD, NOT A PIN — the per-line `_ix` locator's new bound is a NO-OP. MEASURED PRE-FIX
-            # (the only informative direction — post-fix the bound forbids it by construction): **0 of
-            # the 26** note-carrying specs land at or after the note, so it cannot redden pre-fix and
-            # must not be called a pin. Kept as a regression guard for the day a spec puts
-            # the note ABOVE its declaration: the whole header then reads as history and the spec is
-            # correctly SKIPPED (examined 0), never read from the quote.
+            # ⚠ v0.4.65 REMOVED an "O3 control" from here: its fixture was byte-identical to the
+            # v0.4.63 A4 pin's (`smoke.py:23379`), so it added no coverage. That job — guarding the
+            # narrowing's own over-correction — needs a fixture WITH a note, and belongs to O5 below.
+            # GUARD, NOT A PIN — MEASURED PRE-FIX (the only informative direction): **0 of the 26**
+            # note-carrying specs land at or after the note, so it cannot redden pre-fix. Guards the
+            # day a spec puts the note ABOVE its declaration — the header then reads as history and
+            # the spec is correctly SKIPPED, never read from the quote.
             _o4ck64, _o4e64, _o4pm64 = _arm63(
                 "target.spec.md",
                 "# Target spec\n\n> Preserved verbatim:\n\n**Status:** revised for review.\n")
