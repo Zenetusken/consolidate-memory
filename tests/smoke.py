@@ -5029,8 +5029,14 @@ with _tfB.TemporaryDirectory() as _tdB:
         # ── v0.4.74: `current_facts` DECLARED, and the relay that now has to carry it ──────────────
         # ⚠ Both arms below are PINs, NOT controls: pre-change the key is absent from BOTH record shapes,
         # so each reds on its own. v0.4.73 declared `baseline_facts`/`standing_justified` and left
-        # `current_facts` emitted-but-undeclared — which is why the ASCII's `· now N` silently vanishes on
-        # every record that predates this patch.
+        # `current_facts` emitted-but-undeclared, so the RECORD carried no fact count.
+        # ⚠ NOT "the ASCII's `· now N` vanishes on every record predating this patch" — that was this
+        # patch's FIRST claim, and the review round MEASURED it false on two independent passes:
+        # `print_report` hands `_remediation_section` the LIVE CTX (`memory_status.py:5668`), which always
+        # carried the key, so NO rendered surface was broken and the lapsed line reads its `· now N` on
+        # BOTH trees. What was missing is the RECORDED value. The false version of this sentence stood in
+        # four surfaces; it is corrected in all four, and the correction is kept rather than quieted
+        # because a comment that teaches a mechanism for an untested reason outlives the patch.
         (_stB / ".consolidation-state.json").write_text(_jsonB.dumps(
             {"commit": "x", "timestamp": "2026-07-01T00:00:00Z"}), encoding="utf-8")
         _ctxCF = _ctxAt(4000)                        # over-target, never justified
