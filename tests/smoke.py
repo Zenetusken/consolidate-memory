@@ -13635,6 +13635,32 @@ with _Env73() as _e_pr2:
     (_e_pr2.store / "MEMORY.md").write_text(
         "# Memory Index\n\n- [listed-live](listed-live.md) — hook\n", encoding="utf-8")
     _rep_pr2 = _li_rb3.local_rebuild_index(_ctx_pr2)
+# v0.4.70 — R5's SIBLING. `apply_pointer` was fixed to stop it rewriting a line its own reader
+# does not count as a pointer; the two WRITERS that DELETE a pointer kept the bare-substring form,
+# so the same fixture reddens here that R5 fixed there. Fixture: MEMORY.md holding a real pointer
+# for the fact AND a prose line that merely quotes the shape — exactly what §2.3's residual
+# describes, and measured to occur in this store.
+with _Env73() as _e_v70:
+    _ctx_v70 = sc.resolve_store(_e_v70.proj)
+    (_e_v70.store / "archived-fact.md").write_text(
+        "---\nname: archived-fact\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_v70.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n"
+        "See [archived-fact](archived-fact.md) for the mechanism.\n\n"
+        "- [archived-fact](archived-fact.md) — a real pointer\n", encoding="utf-8")
+    _rep_v70 = _li_rb3.local_archive(_ctx_v70, "archived-fact")
+    _after_v70 = (_e_v70.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("v0.4.70 R8 (PIN): `local_archive` removes the POINTER LINE and keeps PROSE that merely "
+          "quotes the shape. The bare-substring form it used dropped ANY line containing "
+          "`](stem.md)` — MEASURED on the security review's fixture (2026-09-25): two lines "
+          "removed where one was intended, i.e. an ordinary archive operation silently deleted "
+          "content from the always-loaded index. Same defect `apply_pointer` carries R5 for, in a "
+          "DIFFERENT writer — and there were TWO copies of it (`local_forget` and `local_archive`), "
+          "which is why the repair is one helper both call rather than two edits "
+          "(pre-fix: the prose line is gone too)",
+          _rep_v70 is not None
+          and "See [archived-fact](archived-fact.md) for the mechanism." in _after_v70
+          and "](archived-fact.md) — a real pointer" not in _after_v70)
     check("v0.4.32 P11 (PIN, the recorded residual + its evidence — red on BOTH earlier "
           "revisions): a pointer-LINE-shaped link in a stray store-root doc stays "
           "indistinguishable from an archive, so the stem is declined; the plan must then name "
@@ -26917,7 +26943,7 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     it cannot redden pre-fix
                                        #     and is NOT a pin. ⚠ Three of the five are
                                        #     deliberately not pins, and say so in their text.
-                            + 5        # v0.4.68 — the pointer's ROLE and REGION. THREE PINs and a
+                            + 6        # v0.4.68 — the pointer's ROLE and REGION. THREE PINs and a
                                        #     CONTROL: R2 (mid-prose), R3 (quoted item below a
                                        #     divider), R3b (a `## `-sectioned doc with NO divider
                                        #     must be read WHOLE — a PIN against the INTERMEDIATE

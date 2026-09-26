@@ -5,6 +5,35 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.70] — 2026-09-26
+
+**Patch — R5's sibling, in two writers.** The security review of v0.4.68 closed with a LOW it had
+not been asked for and that v0.4.68 did not touch: while `apply_pointer` was being fixed to stop it
+rewriting a line its own reader does not count as a pointer, **the two writers that DELETE a
+pointer kept the bare-substring form**. `local_forget` and `local_archive` each dropped ANY line
+containing `](stem.md)` — so a prose line that merely *quotes* the pointer shape was deleted from
+the always-loaded index by an ordinary archive or forget. MEASURED on the review's fixture: **two
+lines removed where one was intended.**
+
+⚠ The reason this is a release and not a nit is the shape, not the size. R5's own claim is that
+**the read rule and the write rule are the same rule** — and in v0.4.69 that was true of one writer
+and false of two, which is the weakest-enforcement-site pattern this store keeps paying for. The
+repair is therefore **one helper both writers call** (`_drop_pointer_lines`), not two edits: two
+copies of a rule is exactly how a second spelling gets acquired. Scope is the reader's own
+`pointer_lines`, so a line the reader cannot see as a placement is never deleted for being one.
+
+⚠ **Found by a review that was pointed at a different question**, and named in the same report that
+found the quadratic: the LOW was recorded as "pre-existing, not in the diff". It is the class the
+release it was reported against was *about*, one writer over.
+
+Measured, same harness bytes, markers verified at 0:
+```
+pre-fix  (local_ingress at v0.4.69) : 2375 passed, 1 failed   — R8, exactly
+post-fix (v0.4.70)                 : 2376 passed, 0 failed
+```
+`R8` is a PIN — red pre-fix, green post-fix. Design of record: `security/findings-2026-09-25-v0468-review.md`
+(local, gitignored).
+
 ## [0.4.69] — 2026-09-26
 
 **Patch — a quadratic the release made fixable, and the enumeration §4 was waiting on.** Three
