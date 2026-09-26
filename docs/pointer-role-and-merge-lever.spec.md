@@ -46,15 +46,21 @@ citation would be resolved like one, fail, and be right to fail. (An adversarial
 the bare form as unresolvable and this document briefly "fixed" it into the citation shape. The
 gate refused it. The reviewer's remedy was the defect.)
 
-Two live harms, both reproduced this week:
+Two harms. ⚠ **Only the first was ever LIVE**, and this document's first revision said "both
+reproduced this week" — an overstatement one adversarial reviewer caught, and it is worth being
+exact about because the two harms have very different standing:
 
 - **H1 — quoted prose conferred archive membership.** Because of `:322` and `:550`,
   `distill-feature-plan` and `arc-a-qa-harness-teeth-evidence` read as ARCHIVED for months although
   no archive operation ever placed them. Measured: `index_fact_names(SHIPPED.md)` returns 3 stems,
   of which only one is above the divider.
-- **H2 — an example in prose became a fact.** A header note added to `SHIPPED.md` quoted the
+- **H2 — an example in prose became a fact. ⚠ NOT a live harm.** A header note added to
+  `SHIPPED.md` quoted the
   pointer shape literally as its illustration; `_LINK_RE` counted the illustration and the store
   reported a phantom fact named `stem` — `DANGLING: ['stem']`, `placed 92` against `91` bodies.
+  It was caught the same day the note that caused it was written and never reached a reader as a
+  wrong answer. It is recorded because it is the defect's cleanest demonstration — prose became a
+  fact with no other rule involved — not because anyone was misled by it.
 
 **This is not an unknown defect.** `docs/periphery-parity.spec.md:587` records it as *"§2.3's
 residual: a doc whose link is formatted as a pointer line is structurally indistinguishable from a
@@ -170,7 +176,9 @@ line is worse than no coordinate, because it looks checkable.
 
 The preferred home is `index_admission`, which already owns `archive_index` (`f0b8767:64`)
 — the reader every placement question is currently answered through, and the one
-`local_ingress._rebuild_plan` already consults (`local_ingress.py:896-903` reads its `targets`,
+`local_ingress._rebuild_plan` already consults (`f0b8767:916` reads its `targets` — ⚠ this
+document first cited `:896-903`, which is a COMMENT block in the same function; an adversarial
+review caught it, which is the argument for resolving a coordinate before trusting it,
 deliberately not its `admitted`).
 
 **Keep `_LINK_RE` raw; compose, do not edit.** The anchor regex should stay a plain anchor matcher,
@@ -255,7 +263,8 @@ the five `tests/smoke.py` multi-pointer-line pins are the evidence it changed no
 ### 3.5 The rebuild coupling, stated precisely
 
 `_rebuild_plan` reads membership through the shared `archive_index` reader, so R1/R3 reach it for
-free. What remains name-based is the **fact glob** (`local_ingress.py:918`,
+free. What remains name-based is the **fact glob** (`f0b8767:922` — cited as `:918` in this
+document's first revision, four lines off),
 `if f.name in ("MEMORY.md", "SHIPPED.md") … continue`) — a different site answering a different
 question ("is this file a fact?" not "what does this archive place?"). It is **named here and not
 silently widened**; a new archive document added under a different name would be globbed as a fact,
@@ -363,9 +372,15 @@ then score metrics against it.
   **description-similarity** signal; the prefix and link-overlap probes are this document's alone.
 - The merge probe: three read-only scripts run over the live store, reusing the store's own
   primitives and constants (`_frontmatter`, `extract_wikilinks`, `resolve_wikilink`, `_is_mirror`,
-  `_DEMOTION_SIMILAR`, `INDEX_CEILING_TOKENS`). The probe re-implements the *population walk* (the
-  real `demotion_candidates` caps its output to `_DEMOTION_BOTTOM_K` surfaced rows, which is exactly
-  what a merge detector must see past); it reuses the metric and thresholds themselves.
+  `_DEMOTION_SIMILAR`, `INDEX_CEILING_TOKENS`). The probe re-implements the *population walk*, and
+  ⚠ **the reason this document gave for that was imprecise** — corrected here. It said the real
+  `demotion_candidates` "caps its output to `_DEMOTION_BOTTOM_K` surfaced rows"; the cap bounds the
+  *returned rows*, not the *population*. Measured: `eligible = 49`, `surfaced = 5`. The probe's own
+  population is the **86 indexed non-mirror facts**, which no cap touches — so the walk is
+  re-implemented because a merge detector must see the whole indexed population rather than the
+  capped triage rows, not because the population is hidden. The reviewer confirmed the population is
+  **right and revision-independent**; only the stated reason was wrong. The metric and thresholds
+  themselves are reused.
 
 ## 6. Honest limits and open items
 
@@ -433,6 +448,12 @@ then score metrics against it.
   `session_beacon.py:298`, and all three read **`MEMORY.md`** — a pure pointer list with no divider
   and no prose — so R2 and R3 are no-ops for them today. That is why they sit in §3.3's residual
   rows rather than its converged ones; the reason is a measurement, not a deferral.
+- ⚠ **A limitation the review added: 10 of 91 descriptions repeat within themselves.** The
+  description-similarity probe compares `description:` fields pairwise, and a field that restates its
+  own wording carries similarity a reader would not call a merge signal. This does not rescue the
+  metric — the measured maximum (0.432) is far below the threshold either way — but it is part of why
+  that metric is the wrong *instrument* for this question rather than merely badly tuned, and it was
+  found by measuring the operand rather than by reasoning about it.
 - **The evaluation is a snapshot.** The probe's figures belong to the store at 86 indexed facts on
   2026-09-26 and to the revision they were measured on. A later pass must re-measure rather than
   carry them.
