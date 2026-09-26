@@ -8,7 +8,11 @@ size, because it is the always-loaded tier and this one is read on demand; it
 points here for the detail. Where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
-`MEMORY.md` index.
+`MEMORY.md` index. ⚠ That split is a property of the CONFIGURATION, not of these
+files: it holds because Claude Code's default `instructionFiles` mode is
+`claude-md-or-agents-md`, under which a project carrying its own `CLAUDE.md` does
+NOT also load `AGENTS.md`. Set `claude-md-and-agents-md` — or open this repo under
+Codex, whose native convention `AGENTS.md` is — and BOTH files are always-loaded.
 
 ## What this is
 

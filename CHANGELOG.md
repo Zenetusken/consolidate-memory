@@ -10,10 +10,13 @@ version changes on `main`.
 **Patch — the shipped surface that contradicted its own record, and the always-loaded file that was
 the stale copy.** Three findings, one class: a surface asserting a claim its source of record refutes.
 
-**1 · `SKILL.md` said v0.4.76 cost "three checks". It cost TWO.** `CHANGELOG.md` (this file) says
-"⚠ Cost: **TWO** checks, MEASURED" and explicitly records "an earlier draft of this line said THREE".
-The released SKILL — public, loaded by every session that uses the plugin — carried the retracted
-figure. ⚠ **Nothing could see it:** `SKILL.md` is not among `mypy`'s inputs, and the cycle-record
+**1 · `SKILL.md` said v0.4.76 cost "three checks". It cost TWO.** The `[0.4.76]` section below records
+the cost as **TWO** checks, MEASURED, and explicitly names "three" as the withdrawn draft. The released
+SKILL — public, loaded by every session that uses the plugin — carried the retracted figure.
+⚠ **That sentence is written the long way round on purpose.** This entry's first cut QUOTED the clause
+verbatim, which put a second, false anchor above the real one and made the new `Cost:` pin read a
+quotation instead of the release's own line — it stayed green when `[0.4.76]`'s clause was mutated to
+`THREE`. The matcher now skips quoted mentions too (see `_COST_RE`), but not quoting it is cheaper. ⚠ **Nothing could see it:** `SKILL.md` is not among `mypy`'s inputs, and the cycle-record
 validator checks container types, never a scalar. MEASURED, both matchers, same answer:
 `^check(` sites **971 → 973** (D6 **+2**); suite totals **2394 → 2396**.
 
@@ -37,8 +40,23 @@ pointer that drops a binding rule moves it from always-loaded to on-demand *sile
 enforcement-erosion failure, and `dream_procedure.py` was the one whose loss would have been silent.
 
 **Measured outcome:** `CLAUDE.md` **4140 → 2900 tok** (Layout alone 1567 → 193) — under the 4000 budget
-for the first time. The other five sections are unchanged; nothing binding was dropped, and the
-"binding" set is the enumeration above rather than an assurance.
+for the first time. The other five sections are unchanged, and an independent completeness audit
+verified that no fact carried by the old Layout is missing from the post-fix tree, and that all five
+always-loaded directives survive **inside `CLAUDE.md`** (not merely in `AGENTS.md`).
+
+⚠ **The tier trade, named rather than implied.** Five architectural invariants that a CLAUDE.md reader
+used to see are now on-demand only: `store_context.py` is the sole native/canonical path constructor ·
+`canonical_ingress.py` the sole canonical writer · `mirror_conflict.py` never silently overwrites a
+local edit · `index_admission.py`'s 200-line/25KB applies to `MEMORY.md`, not the global catalog · the
+beacon is read-only and never runs `detect_stacks`. All five are in `AGENTS.md`, four are mechanically
+enforced elsewhere (smoke pins, the single writer path, the cached beacon verdict), and the pointer is
+loud rather than silent — but the migration IS a migration.
+
+⚠ **And the saving is a property of the CONFIGURATION, not of the files.** `AGENTS.md` is on-demand
+only because Claude Code's default `instructionFiles` mode is `claude-md-or-agents-md` (a project with
+its own `CLAUDE.md` does not also load `AGENTS.md`). Under `claude-md-and-agents-md` — or under Codex,
+whose native convention `AGENTS.md` is — both files are always-loaded and the ~1240-token saving
+vanishes. Nothing in this repo named that condition before; it is named here.
 
 ### Arms
 
@@ -63,9 +81,11 @@ revision. Two-surface agreement against this file is the ceiling. ⚠ It also ca
 arm** — a reworded clause yields `None` on both sides, and `None == None` is green, which is how the
 drift would return silently. Absence is an error, never a skip.
 
-⚠ **Do NOT restructure `SKILL.md`'s release-log blurb in this patch.** Lines 20–21 are **39,815 bytes —
-two single-line paragraphs, 21.18% of the file, ≈9,953 est tok** — which is *why* the number drifted:
-prose no gate reads. That is its own cycle.
+⚠ **Do NOT restructure `SKILL.md`'s release-log blurb in this patch.** Lines 20–21 are **41,544 bytes —
+two single-line paragraphs, 21.9% of the file, ≈10,386 est tok** — which is *why* the number drifted:
+prose no gate reads. That is its own cycle. (⚠ Re-measured on the FINAL tree; this figure read 39,815
+when first written and this commit's own edits moved it — a present-tense number about a tree it no
+longer matched, which is the class under repair. Caught by the adversarial round.)
 
 ⚠ **RECORDED, NOT FIXED:** `memory_status._is_promotion_candidate` fires on `not fm.get("scope")`, but
 `local_ingress.py:388` stamps `scope: project-local` on **every** new fact. So the Phase-1 promotion

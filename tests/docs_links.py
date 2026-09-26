@@ -1369,11 +1369,26 @@ def check_spec_status() -> int:
 # read "Cost: three checks" while CHANGELOG.md recorded TWO and explicitly named "three" as the
 # withdrawn draft. Both shipped. No matcher read either.
 
-# ⚠ Both files are reverse-chronological, so the FIRST `Cost:` clause in each is the most
-# recent one on that surface — which is what makes "first match" the right pairing rather than
-# an accident. If a future release adds the clause to one surface and not the other, these two
-# firsts stop naming the same release and the check reddens; that is a true alarm, not noise.
+# ⚠ Both files are reverse-chronological, so the first READABLE `Cost:` clause in each is the most
+# recent one on that surface — which is what makes "first match" the right pairing rather than an
+# accident.
+#
+# ⚠ AND "READABLE" IS LOAD-BEARING, because a QUOTATION is not a claim. MEASURED, caught by the
+# adversarial round on this pin's own first cut: the v0.4.77 CHANGELOG entry QUOTED v0.4.76's
+# clause while explaining the defect, which put a `Cost:` match ABOVE the real one — the pin then
+# read the quotation, left v0.4.76's own line unread, and stayed GREEN when that line was mutated
+# to `THREE`. It was green on a wrong figure at the exact site it exists to protect, and its
+# failure message named the wrong file to correct. A pin anchored one release above its subject
+# looks healthy (`a-mis-aimed-anchor-errors-it-does-not-fail`,
+# `substring-needle-can-select-a-second-subject`).
+#
+# So a match inside a quotation is SKIPPED: if the four characters before it carry a quote or a
+# backtick, the clause is prose ABOUT a claim, not a claim. ⚠ STATED BOUND: this is a HEURISTIC,
+# not a parse — a deeply nested or oddly-punctuated quotation could still slip through, and a
+# legitimate clause preceded by a stray quote within those four characters would be skipped (which
+# fails LOUD, via the missing-clause arm, never silently).
 _COST_RE = re.compile(r"Cost:\s*\**\s*([A-Za-z]+|\d+)\**\s+checks?")
+_QUOTE_CHARS = '"\'`“”‘’'
 
 
 def _cost_claim(body: str) -> "str | None":
@@ -1385,8 +1400,12 @@ def _cost_claim(body: str) -> "str | None":
     `a-text-check-reads-prose-about-its-subject` names; extracting the clause is what gives
     this one something to fail on.
     """
-    m = _COST_RE.search(body)
-    return m.group(1).upper() if m else None
+    for m in _COST_RE.finditer(body):
+        before = body[max(0, m.start() - 4):m.start()]
+        if any(c in _QUOTE_CHARS for c in before):
+            continue  # a quotation, not a claim — see _COST_RE's note
+        return m.group(1).upper()
+    return None
 
 
 def check_cost_claim_agreement() -> int:
@@ -1396,12 +1415,16 @@ def check_cost_claim_agreement() -> int:
     green. This catches DRIFT between them, not error in either: it is a consistency pin,
     never an oracle.
 
-    ⚠ AND NO STRONGER OBSERVABLE EXISTS — said plainly so a reviewer stops looking. The
-    quantity is "how many checks did a PAST change add", a property of a DIFF, not of the
-    current tree. Today's suite total and today's `check(` stocks are all STOCKS, and none of
-    them is comparable to a historical delta; a shipped gate cannot check out the pre-fix
-    revision. Two-surface agreement against the CHANGELOG — the release-notes source of
-    record — is the ceiling.
+    ⚠ A STRONGER OBSERVABLE DOES EXIST, AND THIS FIRST SAID IT DID NOT — corrected, not
+    re-argued. The claim was "a shipped gate cannot check out the pre-fix revision", and it is
+    FALSE for this repo: `v0.4.75` and `v0.4.76` are both tagged, `git show v0.4.75:tests/smoke.py
+    | grep -c '^check('` re-derives the CHANGELOG's 971 → 973 exactly, and `.github/workflows/
+    ci.yml` sets `fetch-depth: 0` in two jobs for precisely this reason (smoke's citation gate
+    already resolves historical revisions). The REAL limit is narrower and one line from solved:
+    the `docs` job's own `actions/checkout` takes no `fetch-depth`, so THAT job is shallow and
+    cannot see the tags. What this check therefore is: the cheap, always-available half. A
+    revision-anchored re-derivation would be strictly stronger and is a candidate for its own
+    cycle — recorded here so the next reviewer does not have to rediscover the tags.
     """
     seen: dict[str, str] = {}
     for rel in ("plugins/consolidate-memory/skills/consolidate-memory/SKILL.md", "CHANGELOG.md"):
@@ -1478,16 +1501,27 @@ def check_layout_pointer() -> int:
     if not re.search(r"AGENTS\.md`?\s*§\s*Layout", claude):
         return 0  # delegates something else; not this check's contract
     agents = read("AGENTS.md")
-    if not re.search(r"^## Layout\s*$", agents, re.M):
+    m = re.search(r"^## Layout\s*$(.*?)(?=^## |\Z)", agents, re.M | re.S)
+    if m is None:
         err("CLAUDE.md points at `AGENTS.md` § Layout, but AGENTS.md has no `## Layout` section")
         return 0
+    # ⚠ Scoped to the SECTION, never the whole file — and the scope was NARROWED after measuring.
+    # The first cut tested `entry not in agents` over the entire file. MEASURED by the adversarial
+    # round: move the single `dream_procedure.py` line out of `## Layout` and into
+    # `## Core contracts` and it stayed GREEN, while the pointer's own promise — the tree "carries
+    # `docs/adr/` and the full `tests/` inventory" — was provably broken. The claim is about a
+    # SECTION, so a whole-file matcher cannot see the one thing it is about. (The Dev-loop check
+    # above already scoped to its fence and said why; this one did not, which is why it is the one
+    # that shipped a hole.)
+    section = m.group(1)
     # The entries the delegation's authority rests on. `dream_procedure.py` first by weight:
     # it was absent from AGENTS.md ENTIRELY before v0.4.77, so it is the entry whose loss
     # would be silent — a reader of the pointer would never learn the file exists.
     for entry in ("dream_procedure.py", "local_ingress.py", "docs/adr/", "docs_links.py"):
-        if entry not in agents:
-            err(f"AGENTS.md no longer names {entry!r}, but CLAUDE.md points here as the "
-                f"authoritative tree — a gap here is a gap in the always-loaded tier")
+        if entry not in section:
+            err(f"AGENTS.md's `## Layout` section no longer names {entry!r}, but CLAUDE.md points "
+                f"at that section as the authoritative tree — a gap here is a gap in the "
+                f"always-loaded tier")
     return 1
 
 
