@@ -15,8 +15,10 @@ correct here. A fact in the private memory store is named by stem and never give
 coordinate — the store is not in this repository, so no revision can answer for it.
 
 **STATUS (2026-09-26): the RULE and its reader convergence are IMPLEMENTED on
-`fix/v0.4.68-pointer-role`, measured (§5), and awaiting review and merge. NOT implemented: §4's
-skill amendment, and the named residuals in §6. Those are listed there rather than implied closed.**
+`fix/v0.4.68-pointer-role`, measured (§5), and have been through one adversarial review round — which
+FALSIFIED two claims in this document (§3.2's boundary argument and §6's fleet measurement). Both are
+corrected above, with the falsified forms kept visible. NOT implemented: §4's skill amendment, and
+the named residuals in §6. Those are listed there rather than implied closed.**
 Target release: **v0.4.68 (patch)** — settled by measurement, not by argument (§6): the fleet scan
 found exactly one store changes, and no install's record contract moves.
 
@@ -114,12 +116,33 @@ them** — not the line-scoped reading, not the stricter anchor-scoped one. R2 f
 fixes H1, and the reader conferring the bad membership is the canonical one every placement
 question already flows through.
 
-### 3.2 The boundary idiom is reused, not invented
+### 3.2 The boundary idiom was reused — and REUSING IT WAS THE DEFECT
 
-R3 uses the same "whichever comes first" derivation as `tests/docs_links.py::_spec_header_end`. This
-repo spent the v0.4.64–67 arc learning that **a boundary is a property of the FIELD, not of the
-reader that happened to observe the defect**, and paid for it twice. A second boundary idiom here
-would be that same defect with a new spelling.
+⚠ **This section argued the opposite in the first revision, and it was wrong. It is kept in its
+corrected form because the error is the most instructive thing in this document.**
+
+The first revision had R3 terminate the region at "the first `---` **or** the first `## `, whichever
+comes first", justified as reusing `tests/docs_links.py::_spec_header_end`'s existing derivation so
+that the repo would have one boundary idiom rather than two. The reasoning appeals to a lesson this
+repo has paid for twice — **a boundary is a property of the FIELD, not of the reader that happened
+to observe the defect** — and it applied that lesson wrongly. *One idiom per field* is the rule.
+Spec files and archive indexes are **different fields**:
+
+- A **spec file**'s header is preamble prose, and `## ` terminates it because everything after the
+  first section is body. That is `_spec_header_end`'s contract, and it is correct FOR SPECS.
+- An **archive index**'s headings are **organizational**, and its pointers live **beneath** them.
+  `## ` terminates nothing.
+
+Importing the disjunct across that line was not reuse; it was the same defect with a new spelling,
+and the field paid for it immediately — see §6's measured regression. **R3 now reads the `---` rule
+and nothing else.** A document with no `---` is returned whole, which is fail-open: it reproduces
+the behaviour that preceded the rule, so no store can lose a placement it previously had.
+
+The `---` is the archive's own divider — the only marker that means *machine list above, prose
+below* — and it is the only one the rule may read. ⚠ And note the corroboration that this repo's own
+`SHIPPED.md` did **not** expose the bug: its `---` is at line 18 and its first `## ` at line 20, so
+it survived on **marker ordering luck**. A rule validated only against the document that motivated
+it inherits that document's accidents.
 
 ### 3.3 The one home, and the readers that converge on it
 
@@ -253,6 +276,25 @@ operator, never in a metric that cannot carry it.
 
 ## 5. Evidence and provenance
 
+- **The three-point measurement, and why there are three.** The four new checks were run on THREE
+  trees, not two, because a correction landed between them and one check is defined against the
+  revision that was corrected. Full copies, same `tests/smoke.py` bytes on every tree (sha256
+  compared), markers verified at 0 before each run:
+
+  | tree | result | R2 | R3 | R3b | R4 |
+  |---|---|---|---|---|---|
+  | `f0b8767` — pre-fix | **2372 passed, 2 failed** | ✗ | ✗ | ✓ | ✓ |
+  | `81a197b` — the INTERMEDIATE | **2373 passed, 1 failed** | ✓ | ✓ | ✗ | ✓ |
+  | working tree — post-fix | **2374 passed, 0 failed** | ✓ | ✓ | ✓ | ✓ |
+
+  R2 and R3 are PINs against `f0b8767`. **R3b is a PIN against the INTERMEDIATE and a CONTROL
+  against `f0b8767`** — green there because no region rule existed at all — the same shape
+  `tests/smoke.py`'s v0.4.32 P8 uses. R4 is a CONTROL on all three. D6 (the self-counting pin)
+  holds on all three, since the check COUNT is identical and only outcomes differ.
+  ⚠ One tree had to be rebuilt mid-review: `git checkout -- <paths>` restores from the **INDEX**,
+  so on a branch where the fix is already committed it restores the FIX, not the pre-fix code —
+  and the run looks entirely plausible. The marker check is what caught it (7/5/4 occurrences where
+  0 was required), which is the recorded `a-failed-checkout-compares-one-tree-to-itself` failure.
 - The defect and the two harms: **measured** on the live store 2026-09-25/26 (`index_fact_names`,
   `placed_fact_names`, a `_LINK_RE` count over `SHIPPED.md`).
 - The recorded residual: `docs/periphery-parity.spec.md:254`, `:479`, `:587`.
@@ -271,13 +313,33 @@ operator, never in a metric that cannot carry it.
 
 ## 6. Honest limits and open items
 
-- **Fleet blast radius — MEASURED, and it is one store.** R2/R3 change what counts as placed for
-  every store, not just this one, so the effect was measured across the fleet rather than assumed:
-  **3529 stores scanned, exactly ONE archive changes** — this repository's own `SHIPPED.md`
-  (divider at line 18) — losing exactly the two stems that had already been restored by hand. Every
-  other store reports `LOSES: []`. The surface exists (`placed_fact_names` feeds the health sweep),
-  so a store that did lose membership would self-report rather than revert silently — but on this
-  measurement none does.
+- ⚠ **Fleet blast radius — the claim as first written was FALSE, and an adversarial review falsified
+  it. The corrected measurement is below; what it originally said is kept because the miss is the
+  evidence.** It claimed *"3529 stores scanned, exactly ONE archive changes."* Two things were wrong.
+  **(1) The denominator.** 3529 counted DIRECTORIES: of 3553 store dirs, **3524 hold zero `*.md`
+  files** — empty dirs left by every session and fixture that ever ran. The effective fleet is **29
+  populated dirs holding 619 documents**, of which **28 are archives**, and the number is not even
+  stable while you scan it (concurrent sessions create dirs; it read 3541, 3547, 3553 minutes apart).
+  The inflated figure carried the rhetorical weight of *"measured across the fleet, not assumed"*.
+  **(2) The scan modelled ONE of R3's two boundary disjuncts.** It tested the `---` rule only, so it
+  could not see the class that the `## ` rule broke — and the two classes have the same size. It
+  missed a second store's `SHIPPED.md` (named here by shape and not by slug, which is a machine
+  identity and not this repo's to publish), a store whose
+  archive is `# Title` + preamble + `## <date>` sections with **63 pointer lines underneath and no
+  `---` at all**: the `## ` clause sliced its region to the six-line preamble, took **57 archived
+  placements to 0**, and drove its drift count **4 → 61** — the §2.3 residual reopened, in the
+  direction *away* from the truth.
+  **Corrected measurement (independent scan, instrument imported from the artifact, set-to-set,
+  `_LINK_RE` extracted from the `f0b8767` blob rather than retyped):** with the `## ` clause removed,
+  **4 documents change and exactly ONE of them is an archive** — this repo's own `SHIPPED.md`,
+  losing exactly the two stems already restored by hand. The other **three are FACT documents**
+  (`co_residence_modes_2026_05_27.md`, `consolidate-memory-roadmap.md`,
+  `verify-deltas-against-committed-shas.md`), which is the same set §6's "wrong operand" note already
+  records: they carry no archive frontmatter, `_is_archive_index` rejects them, and **no reader scans
+  them**. **Stores whose indexed/archived tier pair changes: 0.**
+  ⚠ The claim is therefore TRUE for the shipped rule — but it was written for a rule that was not
+  shipped, and it was true of *that* rule only by not looking. A measurement that agrees with the
+  conclusion it was gathered to support deserves the scepticism it got.
 - **The version bump — patch, settled on that evidence.** `CLAUDE.md`'s policy asks whether an
   existing install BREAKS. No schema, CLI, or manifest surface moves; legacy cycle records still
   render; the one store whose answer changes changes it toward the truth. The earlier note calling

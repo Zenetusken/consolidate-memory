@@ -19,21 +19,36 @@ _POINTER_TARGET_RE = re.compile(r"\]\(([^)]+)\)")
 # ── the pointer rule: ONE home for each half ────────────────────────────────────────────────────
 # A store document answers "which facts do I place?" by two rules that used to be re-spelled in
 # five modules, and the copies disagreed. They live here now, and every reader calls them.
-_POINTER_REGION_END = re.compile(r"(?m)^(?:---\s*$|## )")
+# ⚠ THE `---` RULE ONLY. A `## ` heading was in this pattern for one revision and was WRONG — see
+# `pointer_region`.
+_POINTER_REGION_END = re.compile(r"(?m)^---\s*$")
 
 
 def pointer_region(text: str) -> str:
     """The HEADER REGION of a store document — the only part that may carry placements.
 
-    A store index is not always a pure list. `SHIPPED.md` is a pointer block followed by hundreds
-    of lines of prose quoted from the roadmap, and a *quoted* list item in that prose is not a
-    placement: two facts read as ARCHIVED for months purely because their names appear inside a
-    quotation (`docs/periphery-parity.spec.md:587` records this as §2.3's residual).
+    A store index is not always a pure list. `SHIPPED.md` here is a pointer block followed by
+    hundreds of lines of prose quoted from the roadmap, and a *quoted* list item in that prose is
+    not a placement: two facts read as ARCHIVED for months purely because their names appear inside
+    a quotation (`docs/periphery-parity.spec.md:587` records this as §2.3's residual).
 
-    The region ends at the first `---` rule or the first `## ` heading, whichever comes first —
-    the same "whichever comes first" derivation `tests/docs_links.py::_spec_header_end` uses, so
-    there is one boundary idiom rather than two. A pure pointer list (`MEMORY.md`) has neither and
-    is returned whole, so it is unaffected.
+    The region ends at the first `---` rule. A document with NO `---` is returned WHOLE, which is
+    fail-open: it reproduces the behaviour that preceded this rule, so no store can lose a
+    placement it previously had.
+
+    ⚠ **A `## ` heading was a terminator here for one revision, and it was a real regression.**
+    It was adopted by analogy with `tests/docs_links.py::_spec_header_end`, on the reasoning that
+    one boundary idiom is better than two. That reasoning is right and the analogy was wrong: a
+    boundary is a property of the FIELD, and a spec file and an archive index are different fields.
+    A spec's header is preamble prose that ends at its first SECTION, so `## ` terminates it. An
+    archive's headings are ORGANIZATIONAL and its pointers live BENEATH them — so `## ` terminates
+    nothing. Measured on the live fleet: one store writes its archive as
+    `# Title` + preamble + `## <date>` sections with 63 pointer lines underneath and no `---` at
+    all, and the `## ` clause sliced its region to the six-line preamble, taking 57 archived
+    placements to 0 and driving its drift count from 4 to 61. This file's own `SHIPPED.md` was
+    unaffected only by ORDERING LUCK — its `---` is at line 18 and its first `## ` at line 20.
+    The `---` is the archive's own divider; it is the only marker that means "machine list above,
+    prose below", and it is the only one this rule may read.
     """
     t = text or ""
     m = _POINTER_REGION_END.search(t)

@@ -13691,6 +13691,25 @@ with _tf37.TemporaryDirectory() as _td68:
           "a separate check: an arm that returned a shorter list for any reason would pass a "
           "membership test and fail this equality",
           ia.archive_index(_arch68)["targets"] == ["shipped-live"])
+    # ⚠ R3b is a PIN against the INTERMEDIATE revision (81a197b) and a CONTROL against f0b8767 —
+    # the same shape v0.4.32 P8 uses, and the labelling matters: the intermediate is the revision
+    # that had a `## ` clause in the region rule and cut a live store's archive to nothing. The
+    # fixture is that store's document shape, reduced.
+    _sections68 = ("# Shipped — merged feature history\n\n"
+                   "Archive of completed work. Preamble prose, not pointers.\n\n"
+                   "## 2026-06-20 — an arc\n\n"
+                   "- [section-a](section-a.md) — a pointer under a heading\n\n"
+                   "## 2026-06-19 — another arc\n\n"
+                   "- [section-b](section-b.md) — and another\n")
+    check("v0.4.68 R3b (PIN against the INTERMEDIATE 81a197b; a CONTROL against f0b8767, where it "
+          "is green because no region rule existed at all): a document with `## ` section headings "
+          "and NO `---` is read WHOLE. An archive's headings are ORGANIZATIONAL and its pointers "
+          "live BENEATH them, so `## ` terminates nothing — that clause was borrowed from "
+          "`_spec_header_end`, whose field is spec files, where the header IS preamble-before-"
+          "first-section. A boundary is a property of the FIELD, and these are different fields. "
+          "Measured cost on the live fleet: one store's 57 archived placements went to 0 and its "
+          "drift count 4 -> 61 (intermediate: [])",
+          ia.archive_index(_sections68)["targets"] == ["section-a", "section-b"])
     check("v0.4.68 R4 (CONTROL — green on BOTH trees, so it discriminates nothing on its own and "
           "is labelled as such): the two readers AGREE on one archive document. They agree on the "
           "pre-fix tree for the wrong reason — each counts the quoted line, by two different "
@@ -26877,18 +26896,12 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     it cannot redden pre-fix
                                        #     and is NOT a pin. ⚠ Three of the five are
                                        #     deliberately not pins, and say so in their text.
-                            + 3        # v0.4.68 — the pointer's ROLE and REGION. TWO PINs, both
-                                       #     RED pre-fix and GREEN post-fix: the mid-prose
-                                       #     mention (R2, the `stem` case) and the quoted list
-                                       #     item below an archive divider (R3, the H1 case
-                                       #     that made two facts read as ARCHIVED for months).
-                                       #     ⚠ The pre-fix RED for R3 is an EQUALITY, not a
-                                       #     membership test, because the above-divider pointer
-                                       #     must survive the narrowing — a fix that dropped it
-                                       #     too would satisfy a membership arm. Plus ONE
-                                       #     CONTROL, green on BOTH trees: the two readers
-                                       #     agree on one archive doc, which is the ONLY check
-                                       #     that would catch them drifting apart again.
+                            + 4        # v0.4.68 — the pointer's ROLE and REGION. THREE PINs and a
+                                       #     CONTROL: R2 (mid-prose), R3 (quoted item below a
+                                       #     divider), R3b (a `## `-sectioned doc with NO divider
+                                       #     must be read WHOLE — a PIN against the INTERMEDIATE
+                                       #     81a197b, a CONTROL against f0b8767) and R4 (the two
+                                       #     readers agree).
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
