@@ -50,10 +50,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
+from index_admission import pointer_targets   # v0.4.68: the ONE pointer derivation
 from memory_status import (_entropy_blob, _is_archive_index, _is_archive_index_text, _looks_secret,
-                           _parse_ts, _sane, _SECRET, _write_private, index_fact_names, slug_for, _LINK_RE)
+                           _parse_ts, _sane, _SECRET, _write_private, index_fact_names, slug_for)
 # slug rule (v0.1.17) + archive-index classifiers + 0o600-atomic seed write (v0.1.63 --recalls) + the
-# relocated single timestamp parser & the index-pointer link anchor + index reader (v0.1.67 miss-detector)
+# relocated single timestamp parser + index reader (v0.1.67 miss-detector)
+#
+# ⚠ The raw anchor (`_LINK_RE`) is GONE from this module as of v0.4.68, deliberately. The tier sets
+# below answer the PLACEMENT question — "which facts does this document place?" — and the raw anchor
+# answers a different one: "does this text contain the shape?". Those two disagree on exactly the
+# case this release is about (a quoted list item below an archive document's divider), and the tier
+# sets feed the demotion policy and the miss detector, so reading them through the broader rule
+# classified facts as ARCHIVED that no archive operation ever placed.
 # + _sane: fact STEMS printed by --recalls derive from transcript Read file_paths (attacker-influenceable
 # session content) — strip control bytes before they reach the terminal (the git-subject convention)
 
@@ -722,13 +730,13 @@ def _tier_sets(auto_mem: Path, snapshot: "dict | None") -> tuple:
             if label == "memory/MEMORY.md":
                 idx_content = content
             elif _is_archive_index_text(content):
-                arch_targets.update(_LINK_RE.findall(content))
+                arch_targets.update(pointer_targets(content))
         if saw_memory_label:
             # review fix: a wrong-shape object at the --before path (e.g. a cycle-
             # record seed) used to yield (empty indexed, all archive) — every
             # archived-tier read became a permanent "miss". A dict WITHOUT memory/*
             # labels now falls back to the live store like the absent-snapshot case.
-            indexed = frozenset(_LINK_RE.findall(idx_content))
+            indexed = frozenset(pointer_targets(idx_content))
             return indexed, frozenset(arch_targets - indexed)
     indexed = frozenset(index_fact_names(auto_mem / "MEMORY.md"))
     arch: set = set()
@@ -737,7 +745,7 @@ def _tier_sets(auto_mem: Path, snapshot: "dict | None") -> tuple:
             if f.name == "MEMORY.md" or not _is_archive_index(f):
                 continue
             try:
-                arch.update(_LINK_RE.findall(f.read_text(encoding="utf-8", errors="replace")))
+                arch.update(pointer_targets(f.read_text(encoding="utf-8", errors="replace")))
             except OSError:
                 continue
     return indexed, frozenset(arch - indexed)
