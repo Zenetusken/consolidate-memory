@@ -447,6 +447,19 @@ class Remediation(TypedDict, total=False):
     # which fails the renderer's strict `>`, so the panel denied the routing the record's own label states.
     # A re-tested operand must be the operand that was tested, or a copy that loses nothing.
     mirror_share: float
+    # v0.4.74: the remediation's OWN pre-pass fact count — how many facts the store held when this block
+    # was built. Declared here after shipping UNDECLARED for a release: v0.4.73's ASCII arms READ it
+    # (`_remediation_section`, the lapsed line's `· now N`), and a key with a reader and no declaration is
+    # a contract nothing checks.
+    # ⚠ Its record-side TWIN is `budget.recall_facts.before` — the same quantity, derived from the same
+    # `ctx["fact_files"]` — and the HTML reads THAT one. They are EQUAL BY CONSTRUCTION (one list, one
+    # `len()` binding on each side), which is why NO disagree-validator guards them: a clause whose only
+    # firing condition is "re-add the second computation this release deleted" is decoration, and v0.4.73
+    # amended `a-check-that-cannot-fail-is-not-a-check` for precisely that shape. The reasoning is recorded
+    # HERE, in the contract, because the next reader will wonder why the pair is unguarded.
+    # ⚠ PRE-pass by design: `render_dashboard`'s post-state refresh re-measures the index, so a refreshed
+    # record's count is the BEFORE, never the after.
+    current_facts: int
 
 
 class Maintenance(TypedDict, total=False):
@@ -3662,6 +3675,14 @@ def build_context(project_dir: Path) -> dict:
     # Only relevant when the index is OVER budget — skip the mirror-attribution scan (which reads every
     # fact body) on the healthy path (remediation_triage would short-circuit to {} anyway). Gate-2 nit.
     remediation: dict = {}
+    # v0.4.74: ONE binding for the count this block reports. It was three separate `len(fact_files)` calls
+    # (`:3682`, `:3755`, `:3768`) — the same expression on the same list, so never a wrong number, but
+    # three textual readings of one quantity. `fact_files` is bound once above and published as
+    # `ctx["fact_files"]`; that list IS the home, and `budget.recall_facts.before` derives from it in
+    # `seed_record`. ⚠ Deliberately NOT published as a new ctx scalar: a derived scalar sitting beside its
+    # own source is a duplicate KEY, not one home — the shape `a-producer-scoped-zero-needs-its-column`
+    # warns about, one layer up.
+    _fact_count = len(fact_files)
     _sj_baseline = _standing_baseline(standing_justify)          # v0.1.21 (D7): justified fact-count baseline, or None
     _sj_tokens = _standing_baseline_tokens(standing_justify)     # v0.1.23 (D6): justified index-token baseline, or None
     # STANDING-JUSTIFIED suppresses ONLY when BOTH axes are within bound: fact-count ≤ baseline+Δ AND index tokens
@@ -3679,7 +3700,7 @@ def build_context(project_dir: Path) -> dict:
     if (_sj_suppressed and not _over_ceiling):
         remediation = {"required": False, "standing_justified": True, "baseline_facts": _sj_baseline,
                        "index_tokens": index_lb[2], "budget": INDEX_TOKEN_BUDGET, "candidates": 0,
-                       "current_facts": len(fact_files)}
+                       "current_facts": _fact_count}
     elif index_lb[2] > INDEX_TOKEN_BUDGET:
         mirror_stems: set = set()
         for _f in fact_files:
@@ -3752,7 +3773,7 @@ def build_context(project_dir: Path) -> dict:
         if _sj_suppressed:
             remediation.update({"required": False, "standing_justified": True,
                                 "baseline_facts": _sj_baseline, "index_tokens": index_lb[2],
-                                "budget": INDEX_TOKEN_BUDGET, "current_facts": len(fact_files)})
+                                "budget": INDEX_TOKEN_BUDGET, "current_facts": _fact_count})
         else:
             # v0.4.73: the justification COLUMN. An over-target store that is NOT suppressed is either
             # LAPSED (a baseline exists — `_sj_baseline is not None` — but the store grew past the fact
@@ -3765,7 +3786,7 @@ def build_context(project_dir: Path) -> dict:
             # ⚠ KEY PRESENCE is the second coordinate — `baseline_facts` written ⟺ a baseline EXISTS.
             # Never a sentinel zero: `baseline_facts: 0` must not mean "no baseline"
             # (a-producer-scoped-zero-needs-its-column — the same trap, re-committed in the producer).
-            remediation.update({"standing_justified": False, "current_facts": len(fact_files)})
+            remediation.update({"standing_justified": False, "current_facts": _fact_count})
             if _sj_baseline is not None:
                 remediation.update({"baseline_facts": _sj_baseline})
     # v0.1.66 (Phase B): the hard-ceiling flag — a SIBLING assignment, deliberately OUTSIDE both branches
@@ -4184,6 +4205,14 @@ def seed_record(ctx: dict) -> CycleRecord:
         record["remediation"] = {"required": False, "standing_justified": True,
                                  "baseline_facts": rem.get("baseline_facts", 0),
                                  "over_ceiling": bool(rem.get("over_ceiling"))}
+        # v0.4.74: the fact count rides the record on THIS arm too. Until now it was written into the ctx's
+        # remediation and then dropped here, so a SUPPRESSED record carried no count and v0.4.73's ASCII
+        # suppressed line lost its `· now N`. ⚠ PRESENCE-GATED, never `rem.get(..., 0)`: a sentinel fact
+        # count would read as a store with no facts — the trap `a-producer-scoped-zero-needs-its-column`
+        # names, and the reason the `baseline_facts` default above is safe only because ITS absence is a
+        # different claim.
+        if "current_facts" in rem:
+            record["remediation"]["current_facts"] = rem["current_facts"]
         # v0.4.61 (RC-1): ⚠ THE SUPPRESSION DOES NOT COVER THE CEILING'S INSTRUMENT. `build_context`
         # builds the triage exactly when over_ceiling (the ceiling is standing-justify-INDEPENDENT),
         # but this relay dropped it — so the DASHBOARD kept printing "shrink to receive" over an empty
@@ -4226,6 +4255,17 @@ def seed_record(ctx: dict) -> CycleRecord:
             "reaches_budget": rem.get("reaches_budget", True),   # D5: False ⇒ prune-then-standing-justify
             "over_ceiling": bool(rem.get("over_ceiling")),       # v0.1.66 (Phase B): sibling of required, never a re-key
         }
+        # v0.4.74: declared last release's debt — `current_facts` is written into the ctx's remediation by
+        # `build_context` and had no relay on THIS arm, so an over-target record carried no fact count and
+        # v0.4.73's ASCII lapsed line lost its `· now N`. It is spelled IDENTICALLY in the ctx and the
+        # record, so it falls inside the v0.4.73 relay pin's name-identity scope: that pin reds until this
+        # line exists, which is the pin doing its job.
+        # ⚠ THIS ARM, not the `if "stages" in rem:` block above — that block lives INSIDE the suppressed
+        # arm and updating it changes nothing an over-target record ever sees. The first cut of this edit
+        # landed there and the over-target PIN red; three relays in one function is how that happens, and
+        # the pin is what said so.
+        if "current_facts" in rem:
+            record["remediation"]["current_facts"] = rem["current_facts"]
         # v0.4.73: ⚠ THE JUSTIFICATION COLUMN, and the rule that keeps losing it. This arm is an
         # ALLOWLIST, and until v0.4.73 it relayed neither `standing_justified` nor `baseline_facts` — both
         # DECLARED in `Remediation`. So a store whose earned-density justification had LAPSED and one that
