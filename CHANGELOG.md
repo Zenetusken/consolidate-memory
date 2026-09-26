@@ -7,7 +7,7 @@ version changes on `main`.
 
 ## [0.4.76] — 2026-09-26
 
-**Patch — the `UnclassifiedReason` pin promised for eleven releases, and asserted at neither site.**
+**Patch — the `UnclassifiedReason` pin promised for THIRTEEN releases, and asserted at neither site.**
 `facts_manifest` raises a named `UnclassifiedReason(AssertionError)` at three sites (`_mint`, `_served`,
 `_miss`) so a raise carries WHICH guard fired rather than merely that something did. Its docstring says
 so — and says that the type-agnostic shape at `_mint`'s check "leaves the hole live at the WEAKEST site".
@@ -21,13 +21,20 @@ only `_raised59 is not None`.
 |---|---|---|
 | `_mint` + `_served` → `ValueError` | **GREEN 2394/0** ← the hole | **2394 / 2 reds** |
 | **all three** → `ValueError` | 2393 / 1 (the `_miss` pin) | **2393 / 3 reds** |
-| the class **RENAMED** | **GREEN 2394/0** ← the fallback hole | **2392 / 4 reds** |
+| the class **RENAMED** | **GREEN 2394/0** ← no type check existed to red | **2392 / 4 reds** |
 | clean | 2394 / 0 | **2396 / 0** |
 
 ⚠ **Every cell above carries the base it was measured on** — `2395/0` appeared in the rename cell of
 this table's first cut and belonged to a THIRD tree (this release's own first-cut suite, 2395 checks).
-A row's columns are two different revisions, and a figure from a third is a neighbour: the second
-review round caught the cell, one column over from the error this note was written to record.
+A row's columns are two different revisions, and a figure from a third is a neighbour. The second review
+round caught the cell. ⚠ **And the sentence that first recorded the catch was itself unverifiable**: it
+called the cell "one column over from the error this note was written to record", but the earlier draft had
+no table for anything to be one column over from. The prose round measured that; the claim is replaced by
+what the tree supports.
+⚠ The **fallback** in the third row's v0.4.76 column is this release's OWN first cut — origin/main's
+`smoke.py` contains no reference to the class at all, so the v0.4.75 green is "no check existed", not "a
+fallback hid it". Two different mechanisms, one column apart, and the first draft labelled both with the
+second one's name.
 
 ⚠ **The first cut of this entry claimed the all-three mutation was green, citing 2394/0.** That figure is
 the **TWO-site** mutation — a different experiment — and the claim it was cited against was **true**. The
@@ -47,7 +54,7 @@ opposite of the safety it claimed, and it is why the rename row above is in the 
 on the pre-fix tree too. What they witness is the **MUTATION**, now reddening once per site — the verifying
 evidence for the docstring's own "RAISED AT ALL THREE SITES" claim, asserted by nobody until now.
 
-⚠ Cost: **three** checks — the class's existence, and one arm per site it is not already covered by.
+⚠ Cost: **TWO** checks, MEASURED (`check(` sites 971 → 973, D6 +2). The class's own existence is one; `_served`'s raise arm is the other. `_mint` and `_miss` were repaired by EDITING their assertions — a bool cannot carry a type, and `except AssertionError` cannot carry a subclass — so neither added a check. ⚠ An earlier draft of this line said THREE, counting the edits.
 
 ## [0.4.75] — 2026-09-26
 

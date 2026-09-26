@@ -263,7 +263,7 @@ class UnclassifiedReason(AssertionError):
     The type-agnostic shape sits at `_mint`'s check too (`except Exception` → a bool), so naming
     the class at one site while its siblings raise the bare base leaves the hole live at the
     WEAKEST site — which is exactly where the next edit re-opens it.
-    ⚠ **AND THE PIN ARRIVED AT v0.4.76, NOT WITH THE CLASS.** For eleven releases this docstring
+    ⚠ **AND THE PIN ARRIVED AT v0.4.76, NOT WITH THE CLASS.** For THIRTEEN releases this docstring
     promised a type a pin could assert while the NAMED class was asserted at NO site: `_mint` captured
     the raise into a BOOL, `_served` tested only that SOMETHING came back, and `_miss` accepted the
     BASE `AssertionError`. MEASURED on the v0.4.75 suite: rewriting the raises at `_mint` + `_served`

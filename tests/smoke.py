@@ -25658,14 +25658,26 @@ def _reason_cls76() -> "type | None":
     once: `isinstance(x, (ValueError, AssertionError))` is a VALID isinstance argument, so
     `_is_reason76` would answer True for EITHER member (a false-green), while `issubclass(tuple, X)`
     raises `TypeError` — at MODULE SCOPE, taking the run down with 2,349 checks reported and no totals
-    line and no D6. **A false green and a crash from one input**, which is why the class test belongs
-    here rather than in either caller.
+    line and no D6. ⚠ **WHAT THE SUITE SEES IS THE CRASH, NOT BOTH** — the prose round measured it: the
+    `TypeError` fires at `_cls76`'s own `issubclass` BEFORE any `_is_reason76` call runs, so this path
+    produces no false green at all (2,349 checks printed, then nothing). The false green is reachable only
+    by a DIRECT call — `_is_reason76(ValueError())` answers True against a tuple — and an earlier draft
+    claimed "a false green and a crash from one input", which is true of the FUNCTION and false of the
+    SUITE. That is why the class test belongs HERE, where both callers inherit it, rather than in either.
     """
     # ⚠ `_inspect`, the module-scope alias at `:272` — a bare `inspect` would be a NameError HERE, at
     # module scope, which is the very crash-class this function's docstring is about. Caught by reading
     # the import list rather than by running it.
+    # ⚠ AND IT MUST NOT BE THE BARE BASE. Round 3 measured the deepest form of this defect:
+    # `UnclassifiedReason = AssertionError` — an ALIAS to the base — fooled EVERY check, suite GREEN
+    # 2396/0, because a bare-`AssertionError` raise IS an `AssertionError` and
+    # `issubclass(AssertionError, AssertionError)` is True. **A name aliased to the very thing it must
+    # be distinct from is not a class anyone can assert**, and no `isinstance` reading it can tell.
+    # ⚠ RECORDED AS A BOUND, not chased: a metaclass with a custom `__instancecheck__` also defeats
+    # `isinstance`. At that point the module is not raising an exception type at all, and a check built
+    # on `isinstance` has nothing left to say — the honest boundary of this instrument.
     c = getattr(_fm44, "UnclassifiedReason", None)
-    return c if _inspect.isclass(c) else None
+    return c if _inspect.isclass(c) and c is not AssertionError else None
 
 
 def _is_reason76(v: object) -> bool:
@@ -25677,9 +25689,11 @@ def _is_reason76(v: object) -> bool:
 
 
 _cls76 = _reason_cls76()
-check("v0.4.76 (PIN): the module's reason class EXISTS and subclasses `AssertionError` — a RENAME is a "
-      "RED, never a substituted default (the first cut's `getattr(..., AssertionError)` fallback made a "
-      "rename GREEN, MEASURED 2395/0, which is the opposite of the safety it claimed to be)",
+check("v0.4.76 (GUARD, mutation-only — GREEN on the pre-fix tree, MEASURED 2396/0, so by this repo's own "
+      "rule it is not a PIN; what it witnesses is the MUTATION): the module's reason class EXISTS and "
+      "subclasses `AssertionError` — a RENAME is a RED, never a substituted default (the first cut's "
+      "`getattr(..., AssertionError)` fallback made a rename GREEN, MEASURED 2395/0, which is the opposite "
+      "of the safety it claimed to be)",
       _cls76 is not None and issubclass(_cls76, AssertionError))
 
 _mint_raised57: "object" = None
