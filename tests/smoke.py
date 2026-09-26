@@ -5052,6 +5052,17 @@ with _tfB.TemporaryDirectory() as _tdB:
               _ctxCFs["remediation"].get("standing_justified") is True
               and isinstance(_recCFs.get("current_facts"), int)
               and _recCFs["current_facts"] == len(_ctxCFs["fact_files"]))
+        # ⚠ GUARD, not a PIN — it is green pre-change too, where the relay does not exist and the key is
+        # simply absent. It guards a MUTATION instead: deleting the `isinstance` arm turns it red.
+        # ⚠ The value chosen is `True`, deliberately: `bool` IS an `int` subclass, so `isinstance(x, int)`
+        # alone admits it and a hand-set `true` would persist as `1` in a field the TypedDict declares
+        # `int`. This is the same trap `mirror_share`'s relay documents, and mypy cannot see it because
+        # `ctx` is a plain `dict`. The review round found this arm's ABSENCE in the first cut.
+        _ctxCFt = _ctxAt(4000)
+        _ctxCFt["remediation"]["current_facts"] = True
+        check("v0.4.74 (GUARD, mutation-sensitive): the relay is TYPE-gated — a `bool` (which IS an `int` "
+              "subclass) never reaches a field the contract declares `int`",
+              "current_facts" not in (ms.seed_record(_ctxCFt).get("remediation") or {}))
 
         # ── v0.4.61 (RC-1): the ceiling's INSTRUMENT is standing-justify-independent too ──
         # ⚠ TWO layers, and a pin on either ALONE passes on the other's tree: the GENERATOR must build the
@@ -27113,10 +27124,12 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     NEVER-JUSTIFIED — the review round's first finding, a real
                                        #     bug in the first cut) + 2 CONTROLs (the suppressed path,
                                        #     and the ABSENT key as UNCLASSIFIED — green on BOTH trees)
-                            + 2        # v0.4.74 — `current_facts` declared: 2 PINs, one per RELAY arm
+                            + 3        # v0.4.74 — `current_facts` declared: 2 PINs, one per RELAY arm
                                        #     (over-target and suppressed), because each arm builds the
                                        #     record's remediation in its OWN place and the key is absent
-                                       #     from BOTH pre-change
+                                       #     from BOTH pre-change; + 1 GUARD (mutation-sensitive) on the
+                                       #     relay's `isinstance` arm, which the review round found
+                                       #     MISSING from the first cut
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue

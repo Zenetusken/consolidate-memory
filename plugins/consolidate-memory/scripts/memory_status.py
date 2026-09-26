@@ -448,9 +448,13 @@ class Remediation(TypedDict, total=False):
     # A re-tested operand must be the operand that was tested, or a copy that loses nothing.
     mirror_share: float
     # v0.4.74: the remediation's OWN pre-pass fact count — how many facts the store held when this block
-    # was built. Declared here after shipping UNDECLARED for a release: v0.4.73's ASCII arms READ it
-    # (`_remediation_section`, the lapsed line's `· now N`), and a key with a reader and no declaration is
-    # a contract nothing checks.
+    # was built. Declared here after shipping UNDECLARED for a release, and the HONEST SCOPE of what that
+    # cost is worth stating, because this comment's first draft overstated it and the review round measured
+    # the claim false: the ASCII arms DID read the key, but they read it off the LIVE CTX (`print_report`
+    # passes `ctx["remediation"]` at `:5668`), which always carried it — so NO rendered surface was broken.
+    # What was missing is the RECORDED value: the key reached neither record shape, so the archive's
+    # evidence dump and any future record-side reader saw nothing at all. Declared so that a key with a
+    # reader is no longer a contract nothing checks.
     # ⚠ Its record-side TWIN is `budget.recall_facts.before` — the same quantity, derived from the same
     # `ctx["fact_files"]` — and the HTML reads THAT one. They are EQUAL BY CONSTRUCTION (one list, one
     # `len()` binding on each side), which is why NO disagree-validator guards them: a clause whose only
@@ -4205,13 +4209,20 @@ def seed_record(ctx: dict) -> CycleRecord:
         record["remediation"] = {"required": False, "standing_justified": True,
                                  "baseline_facts": rem.get("baseline_facts", 0),
                                  "over_ceiling": bool(rem.get("over_ceiling"))}
-        # v0.4.74: the fact count rides the record on THIS arm too. Until now it was written into the ctx's
-        # remediation and then dropped here, so a SUPPRESSED record carried no count and v0.4.73's ASCII
-        # suppressed line lost its `· now N`. ⚠ PRESENCE-GATED, never `rem.get(..., 0)`: a sentinel fact
-        # count would read as a store with no facts — the trap `a-producer-scoped-zero-needs-its-column`
-        # names, and the reason the `baseline_facts` default above is safe only because ITS absence is a
-        # different claim.
-        if "current_facts" in rem:
+        # v0.4.74: the fact count rides the record on THIS arm too — it was written into the ctx's
+        # remediation and then dropped here, so a SUPPRESSED record carried no count.
+        # ⚠ WHAT THIS DOES AND DOES NOT FIX, because the first cut of this comment claimed the wrong thing
+        # and the review round measured it false: the ASCII's `· now N` did NOT vanish. `print_report`
+        # passes the LIVE CTX to `_remediation_section` (`:5668`), and the ctx always carried the key — so
+        # no rendered surface was broken. What was missing is the recorded one: the key reached neither
+        # record shape, so the ARCHIVE's evidence dump and any future record-side reader saw nothing.
+        # The declaration is the fix; this relay is what makes it true of the record.
+        # ⚠ PRESENCE- AND TYPE-GATED, never `rem.get(..., 0)`: a sentinel fact count would read as a store
+        # with no facts — the trap `a-producer-scoped-zero-needs-its-column` names. The `isinstance` arm
+        # mirrors `mirror_share`'s relay below, whose comment already states the rule: the TypedDict says
+        # `int`, `ctx` is a plain `dict` so mypy cannot enforce it, and `bool` is an `int` subclass that
+        # would persist a hand-set `true` as `1`.
+        if isinstance(rem.get("current_facts"), int) and not isinstance(rem["current_facts"], bool):
             record["remediation"]["current_facts"] = rem["current_facts"]
         # v0.4.61 (RC-1): ⚠ THE SUPPRESSION DOES NOT COVER THE CEILING'S INSTRUMENT. `build_context`
         # builds the triage exactly when over_ceiling (the ceiling is standing-justify-INDEPENDENT),
@@ -4256,15 +4267,15 @@ def seed_record(ctx: dict) -> CycleRecord:
             "over_ceiling": bool(rem.get("over_ceiling")),       # v0.1.66 (Phase B): sibling of required, never a re-key
         }
         # v0.4.74: declared last release's debt — `current_facts` is written into the ctx's remediation by
-        # `build_context` and had no relay on THIS arm, so an over-target record carried no fact count and
-        # v0.4.73's ASCII lapsed line lost its `· now N`. It is spelled IDENTICALLY in the ctx and the
-        # record, so it falls inside the v0.4.73 relay pin's name-identity scope: that pin reds until this
-        # line exists, which is the pin doing its job.
+        # `build_context` and had no relay on THIS arm, so an over-target record carried no fact count.
+        # It is spelled IDENTICALLY in the ctx and the record, so it falls inside the v0.4.73 relay pin's
+        # name-identity scope: that pin reds until this line exists, which is the pin doing its job.
         # ⚠ THIS ARM, not the `if "stages" in rem:` block above — that block lives INSIDE the suppressed
         # arm and updating it changes nothing an over-target record ever sees. The first cut of this edit
         # landed there and the over-target PIN red; three relays in one function is how that happens, and
         # the pin is what said so.
-        if "current_facts" in rem:
+        # ⚠ Type-gated like its suppressed sibling and like `mirror_share` below (see that comment).
+        if isinstance(rem.get("current_facts"), int) and not isinstance(rem["current_facts"], bool):
             record["remediation"]["current_facts"] = rem["current_facts"]
         # v0.4.73: ⚠ THE JUSTIFICATION COLUMN, and the rule that keeps losing it. This arm is an
         # ALLOWLIST, and until v0.4.73 it relayed neither `standing_justified` nor `baseline_facts` — both

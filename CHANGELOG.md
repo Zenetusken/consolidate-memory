@@ -9,9 +9,16 @@ version changes on `main`.
 
 **Patch — `current_facts` is declared, and the fact count gets one binding.** v0.4.73 shipped with a recorded
 debt: the key was written into `remediation` by `build_context` but declared in NEITHER the `Remediation`
-TypedDict nor the SKILL's schema block, and `seed_record`'s relays did not carry it into the record. A key
-with a reader (`_remediation_section`'s lapsed line renders its `· now N`) and no declaration is a contract
-nothing checks — which is why that `N` silently vanishes on every record predating this patch.
+TypedDict nor the SKILL's schema block, and `seed_record`'s relays did not carry it into the record.
+
+⚠ **The honest scope, corrected by the review round.** This entry's first draft said the ASCII's `· now N`
+"silently vanishes on every record predating this patch". **That is false, and the reviewer measured it.**
+`print_report` passes the LIVE CTX to `_remediation_section` (`:5668`), and the ctx always carried the key —
+so **no rendered surface was broken**. What was actually missing is the **recorded** value: the key reached
+neither record shape, so the archive's evidence dump and any future record-side reader saw nothing. The
+declaration is the fix; the relays are what make it true of the record. A comment claiming a symptom that
+does not exist is worse than no comment — it teaches the next reader to trust a mechanism for a reason that
+was never tested — so the correction is recorded rather than quietly applied.
 
 ⚠ **Two things the census overturned, recorded rather than quietly dropped.**
 
