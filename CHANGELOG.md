@@ -5,6 +5,65 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.68] — 2026-09-25
+
+**Patch — the pointer's ROLE and REGION, and a fleet blast radius measured at one store.** No
+cycle-record, CLI or manifest surface moves; legacy records still render. The store answered *"which
+facts does this document place?"* with `_LINK_RE`, a bare `](stem.md)` match over a file's whole
+TEXT, which cannot tell a pointer from prose that quotes one.
+
+⚠ **THE FIRST CUT WAS WRONG AND ITS OWN ADVERSARIAL REVIEW FALSIFIED IT.** R3 terminated the region
+at "the first `---` **or** the first `## `, whichever comes first", justified as reusing
+`docs_links._spec_header_end`'s idiom so the repo would carry one boundary idiom rather than two. The
+reasoning cites a lesson this repo has paid for twice — *a boundary is a property of the FIELD* — and
+applied it backwards: one idiom **per field** is the rule. A spec's header is preamble prose where
+`## ` terminates it; an archive's headings are **organizational** and its pointers live **beneath**
+them. The fleet scan that "confirmed" the change had modelled **one of the rule's two disjuncts**, so
+it could not see the class the other one broke — a second store's archive is `# Title` + preamble +
+`## <date>` sections with 63 pointer lines underneath and no `---` at all, and the clause took its
+**57 archived placements to 0** and drove its drift count **4 → 61**. This repo's own `SHIPPED.md`
+never exposed it (`---` at 18, first `## ` at 20): it survived on **marker ordering luck**. Removed.
+A document with no `---` is read WHOLE — fail-open, so no store can lose a placement it had.
+
+Two further review findings corrected the design rather than the code. **Two readers the plan listed
+as "must converge" must NOT**: `_is_archive_index_text` is a classifier whose breadth P10 pins, and
+`ref_stems` asks *"is this fact reachable anywhere?"* — narrowing it would **unprotect** facts from
+eviction. A rule correct for placement is wrong there, and the difference is which way the error
+costs. And **§4's merge NO-GO is narrowed**: it concluded "no signal" and "would require embeddings",
+but a stdlib token TF-IDF ranks the store's one verifiable duplicate **#1 of 3655** where the probe's
+metric ranks it 2981st — stdlib-only, so not excluded by the very zero-dependency rule the old
+sentence invoked to close the question. The detector question is re-opened; the `SKILL.md` amendment
+ships as an **interim** measure, not a destination.
+
+Also withdrawn: §4's cap-bounded cue series (623→50, 377→56, 170→58). Two reviewers could not
+reproduce it under either in-tree renderer, and its SIGN — a shorter cue costing more tokens — is
+forbidden by `est_tokens`' monotonicity. And the fleet denominator: `3529 stores` counted
+**directories**, of which 3524 hold zero `.md` files; the effective fleet is 29 populated dirs / 619
+documents / 28 archives, and **two stores hold an archive-shaped document at all**. One of two, not
+one of 3529 — the same bump, but only the first is what was measured.
+
+Corrected in the tree: `index_admission` gains `pointer_region` / `pointer_lines` / `pointer_targets`
+(one home per half of the rule); `archive_index` and `index_fact_names` derive from them;
+`extract_signals._tier_sets` converges (⚠ measured INERT on the live store — indexed 90→90, archived
+1→1 — because the two quoted stems were already restored by hand and the tier sets subtract
+`indexed`; it prevents the class recurring and does not repair a live misclassification);
+`apply_pointer` gains R5 — it matched by bare substring, so a write could rewrite a line its own
+reader does not count as a pointer, report success, and leave the fact unplaced, invisible to
+`admit_write` because it measures SIZE and the write is size-neutral.
+
+Measured on three trees, same harness bytes, markers verified at 0 — R3b is a PIN against the
+INTERMEDIATE revision and a CONTROL against `f0b8767`:
+
+```
+f0b8767  pre-fix       2372 passed,  2 failed    R2 x  R3 x  R3b ok  R4 ok
+81a197b  intermediate  2373 passed,  1 failed    R2 ok R3 ok R3b x   R4 ok
+b1e7fec  post-fix      2374 passed,  0 failed
+```
+
+⚠ The genericity pin did NOT catch a bare project name in a code comment — its matcher covers
+`/home/<name>` and `-home-<name>-` forms. Removed by hand: a gate proves only what its matcher can
+see. Design of record: `docs/pointer-role-and-merge-lever.spec.md`.
+
 ## [0.4.67] — 2026-09-25
 
 **Patch — three behaviours mutation testing found unwitnessed.** Each mutation left the suite at
