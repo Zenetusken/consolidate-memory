@@ -39,10 +39,19 @@ LOCAL-only rule**. All thirteen were merged into `AGENTS.md` § Layout before th
 pointer that drops a binding rule moves it from always-loaded to on-demand *silently*, which is the
 enforcement-erosion failure, and `dream_procedure.py` was the one whose loss would have been silent.
 
-**Measured outcome:** `CLAUDE.md` **4140 → 2900 tok** (Layout alone 1567 → 193) — under the 4000 budget
-for the first time. The other five sections are unchanged, and an independent completeness audit
-verified that no fact carried by the old Layout is missing from the post-fix tree, and that all five
-always-loaded directives survive **inside `CLAUDE.md`** (not merely in `AGENTS.md`).
+**Measured outcome:** `CLAUDE.md` **4140 → 2900 tok** (Layout alone 1567 → 193) — back under the 4000
+budget. ⚠ **"Back", not "for the first time"**: this entry's first cut said the latter, and the repo's
+own estimator refutes it — whole-file `est_tokens` by tag puts the file **under** 4000 from v0.2.0
+(3456) through **v0.4.18** (3931), crossing at v0.4.19 (4018) and staying over until now. A sole-claim
+needs a census, and this one had not been run (`a-sole-claim-needs-a-census-not-a-sighting`). ⚠ And
+"the other five sections are unchanged" was likewise false and is corrected here: three of them moved —
+preamble +67 (the `AGENTS.md` pointer), Dev loop +94 (the added gate and its note), Releasing −27. The
+headline pair and the Layout figure are exact; the section arithmetic is `4140 − (1567−193) = 2766`,
+against an actual 2900, the difference being those three edits.
+
+An independent completeness audit verified that no fact carried by the old Layout is missing from the
+post-fix tree, and that all five always-loaded directives survive **inside `CLAUDE.md`** (not merely in
+`AGENTS.md`).
 
 ⚠ **The tier trade, named rather than implied.** Five architectural invariants that a CLAUDE.md reader
 used to see are now on-demand only: `store_context.py` is the sole native/canonical path constructor ·
@@ -89,8 +98,12 @@ longer matched, which is the class under repair. Caught by the adversarial round
 
 ⚠ **RECORDED, NOT FIXED:** `memory_status._is_promotion_candidate` fires on `not fm.get("scope")`, but
 `local_ingress.py:388` stamps `scope: project-local` on **every** new fact. So the Phase-1 promotion
-re-audit is **structurally blind to every fact authored since the LocalFactV1 writer landed** — the 42
-legacy unscoped facts are the only ones that can ever seed. Needs its own cycle.
+re-audit is **structurally blind to every fact authored since the LocalFactV1 writer landed** — nothing
+it can surface post-dates that writer. ⚠ **The set is stated precisely, because this entry's first cut
+did not:** of the **42** facts lacking `scope`, **19** pass the seed's type filter (`feedback` /
+`reference`), and `_promotion_candidates` surfaces **8** — its own `_PROMO_CAP`. An early draft said
+"the 42 … are the only ones that can ever seed", which names the unfiltered set rather than the
+filterable one. Needs its own cycle.
 
 ## [0.4.76] — 2026-09-26
 
@@ -141,7 +154,11 @@ opposite of the safety it claimed, and it is why the rename row above is in the 
 on the pre-fix tree too. What they witness is the **MUTATION**, now reddening once per site — the verifying
 evidence for the docstring's own "RAISED AT ALL THREE SITES" claim, asserted by nobody until now.
 
-⚠ Cost: **TWO** checks, MEASURED (`check(` sites 971 → 973, D6 +2). The class's own existence is one; `_served`'s raise arm is the other. `_mint` and `_miss` were repaired by EDITING their assertions — a bool cannot carry a type, and `except AssertionError` cannot carry a subclass — so neither added a check. ⚠ An earlier draft of this line said THREE, counting the edits.
+⚠ Cost: **TWO** checks, MEASURED (`^check(` sites 971 → 973, D6 +2). ⚠ The `^` was ADDED in v0.4.77
+and the figure was always the anchored one: `971 → 973` is the `^check(` count (`grep -cE '^check('` per
+tag), while an unanchored `grep -c 'check('` gives **2143 → 2145** over the same pair of revisions. The
+clause shipped naming the unanchored matcher beside an anchored number, so the two surfaces that state
+this figure spelled it differently; a count's matcher is part of the count. The class's own existence is one; `_served`'s raise arm is the other. `_mint` and `_miss` were repaired by EDITING their assertions — a bool cannot carry a type, and `except AssertionError` cannot carry a subclass — so neither added a check. ⚠ An earlier draft of this line said THREE, counting the edits.
 
 ## [0.4.75] — 2026-09-26
 

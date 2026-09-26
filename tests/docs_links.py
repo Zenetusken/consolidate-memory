@@ -1390,6 +1390,14 @@ def check_spec_status() -> int:
 _COST_RE = re.compile(r"Cost:\s*\**\s*([A-Za-z]+|\d+)\**\s+checks?")
 _QUOTE_CHARS = '"\'`“”‘’'
 
+# ⚠ The WORD alone is not the claim. MEASURED by the adversarial round on this pin's first cut: both
+# surfaces read "TWO" and the pin was green while the parenthetical carrying the NUMBERS disagreed —
+# the two clauses spelled the same figure with different matchers (`^check(` vs `check(`), which is
+# `auditor-disagreement-names-the-operand` one layer in: two numbers over one suite, and only the
+# matcher says which. So a clause that carries a `N → M` pair must AGREE on the pair too, and on the
+# matcher spelling that precedes it.
+_COST_PAIR_RE = re.compile(r"`(\^?check\()`\s*sites\s*(\d+)\s*→\s*(\d+)")
+
 
 def _cost_claim(body: str) -> "str | None":
     """The quantity a `Cost:` clause states, normalized; None when no clause is readable.
@@ -1427,8 +1435,13 @@ def check_cost_claim_agreement() -> int:
     cycle — recorded here so the next reviewer does not have to rediscover the tags.
     """
     seen: dict[str, str] = {}
+    pairs: dict[str, tuple] = {}
     for rel in ("plugins/consolidate-memory/skills/consolidate-memory/SKILL.md", "CHANGELOG.md"):
-        v = _cost_claim(read(rel))
+        body = read(rel)
+        pm = _COST_PAIR_RE.search(body)
+        if pm is not None:
+            pairs[rel] = pm.groups()  # (matcher, from, to) — the operand, not just the word
+        v = _cost_claim(body)
         # ⚠ THE MISSING-CLAUSE ARM, and it is load-bearing rather than defensive. Without it
         # a clause reworded out of the regex's reach yields None on that surface, and
         # `None == None` is GREEN — the drift this check exists to catch returns silently.
@@ -1441,9 +1454,17 @@ def check_cost_claim_agreement() -> int:
             return len(seen)
         seen[rel] = v
     if len(set(seen.values())) > 1:
-        pairs = ", ".join(f"{k.split('/')[-1]}={v}" for k, v in seen.items())
-        err(f"the `Cost:` claim disagrees across surfaces — {pairs}; the CHANGELOG is the "
+        shown = ", ".join(f"{k.split('/')[-1]}={v}" for k, v in seen.items())
+        err(f"the `Cost:` claim disagrees across surfaces — {shown}; the CHANGELOG is the "
             f"release-notes source of record, so the other surface is the one to correct")
+    # ⚠ The word is HALF the claim. Both surfaces can read "TWO" while the pair disagrees — which is
+    # what shipped: one clause named `^check(` and the other `check(` for the SAME 971→973. Compare
+    # the operand too, and only when BOTH surfaces carry one (a clause with no pair is not a fault).
+    if len(pairs) == len(seen) and len(set(pairs.values())) > 1:
+        shown = ", ".join(f"{k.split('/')[-1]}={v}" for k, v in pairs.items())
+        err(f"the `Cost:` clauses name DIFFERENT operands for the same figure — {shown}; a count is a "
+            f"function of its matcher (`gate-coverage-is-its-match-set`), so the two surfaces must "
+            f"spell it the same way")
     return len(seen)
 
 
