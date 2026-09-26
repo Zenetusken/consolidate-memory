@@ -62,6 +62,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -112,6 +113,22 @@ def default_store(repo: Path) -> Path:
 
 
 # ─────────────────────────────── hashing helpers ───────────────────────────────
+
+
+def _regular_file(p: Path) -> bool:
+    """True iff `p` is a REAL file — not a symlink, and not a dir.
+
+    ⚠ `Path.is_file()` RESOLVES the final component, so a SYMLINK-TO-FILE passes it and the TARGET
+    is what gets read. Measured end-to-end (security/findings-2026-09-25.md, F1, High): a
+    repo-committed `CLAUDE.md -> /outside/secret` is copied verbatim into the persisted reports tree
+    (DISCLOSURE), and on restore the same resolution lets `shutil.copy2` write THROUGH a retargeted
+    link and clobber an out-of-repo file (WRITE-THROUGH). No symlink guard existed anywhere in this
+    plugin — `grep -rn "is_symlink|lstat|realpath|O_NOFOLLOW"` measured 0 hits.
+
+    ⚠ The pre-existing comment on the store leg named symlinks and excluded only
+    `symlink-to-dir`: the LABEL was not the PREDICATE. This is that predicate.
+    """
+    return p.is_file() and not p.is_symlink()
 
 
 def _sha256(path: Path) -> str | None:
@@ -235,8 +252,13 @@ def snapshot(repo: Path, store: Path, out: Path | None = None) -> Manifest:
         store_dst = snapdir / "store"
         store_dst.mkdir(parents=True, exist_ok=True)
         for src in sorted(store.iterdir(), key=lambda p: p.name):
-            if not src.is_file():
-                continue  # the store has no managed sub-dirs; skip any stray dir/symlink-to-dir
+            if not _regular_file(src):
+                # a stray dir, or a SYMLINK (to a file OR a dir) — never followed. Named in notes
+                # rather than skipped silently: a store file that is really a link is a fact the
+                # operator needs, and an unexplained absence is not a measurement.
+                if src.is_symlink():
+                    notes.append(f"store entry is a SYMLINK, not followed (would disclose its target): {src.name}")
+                continue
             digest = _sha256(src)
             if digest is None:
                 # M5 (v0.1.4): RECORD an unreadable pre-run file (no copy) instead of skipping it — so its
@@ -274,7 +296,10 @@ def snapshot(repo: Path, store: Path, out: Path | None = None) -> Manifest:
     repo_dst = snapdir / "repo"
     for name in REPO_DOCS:
         src = repo / name
-        if not src.is_file():
+        if not _regular_file(src):
+            # ⚠ TWO sites, not one: this loop is in `snapshot()` (capture) AND in
+            # `_live_manifest()` (comparison). Guarding one would leave the other hashing the
+            # TARGET of a repo-committed symlink — the same defect, one call path over.
             continue
         digest = _sha256(src)
         if digest is None:
@@ -399,7 +424,10 @@ def _live_manifest(repo: Path, store: Path) -> Manifest:
     repo_docs_present: list[str] = []
     for name in REPO_DOCS:
         src = repo / name
-        if not src.is_file():
+        if not _regular_file(src):
+            # ⚠ TWO sites, not one: this loop is in `snapshot()` (capture) AND in
+            # `_live_manifest()` (comparison). Guarding one would leave the other hashing the
+            # TARGET of a repo-committed symlink — the same defect, one call path over.
             continue
         digest = _sha256(src)
         if digest is None:
@@ -566,6 +594,14 @@ def restore(before: Manifest, repo: Path, store: Path, *, dry_run: bool = False)
         if not src.is_file():
             skipped.append(f"{fe.rel} (snapshot copy missing)")
             continue
+        if dst.is_symlink():
+            # ⚠ REFUSE rather than follow. `shutil.copy2` opens the destination for writing, so a
+            # symlink here writes THROUGH to its target — and the target can be retargeted between
+            # snapshot and restore, which is how an out-of-repo file gets clobbered by a rollback.
+            # Refused, not silently skipped: this is a WRITE the operator must know did not happen.
+            skipped.append(f"{fe.rel} → {dst} (REFUSED: destination is a SYMLINK — writing would "
+                           f"follow it and clobber its target)")
+            continue
         writes.append(fe.rel)
         if dry_run:
             continue
@@ -579,7 +615,13 @@ def restore(before: Manifest, repo: Path, store: Path, *, dry_run: bool = False)
     # WITHOUT destroying anything. "Live file ∉ snapshot" is, from the store alone, indistinguishable between
     # dream-added / concurrent-session-added / unreadable-at-capture; quarantine (move to the harness's reports
     # area) makes a wrong move RECOVERABLE while still reaching the BEFORE state (the extras are out of the store).
-    trash_dir = REPORTS_DIR / f".restore-trash-{int(time.time())}"
+    # ⚠ UNIQUE per call. The name was `.restore-trash-{int(time.time())}` — ONE-SECOND resolution
+    # and ONE global REPORTS_DIR, so the key was (second, basename): two restores in the same
+    # second that each quarantined a same-named file landed on one path, and `shutil.move` onto an
+    # existing file renames OVER it. Measured (findings-2026-09-25.md, F3, Medium): the first
+    # quarantined file destroyed with no recoverable copy — in the very mechanism whose whole point
+    # is that a wrong move stays recoverable. `mkdtemp` is atomic and collision-free.
+    trash_dir: "Path | None" = None
     if store.is_dir():
         for live in sorted(store.iterdir(), key=lambda p: p.name):
             if not live.is_file():
@@ -589,11 +631,19 @@ def restore(before: Manifest, repo: Path, store: Path, *, dry_run: bool = False)
                 if dry_run:
                     continue
                 try:
-                    trash_dir.mkdir(parents=True, exist_ok=True)
+                    if trash_dir is None:
+                        # ⚠ mkdtemp does NOT create parents, where the `.mkdir(parents=True,
+                        # exist_ok=True)` it replaced DID. Without this the call raises
+                        # FileNotFoundError whenever REPORTS_DIR is absent — caught by the OSError
+                        # arm below, which then silently SKIPS the quarantine: a fix for data loss
+                        # that caused data loss. Caught by `tests/smoke.py`'s M5 arms, whose fixture
+                        # points REPORTS_DIR at a path that does not exist yet.
+                        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+                        trash_dir = Path(tempfile.mkdtemp(prefix=".restore-trash-", dir=REPORTS_DIR))
                     shutil.move(str(live), str(trash_dir / live.name))
                 except OSError as e:
                     skipped.append(f"quarantine store/{live.name}: {type(e).__name__}: {e}")
-        if not dry_run and trash_dir.is_dir():
+        if not dry_run and trash_dir is not None:
             notes.append(f"quarantined {len(deletes)} extra store file(s) → {trash_dir} (recoverable, NOT deleted)")
     elif before.store_present:
         notes.append(f"store {store} vanished since the snapshot — recreating from the snapshot files")

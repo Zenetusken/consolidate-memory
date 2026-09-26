@@ -1,13 +1,51 @@
-# Dream Beta-Harness — STATUS (dream-beta-tester v0.1.8 · built 2026-06-21 · refreshed 2026-08-28)
+# Dream Beta-Harness — STATUS (dream-beta-tester v0.2.0 · built 2026-06-21 · refreshed 2026-09-26)
 
 A reusable, any-repo harness that beta-tests the **consolidate-memory "dream" skill**: runs it
 as a faithful consumer, adversarially verifies it, and emits a version-stamped defect report.
 This document IS dream-beta-tester's changelog (the plugin has no separate `CHANGELOG.md` —
-its `plugin.json` version is the source of truth, currently **0.1.8**); this refresh validates
+its `plugin.json` version is the source of truth, currently **0.2.0**); this refresh validates
 the **consolidate-memory SKILL** at v0.1.85 — a different plugin's version, tracked
 separately in *its* `CHANGELOG.md`, which does not mention these dream-beta-tester fixes.
 Consumer/beta-tester tooling — it NEVER patches the skill it tests. Design: [`SPEC.md`](SPEC.md);
 harness-teeth design of record: [`SPEC-A.md`](SPEC-A.md).
+
+## 0.2.0 (2026-09-26) — the three pentest findings from 2026-07-06, CLOSED
+
+The DevSecOps run of 2026-07-06 (`security/findings-2026-07-06.md`, parent repo, gitignored)
+recorded 3 confirmed findings against this plugin and left its gate row reading **"BLOCK → not yet
+fixed"**. Re-triaged 2026-09-25: **all three were still open**, each reproduced live. All three are
+now fixed, and — the part that matters — **each carries an arm that was measured RED against the
+pre-fix code and GREEN after**.
+
+| # | Finding | Fix |
+|---|---|---|
+| F1a | Symlinked repo doc followed on `snapshot()` → out-of-repo secret copied into the persisted reports tree | `_regular_file()` — a symlink is never followed |
+| F1b | `restore()` wrote THROUGH a retargeted symlink → out-of-repo file clobbered | the write is **REFUSED** and named in `skipped`, not silently skipped |
+| F2 | `~/project/**/consolidate-memory/**` glob, winner chosen by a **self-declared** `plugin.json` version → a cloned repo is subprocessed AND imported in-process | the unauthenticated globs are **removed**; a scripts dir now comes from an explicit `--skill` / `$CONSOLIDATE_MEMORY_SCRIPTS`, or a real install root |
+| F3 | `.restore-trash-{epoch-second}` — one shared dir, `shutil.move` renamed OVER it → the first quarantine destroyed | `tempfile.mkdtemp` — atomic and collision-free |
+
+⚠ **Why the arms exist at all.** `ci_check.sh`'s oracle tests the **consolidate-memory** skill; it
+does not exercise `snapshot.py` or `beta_checks.py`. Without arms, these fixes could be reverted
+with the gate green — the defect class the parent repo keeps paying for. `maintainer/ci_check.sh`
+now runs `maintainer/selftest_hardening.py` as a blocking stage: **4/4**, and a failure reads
+`HARDENING REGRESSION — a closed pentest finding has REOPENED. PUSH BLOCKED`.
+
+⚠ **F3's arm pins `time.time`** so the same-second collision is deterministic. A race left to
+chance would be a flake, and a flaky pin is not a pin.
+
+⚠ **F2 is a behaviour change, and that is why this is a MINOR (0.1.8 → 0.2.0).** A dev checkout
+under `~/project` no longer wins by being found; it must be NAMED, via `--skill` or
+`$CONSOLIDATE_MEMORY_SCRIPTS` (both honoured verbatim, unchanged). That is the deliberate cost of
+removing a path where writing a JSON file made you the winner. `maintainer/ci_check.sh` passes
+`--skill` explicitly and is unaffected.
+
+⚠ **Two arms were green for the WRONG reason before they were right**, both caught by measurement
+rather than by reading. F1b first symlinked the file BEFORE the snapshot — which the F1a fix now
+skips, so there was no entry to restore and the arm proved nothing about the write-through leg. F2
+first stubbed three hand-picked scripts, but the filter reads `_REQUIRED_SCRIPTS`
+(`memory_status.py`, `sync_global.py`, `render_dashboard.py`), so the clone was rejected before the
+ranking under test ever ran. **A fixture that encodes its own copy of a predicate measures the copy,
+not the code.**
 
 ## Automation — continuous QA (installed 2026-06-21)
 A **pre-push gate** runs the deterministic oracle on every consolidate-memory push and **blocks

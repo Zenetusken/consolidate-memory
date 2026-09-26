@@ -148,6 +148,20 @@ try:
 except Exception: print('ERR')" 2>/dev/null)"
 printf '%s\tv%s\t%s\n' "$(now)" "$VER" "${SUM:-ERR}" >> "$REPORTS/.gate-log.tsv" 2>/dev/null
 
+# ── hardening arms (2026-09-25): the three pentest findings this plugin left OPEN ──
+# ⚠ This gate's oracle tests the CONSOLIDATE-MEMORY skill — it does not exercise this plugin's own
+# `snapshot.py` / `beta_checks.py`. Without this stage a regression in either would ship with
+# nothing able to fail, which is the defect class the parent repo keeps paying for. Every arm is a
+# PIN: each was measured RED against the pre-fix code (0 passed / 4 failed) and GREEN after.
+if python3 "$HERE/selftest_hardening.py" >/dev/null 2>&1; then
+  echo "$TAG ✓ hardening arms 4/4 — F1a disclosure · F1b write-through · F2 discovery · F3 quarantine" >&2
+else
+  echo "$TAG ❌ HARDENING REGRESSION — a closed pentest finding has REOPENED. PUSH BLOCKED" >&2
+  python3 "$HERE/selftest_hardening.py" 2>&1 | grep -E '^  ✗' >&2 || true
+  echo "$TAG → plugins/dream-beta-tester/maintainer/selftest_hardening.py · findings: security/findings-2026-09-25.md · override → git push --no-verify" >&2
+  exit 1
+fi
+
 case "$VERDICT" in
   clean)
     echo "$TAG ✓ 0 FAIL — v$VER clean of known regressions ($(printf '%s' "$SUM" | cut -f2) advisory warn) · result → $REPORTS/latest.json" >&2
