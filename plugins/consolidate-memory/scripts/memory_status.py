@@ -3963,8 +3963,9 @@ def _is_promotion_candidate(text: str) -> bool:
 
     ⚠ "NOT already cross-project-scoped", not "no `scope` set yet" — and the difference was a LIVE defect
     until v0.4.78. This filter used to test `not fm.get("scope")`, which reads as "unclassified yet", but
-    `local_ingress` stamps `scope: project-local` on EVERY fact it writes (`:388`, refusing any other
-    value at `:372-373`). So the unclassified state became UNREACHABLE for anything authored since that
+    `local_ingress` stamps `scope: project-local` on EVERY fact it writes — the assignment in its
+    upsert path, guarded by a refusal of any other value beside it (grep `local_ingress.py` for the
+    scope argument; cited by SYMBOL, never by line, per the rule this release records) So the unclassified state became UNREACHABLE for anything authored since that
     writer landed, and the seed could only ever surface files predating it — silently emptying as those
     were archived (measured: 42 of 93 facts still carry no scope, ALL of them modified on or after the
     writer's own landing date). The predicate now keys on the INTENT rather than on a historical

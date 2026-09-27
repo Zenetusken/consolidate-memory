@@ -7,50 +7,64 @@ version changes on `main`.
 
 ## [0.4.78] — 2026-09-26
 
-**Patch — the promotion seed could only ever see files that predated its own writer.**
+**Patch — the promotion seed's population was unreachable by construction.**
 
-**1 · The Phase-1 promotion seed's population.** `_is_promotion_candidate` tested `not fm.get("scope")`,
-documented as *"no `scope` set yet"* — the unclassified state. But `local_ingress` stamps
-`scope: project-local` on every fact it writes (and refuses any other value), so that state became
-**unreachable** for anything authored since. The seed surfaced only files predating the writer and would
-have emptied silently as they were archived. MEASURED on this store: the pre-fix predicate sees
-**19** candidates of 42 unscoped facts; the post-fix predicate sees **45 of 93**. Both cap at
-`_PROMO_CAP = 8`, so the visible list length never moved — what moved is **which** facts the gate is
-capable of seeing, which is the part that was broken.
+**1 · The predicate.** `_is_promotion_candidate` tested `not fm.get("scope")`, documented as *"no
+`scope` set yet"* — the unclassified state. But `local_ingress` stamps `scope: project-local` on every
+fact it writes (refusing any other value), so that state is unreachable for anything that writer
+touches. The predicate now keys on intent — **not already cross-project-scoped** — instead of on a
+historical accident.
 
-⚠ The widening is safe because `_is_mirror` runs first: every fact here already carrying
-`user-global`/`stack-general` is a mirror (**measured 4 of 4**), so it cannot re-admit a promoted fact.
-The predicate now keys on intent — *not already cross-project-scoped* — instead of on a historical
-accident, and `SKILL.md`'s Phase-1 text no longer says "unscoped".
+⚠ **The claim this entry's first cut made was FALSE, and the correction matters.** It said the seed
+surfaced only files *predating* the writer. Measured: **0 of the candidates have an mtime before the
+writer's 2026-09-01 landing** — they run 2026-09-13 to 2026-09-25. The defect is about AUTHORSHIP
+("files the writer never stamped"), never a date relation, and this release's own docstring said the
+opposite in the same commit. That is the class this repo keeps re-paying for.
 
-**2 · The pin, and the value four checks had never sampled.** The seed was already pinned at four
-values: no-scope/feedback (True), no-scope/project (False), **user-global**/feedback (False), mirror
-(False). None of them is `scope: project-local` — the state **every fact written since the writer landed**
-is actually in. Added as a PIN (RED pre-fix, verified by loading the pre-fix module and running it:
-`False` before, `True` after). ⚠ The neighbouring check's label said "an already-**scoped** fact is NOT";
-corrected to "already-**cross-project**-scoped", since `project-local` is a scope and IS a candidate.
+⚠ **And the first cut's figures were measured on a different store state than the reader holds.** It
+printed *19 candidates of 42 unscoped* — the values BEFORE this release's own promotion (below),
+which removed one file from both populations. MEASURED on the SHIPPED store, both predicates run
+against it: **pre-fix 18 of 41 unscoped, post-fix 45 of 93.** Both cap at `_PROMO_CAP = 8`, so the
+visible list length never moved — what moved is **which** facts the gate is capable of seeing.
 
-⚠ **A CONTROL was written for this and DELETED, because measuring falsified its premise.** It asserted
-that an empty-but-present `scope` reads as local; `_frontmatter` is naive and returns the literal `"''"`
-for `scope: ''`, so the assertion failed. STATED BOUND: a QUOTED scope is read literally and excludes the
-fact. Unreachable today — the writer emits `fm["scope"] = "project-local"` unquoted and **0 of 93** facts
-carry a quoted scope — so it is a bound, not a defect. It gets no D6 term, because it never ran green.
+⚠ **The safety argument, re-measured post-promotion:** every fact here carrying
+`user-global`/`stack-general` is a mirror — **5 of 5**, not the *4 of 4* the first cut printed (this
+release's own promotion added the fifth). `_is_mirror` runs first, so the widening cannot re-admit a
+promoted fact.
 
-**3 · Two promoted-blocked facts, closed — and one promoted.** `a-conjunct-green-on-both-trees-is-vacuous`
-and `a-guards-label-is-not-its-predicate` were recorded as blocked by rotted `file:line` citations.
-⚠ **MEASURED: both already cite a FUNCTION NAME beside a bare filename** (one literally says *"grep the
-…"*) — the rot is gone and both are candidates. The item closes; what was missing is the **rule**, now
-recorded: a fact binds its citation to a **greppable anchor**, never a bare line. That rule is what
-v0.4.77 had to apply by hand to the roadmap, and it is the second recorded case of rot blocking a
-promotion.
+**2 · The pin, and the value four checks never sampled.** The seed was pinned at four values —
+no-scope/feedback (True), no-scope/project (False), **user-global**/feedback (False), mirror (False).
+None is `scope: project-local`, the state every fact the writer stamps is actually in. Added as a
+**PIN** (RED pre-fix, verified by loading the pre-fix module: `False` before, `True` after). The
+neighbouring label said "an already-**scoped** fact is NOT" and now says "already-**cross-project**-
+scoped", since `project-local` is a scope and IS a candidate.
 
-`a-fixture-can-be-secret-shaped` was blocked by its own body. ⚠ **The trigger was not the vendor prefixes
-— it was AWS's published example key**, which the fact spelled in order to claim that key "is allowed by
-scanners". That claim is true of **GitHub push protection** (the key is used across `tests/smoke.py`) and
-false of **this repo's own `_looks_secret`**, which flags it. The fact now separates the two scanners and
-describes the key instead of spelling it. Its `[[wikilink]]` was genericized so the promoted copy cannot
-dangle in other projects. **Promoted to `user-global`** — its dependency is the fleet-constant substrate
-(git + GitHub push protection), so Gate 2 applies.
+⚠ **A CONTROL was written and DELETED, because measuring falsified its premise.** It asserted an
+empty-but-present `scope` reads as local; `_frontmatter` is naive and returns the literal `"''"` for
+`scope: ''`, so the assertion failed. STATED BOUND: a **quoted** scope is read literally and excludes
+the fact — unreachable, since the writer emits it unquoted and 0 of 93 facts carry one. It gets no D6
+term, because it never ran green.
+
+**3 · One promotion-blocked fact CLOSED, one still OPEN.**
+
+`a-fixture-can-be-secret-shaped` was blocked by its own body. ⚠ **The trigger was not the vendor
+prefixes — it was AWS's published example key**, spelled in order to claim that key "is allowed by
+scanners". That is true of **GitHub push protection** and false of **this repo's own `_looks_secret`**,
+which flags it. The fact now separates the two scanners and describes the key rather than spelling it.
+**Promoted to `user-global`** — its dependency is the fleet-constant substrate, so Gate 2 applies.
+
+⚠ `a-guards-label-is-not-its-predicate` is **NOT closed**, and this entry's first cut wrongly said
+both were. It is saturated with bare line citations (`index_admission.py:17`, `:86`, `:97-99`,
+`:38-61`, and more), and the symbols behind them were **refactored away** by v0.4.68 — only its THESIS
+survives re-measurement (`_has_canon_files` still tests file presence, and a tombstone still sits as a
+`.md` file). Its remaining live citations are re-anchored here to **symbols, never lines**. The fact
+already carried that rule in one paragraph and had applied it there; the repair is applying it to the
+whole fact. ⚠ `a-conjunct-green-on-both-trees-is-vacuous` IS clean — it cites a function name beside a
+bare filename and carries no line numbers.
+
+⚠ The lesson the pair records, now for the third time across three releases: **bind a citation to a
+greppable anchor, never a line.** v0.4.77 had to apply it by hand to the roadmap; this release applies
+it to a fact that already stated it.
 
 **Suite:** **2397 / 0** (was 2396; the seed PIN adds one named D6 term).
 
