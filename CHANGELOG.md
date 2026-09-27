@@ -9,17 +9,24 @@ version changes on `main`.
 
 **Patch — the promotion seed's population was unreachable by construction.**
 
-**1 · The predicate.** `_is_promotion_candidate` tested `not fm.get("scope")`, documented as *"no
-`scope` set yet"* — the unclassified state. But `local_ingress` stamps `scope: project-local` on every
-fact it writes (refusing any other value), so that state is unreachable for anything that writer
-touches. The predicate now keys on intent — **not already cross-project-scoped** — instead of on a
-historical accident.
+**1 · The predicate's population was a WRITE-PATH PROXY.** `_is_promotion_candidate` tested
+`not fm.get("scope")`, documented as *"no `scope` set yet"* — read as "unclassified yet". But
+scope-absence is not a property of a fact's CONTENT; it is a proxy for **which path wrote it**.
+`local_ingress` stamps `scope: project-local` on everything it writes; a direct file edit stamps
+nothing. So the seed's population was "facts written one way", never "facts that might promote", and it
+systematically EXCLUDED the facts the writer had stamped. The predicate now keys on the property it
+means: a local fact is a candidate whether its scope is ABSENT or already `project-local`.
 
-⚠ **The claim this entry's first cut made was FALSE, and the correction matters.** It said the seed
-surfaced only files *predating* the writer. Measured: **0 of the candidates have an mtime before the
-writer's 2026-09-01 landing** — they run 2026-09-13 to 2026-09-25. The defect is about AUTHORSHIP
-("files the writer never stamped"), never a date relation, and this release's own docstring said the
-opposite in the same commit. That is the class this repo keeps re-paying for.
+⚠ **Two earlier drafts of this paragraph were wrong, and the second correction is the sharper one.**
+Draft 1 said the seed surfaced only files *predating* the writer; measured, **0 of the candidates have
+an mtime before the writer's 2026-09-01 landing**. Draft 2 then said the unscoped state was
+*"unreachable"* and the seed *"would empty as those files were archived"* — **also false, and refuted by
+the same round**: 41 of 93 facts are unscoped, all post-dating the landing, the newest the day of the
+round. The population was never draining. It was simply the wrong population.
+
+⚠ **How the two populations separate, measured: file mode.** The scoped facts are `0o600` — the writer's
+— and the unscoped ones are ALL `0o664`, direct writes. That is the tell the first two drafts missed and
+the reason both framed this as a *time* relation instead of a *path* relation.
 
 ⚠ **And the first cut's figures were measured on a different store state than the reader holds.** It
 printed *19 candidates of 42 unscoped* — the values BEFORE this release's own promotion (below),
