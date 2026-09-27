@@ -122,7 +122,7 @@ than re-auditing it. Read the CHANGELOG for any release you need in full.
 | v0.1.89 | 2026-08-30 | Registrar overflow. |
 | v0.1.88 | 2026-08-30 | Blockers. |
 | v0.1.87 | 2026-08-29 | `sync_global.py --workflows --registrar [--json] [--into SEED]` |
-| v0.1.86 | 2026-08-28 | ### Added — budget-trajectory early-warning: the index slope, projected honestly, with staleness attached The |
+| v0.1.86 | 2026-08-28 | budget-trajectory early-warning: the index slope, projected honestly, with staleness attached The ninth |
 | v0.1.85 | 2026-07-11 | 218 mention occurrences / 28 stems vs 132 reads / 17 stems — 13 stems mentioned but NEVER read. |
 | v0.1.84 | 2026-07-11 | 16 of 76 provenance edges (21%) were ghosts |
 | v0.1.83 | 2026-07-10 | `sync_global.py --workflows [--json]` |
@@ -207,7 +207,7 @@ than re-auditing it. Read the CHANGELOG for any release you need in full.
 | v0.1.4 | 2026-06-17 | Realized-rigor capture + cycle-record persistence (the band-calibration apparatus). |
 | v0.1.3 | 2026-06-16 | Pass-tier rigor modes. |
 | v0.1.2 | 2026-06-16 | Network token attribution. |
-| v0.1.1 | 2026-06-16 | ### Added - `tests/validate_manifests.py` — zero-dependency manifest validator (schema, kebab-case names, |
+| v0.1.1 | 2026-06-16 | `tests/validate_manifests.py` — zero-dependency manifest validator (schema, kebab-case names, relative source |
 | v0.1.0 | 2026-06-16 | Claude Code plugin |
 
 Public 1.0 stays HOLD.

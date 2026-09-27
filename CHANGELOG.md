@@ -21,8 +21,8 @@ It is now a **table generated from `CHANGELOG.md`**: one row per release, `| ver
 entry's own headline |`, covering **181 releases** — every one the CHANGELOG has, where the prose
 covered 33 headers plus an undated tail.
 
-⚠ **Measured: fewer releases covered, more text.** `SKILL.md` went **189,688 → 154,425 chars
-(−18.6%)**. ⚠ The region pair is stated on ONE span: **53,454 → 18,191 chars**, preamble, table and
+⚠ **Measured: fewer releases covered, more text.** `SKILL.md` went **189,688 → 154,423 chars
+(−18.6%)**. ⚠ The region pair is stated on ONE span: **53,454 → 18,189 chars**, preamble, table and
 sentinel together (≈13,364 → ≈4,548 est tok), measured after every edit to the region was finished. An earlier draft printed `17,397` for the "after" side —
 the TABLE ALONE, excluding the 672-char preamble that replaced part of the prose. Two different
 spans, and the one the reader holds is the larger. Lines went UP, 1,777 → 1,866,
