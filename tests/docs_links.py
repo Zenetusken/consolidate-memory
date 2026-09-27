@@ -1647,6 +1647,17 @@ def check_release_index() -> int:
             err(f"SKILL.md's v{ver} headline has DRIFTED from its CHANGELOG section: {head[:60]!r} "
                 f"is not carried there")
         checked += 1
+    # ⚠ THE REVERSE DIRECTION, which the first cut omitted and the adversarial round drove: iterating
+    # ROWS only checks that nothing is INVENTED. It cannot see a DROPPED release, and a dropped row is
+    # SILENT — MEASURED: deleting one row left rc=0 with byte-identical output. The claim "neither
+    # invented nor silently dropped" needs both directions, and the first cut shipped only one.
+    table_vers = set(re.findall(r"^\| v(\d+\.\d+\.\d+) \|", skill, re.M))
+    missing = sorted(set(sections) - table_vers,
+                     key=lambda v: tuple(int(x) for x in v.split(".")), reverse=True)
+    if missing:
+        err(f"SKILL.md's release index DROPS {len(missing)} release(s) the CHANGELOG has: "
+            f"{', '.join('v' + m for m in missing[:6])}{' …' if len(missing) > 6 else ''} — a dropped "
+            f"row is silent, so this direction must be checked too")
     return checked
 
 
@@ -1669,7 +1680,7 @@ def main() -> int:
     # would mean asserting the CHANGELOG agrees with itself, which is `a-check-that-cannot-fail-is-
     # not-a-check`. Its replacement is STRICTLY STRONGER and sits below: `check_release_index`
     # verifies EVERY derived row against its CHANGELOG section, not one clause.
-    check_release_index()
+    release_rows = check_release_index()
     check_dev_loop_completeness()
     check_layout_pointer()
     check_preview()
@@ -1697,6 +1708,7 @@ def main() -> int:
           f"{plugin_rows} plugin-table rows, "
           f"{status_headers} plugin STATUS headers, "
           f"{spec_status} spec status lines, "
+          f"{release_rows} release-index rows, "
           f"{len(DOCS)} files link-checked, "
           f"{sum(len(_n) for _, _n in REQUIRED_STRINGS.values())} required strings unbroken "
           f"across {len(REQUIRED_STRINGS)} files, anchors balanced, "

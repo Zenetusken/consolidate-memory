@@ -18,7 +18,7 @@ description: >-
 # Consolidate Memory
 
 **v0.4.79** (2026-09-27) — every release, one line each, derived from `CHANGELOG.md`, which is the
-source of record and carries the full entry for each.** This region is GENERATED, not authored:
+source of record and carries the full entry for each. This region is GENERATED, not authored:
 `tests/docs_links.py` checks its rows against the CHANGELOG's version set, so a release can be
 neither invented here nor silently dropped, and a headline cannot drift from the entry it
 summarises. ⚠ It was hand-written prose until this release, and that prose was the surface every
@@ -27,6 +27,7 @@ than re-auditing it. Read the CHANGELOG for any release you need in full.
 
 | release | date | what it was (from `CHANGELOG.md`) |
 |---|---|---|
+| v0.4.79 | 2026-09-27 | Patch — the release log is DERIVED now, because it was the surface every prose defect landed on. |
 | v0.4.78 | 2026-09-26 | Patch — the promotion seed's population was unreachable by construction. |
 | v0.4.77 | 2026-09-26 | Patch — the shipped surface that contradicted its own record, and the always-loaded file that was the stale copy. |
 | v0.4.76 | 2026-09-26 | Patch — the `UnclassifiedReason` pin promised for THIRTEEN releases, and asserted at neither site. |
