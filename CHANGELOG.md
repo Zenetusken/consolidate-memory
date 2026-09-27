@@ -5,6 +5,55 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.78] — 2026-09-26
+
+**Patch — the promotion seed could only ever see files that predated its own writer.**
+
+**1 · The Phase-1 promotion seed's population.** `_is_promotion_candidate` tested `not fm.get("scope")`,
+documented as *"no `scope` set yet"* — the unclassified state. But `local_ingress` stamps
+`scope: project-local` on every fact it writes (and refuses any other value), so that state became
+**unreachable** for anything authored since. The seed surfaced only files predating the writer and would
+have emptied silently as they were archived. MEASURED on this store: the pre-fix predicate sees
+**19** candidates of 42 unscoped facts; the post-fix predicate sees **45 of 93**. Both cap at
+`_PROMO_CAP = 8`, so the visible list length never moved — what moved is **which** facts the gate is
+capable of seeing, which is the part that was broken.
+
+⚠ The widening is safe because `_is_mirror` runs first: every fact here already carrying
+`user-global`/`stack-general` is a mirror (**measured 4 of 4**), so it cannot re-admit a promoted fact.
+The predicate now keys on intent — *not already cross-project-scoped* — instead of on a historical
+accident, and `SKILL.md`'s Phase-1 text no longer says "unscoped".
+
+**2 · The pin, and the value four checks had never sampled.** The seed was already pinned at four
+values: no-scope/feedback (True), no-scope/project (False), **user-global**/feedback (False), mirror
+(False). None of them is `scope: project-local` — the state **every fact written since the writer landed**
+is actually in. Added as a PIN (RED pre-fix, verified by loading the pre-fix module and running it:
+`False` before, `True` after). ⚠ The neighbouring check's label said "an already-**scoped** fact is NOT";
+corrected to "already-**cross-project**-scoped", since `project-local` is a scope and IS a candidate.
+
+⚠ **A CONTROL was written for this and DELETED, because measuring falsified its premise.** It asserted
+that an empty-but-present `scope` reads as local; `_frontmatter` is naive and returns the literal `"''"`
+for `scope: ''`, so the assertion failed. STATED BOUND: a QUOTED scope is read literally and excludes the
+fact. Unreachable today — the writer emits `fm["scope"] = "project-local"` unquoted and **0 of 93** facts
+carry a quoted scope — so it is a bound, not a defect. It gets no D6 term, because it never ran green.
+
+**3 · Two promoted-blocked facts, closed — and one promoted.** `a-conjunct-green-on-both-trees-is-vacuous`
+and `a-guards-label-is-not-its-predicate` were recorded as blocked by rotted `file:line` citations.
+⚠ **MEASURED: both already cite a FUNCTION NAME beside a bare filename** (one literally says *"grep the
+…"*) — the rot is gone and both are candidates. The item closes; what was missing is the **rule**, now
+recorded: a fact binds its citation to a **greppable anchor**, never a bare line. That rule is what
+v0.4.77 had to apply by hand to the roadmap, and it is the second recorded case of rot blocking a
+promotion.
+
+`a-fixture-can-be-secret-shaped` was blocked by its own body. ⚠ **The trigger was not the vendor prefixes
+— it was AWS's published example key**, which the fact spelled in order to claim that key "is allowed by
+scanners". That claim is true of **GitHub push protection** (the key is used across `tests/smoke.py`) and
+false of **this repo's own `_looks_secret`**, which flags it. The fact now separates the two scanners and
+describes the key instead of spelling it. Its `[[wikilink]]` was genericized so the promoted copy cannot
+dangle in other projects. **Promoted to `user-global`** — its dependency is the fleet-constant substrate
+(git + GitHub push protection), so Gate 2 applies.
+
+**Suite:** **2397 / 0** (was 2396; the seed PIN adds one named D6 term).
+
 ## [0.4.77] — 2026-09-26
 
 **Patch — the shipped surface that contradicted its own record, and the always-loaded file that was

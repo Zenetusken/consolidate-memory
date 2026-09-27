@@ -3957,13 +3957,30 @@ _PROMO_CAP = 8                              # cap the Phase-1 promotion seed —
 
 
 def _is_promotion_candidate(text: str) -> bool:
-    """True if a fact's frontmatter passes the Phase-1 promotion SEED filter: NOT a mirror, no `scope`
-    set yet, and a cross-project-leaning `type` (feedback/reference — directives, pointers). A WEAK
-    pre-filter only; the model re-walks the scope cascade by CONTENT + re-verifies before promoting."""
+    """True if a fact's frontmatter passes the Phase-1 promotion SEED filter: NOT a mirror, NOT already
+    cross-project-scoped, and a cross-project-leaning `type` (feedback/reference — directives, pointers).
+    A WEAK pre-filter only; the model re-walks the scope cascade by CONTENT + re-verifies before promoting.
+
+    ⚠ "NOT already cross-project-scoped", not "no `scope` set yet" — and the difference was a LIVE defect
+    until v0.4.78. This filter used to test `not fm.get("scope")`, which reads as "unclassified yet", but
+    `local_ingress` stamps `scope: project-local` on EVERY fact it writes (`:388`, refusing any other
+    value at `:372-373`). So the unclassified state became UNREACHABLE for anything authored since that
+    writer landed, and the seed could only ever surface files predating it — silently emptying as those
+    were archived (measured: 42 of 93 facts still carry no scope, ALL of them modified on or after the
+    writer's own landing date). The predicate now keys on the INTENT rather than on a historical
+    accident: a local fact is a promotion candidate whether its scope is absent or already
+    `project-local`; anything cross-project-scoped is excluded.
+
+    ⚠ Widening is SAFE because `_is_mirror` runs first: every fact in this store that already carries
+    `user-global`/`stack-general` is a mirror (measured 4 of 4), so the widening cannot re-admit a fact
+    that has already been promoted."""
     if _is_mirror(text):                           # already a global mirror → not a candidate
         return False
     fm = _frontmatter(text)
-    return not fm.get("scope") and fm.get("type", "") in _PROMO_TYPES
+    # `or ""` catches an empty-but-present scope (the v0.4.34 idiom); both it and an absent one mean
+    # "local" here.
+    return str(fm.get("scope") or "").strip() in ("", "project-local") \
+        and fm.get("type", "") in _PROMO_TYPES
 
 
 def _promotion_candidates(fact_files: list) -> list[str]:
