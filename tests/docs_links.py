@@ -1600,6 +1600,56 @@ def check_layout_pointer() -> int:
     return 1
 
 
+
+def check_release_index() -> int:
+    """The SKILL.md release index is DERIVED — assert every row matches its CHANGELOG section.
+
+    v0.4.79 replaced SKILL.md's hand-written release-log prose with a table generated from
+    `CHANGELOG.md`. That makes the region checkable in a way prose never was: a row can be neither
+    INVENTED (a version the CHANGELOG has no section for) nor DRIFTED (a headline the section does
+    not carry). ⚠ This is the strongest available test for the class, and it is bounded: it checks
+    figures and identifiers BY CONTAINMENT, so a claim carried purely in prose with no figure and no
+    backticked identifier is invisible to it — stated rather than papered over.
+
+    It exists because the prose it replaced was the surface EVERY prose defect of the seven preceding
+    releases landed on. Deriving the region removes that surface instead of re-auditing it.
+    """
+    skill = read("plugins/consolidate-memory/skills/consolidate-memory/SKILL.md")
+    # ⚠ Anchored on the ROW SHAPE, not on a preceding header. A header-anchored matcher over-reached into
+    # an unrelated 3-column table later in the file the first time it ran (MEASURED: it read the
+    # dream-beat table). `| vN.N.N |` is unambiguous — no other table in this file leads a row with a
+    # version — so the shape IS the anchor, and a reworded header cannot disable the check.
+    rows = re.findall(r"^\| v\d+\.\d+\.\d+ \|[^\n]*$", skill, re.M)
+    if not rows:
+        err("SKILL.md carries no release-index rows (`| vN.N.N | … |`) — the derived region is gone or "
+            "its row shape changed; re-anchor or restore it")
+        return 0
+    changelog = read("CHANGELOG.md")
+    sections: dict = {}
+    for sm in re.finditer(r"^## \[(\d+\.\d+\.\d+)\] — (\d{4}-\d{2}-\d{2})[^\n]*\n(.*?)(?=^## \[|\Z)",
+                          changelog, re.S | re.M):
+        sections[sm.group(1)] = (sm.group(2), sm.group(3))
+    checked = 0
+    for row in rows:
+        cm = re.match(r"\| v(\d+\.\d+\.\d+) \| (\d{4}-\d{2}-\d{2}) \| (.+?) \|\s*$", row)
+        if cm is None:
+            err(f"SKILL.md release-index row is malformed: {row[:70]!r}")
+            continue
+        ver, date, head = cm.groups()
+        if ver not in sections:
+            err(f"SKILL.md's release index names v{ver}, which CHANGELOG.md has no section for — "
+                f"a release can be neither invented here nor silently dropped")
+            continue
+        cdate, body = sections[ver]
+        if date != cdate:
+            err(f"SKILL.md's v{ver} row is dated {date} but CHANGELOG.md dates it {cdate}")
+        if head not in re.sub(r"\s+", " ", body):
+            err(f"SKILL.md's v{ver} headline has DRIFTED from its CHANGELOG section: {head[:60]!r} "
+                f"is not carried there")
+        checked += 1
+    return checked
+
+
 def main() -> int:
     check_badge()
     check_links()
@@ -1612,7 +1662,14 @@ def main() -> int:
     plugin_rows = check_plugin_table()
     status_headers = check_plugin_status_docs()
     spec_status = check_spec_status()
-    check_cost_claim_agreement()
+    # ⚠ `check_cost_claim_agreement` was RETIRED at v0.4.79, deliberately and not because it failed.
+    # It compared a `Cost:` clause on TWO hand-written surfaces (SKILL.md's release-log prose and
+    # CHANGELOG.md). v0.4.79 replaced that prose with a region DERIVED from the CHANGELOG, so there
+    # is no longer a second surface to disagree — the claim lives in one place. Keeping the pin
+    # would mean asserting the CHANGELOG agrees with itself, which is `a-check-that-cannot-fail-is-
+    # not-a-check`. Its replacement is STRICTLY STRONGER and sits below: `check_release_index`
+    # verifies EVERY derived row against its CHANGELOG section, not one clause.
+    check_release_index()
     check_dev_loop_completeness()
     check_layout_pointer()
     check_preview()

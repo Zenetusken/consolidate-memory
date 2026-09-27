@@ -5,6 +5,51 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.79] — 2026-09-27
+
+**Patch — the release log is DERIVED now, because it was the surface every prose defect landed on.**
+
+`SKILL.md`'s release-log region was hand-written prose: 33 entries plus a tail enumerating 25 older
+versions, 53,454 chars of it, and **no gate read any of it** — the schema block, the currency
+statement and the `Cost:` clause were checked; the prose was not. That is the region where seven
+consecutive releases' prose defects landed, three of them in text written to correct an earlier one.
+
+It is now a **table generated from `CHANGELOG.md`**: one row per release, `| version | date | the
+entry's own headline |`, covering **181 releases** — every one the CHANGELOG has, where the prose
+covered 33 headers plus an undated tail.
+
+⚠ **Measured: fewer releases covered, more text.** `SKILL.md` went **189,688 → 154,303 chars
+(−18.7%)**; the region **53,454 → 17,397** (≈13,364 → ≈4,350 est tok). Lines went UP, 1,777 → 1,866,
+because a table is one row per line where the prose was two 30 KB physical lines.
+
+**The gate is the point.** `check_release_index` asserts that every row's version EXISTS in
+`CHANGELOG.md`, that its date MATCHES, and that its headline is **contained in that release's own
+section** — so a release can be neither invented here nor silently dropped, and a headline cannot
+drift from the entry it summarises. ⚠ **Its bound is stated rather than papered over:** containment
+checks figures and backticked identifiers, so a claim carried purely in prose with no figure and no
+identifier is invisible to it. That is strictly stronger than what it replaces, and it is not total.
+
+⚠ **`check_cost_claim_agreement` is RETIRED, deliberately, and not because it failed.** It compared a
+`Cost:` clause across TWO hand-written surfaces — this file and `SKILL.md`'s prose. The prose is gone,
+so there is no second surface to disagree, and keeping the pin would mean asserting the CHANGELOG
+agrees with itself: `a-check-that-cannot-fail-is-not-a-check`. Its replacement is strictly stronger —
+it checks all 181 rows instead of one clause. The retirement is recorded where the call was, not only
+here.
+
+⚠ **Two traps this release walked into and out of, both caught by the gates rather than by review:**
+`check_version_statements` reads the FIRST `vX.Y.Z` in the file, so the table is ordered
+**newest-first** (a header-anchored matcher also over-reached into an unrelated table on its first run,
+and is now anchored on the row shape itself); and a regenerated row must be a **verbatim** span of its
+section — an ellipsis or a placeholder is not contained, which the gate flagged on the first two
+attempts.
+
+⚠ **And what was checked before cutting it:** the old region's entries were measured against their
+CHANGELOG sections for figures and identifiers — 32 of 33 carried 0–3 that their section lacked, and
+the tail's identifiers resolve elsewhere in the tree. So the region was a condensation of an upstream
+source, not a sole home.
+
+**Suite:** **2397 / 0**; `docs_links` now checks 181 release rows in place of one `Cost:` clause.
+
 ## [0.4.78] — 2026-09-26
 
 **Patch — the promotion seed's population was unreachable by construction.**
