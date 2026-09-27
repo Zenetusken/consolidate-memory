@@ -3957,13 +3957,35 @@ _PROMO_CAP = 8                              # cap the Phase-1 promotion seed —
 
 
 def _is_promotion_candidate(text: str) -> bool:
-    """True if a fact's frontmatter passes the Phase-1 promotion SEED filter: NOT a mirror, no `scope`
-    set yet, and a cross-project-leaning `type` (feedback/reference — directives, pointers). A WEAK
-    pre-filter only; the model re-walks the scope cascade by CONTENT + re-verifies before promoting."""
+    """True if a fact's frontmatter passes the Phase-1 promotion SEED filter: NOT a mirror, NOT already
+    cross-project-scoped, and a cross-project-leaning `type` (feedback/reference — directives, pointers).
+    A WEAK pre-filter only; the model re-walks the scope cascade by CONTENT + re-verifies before promoting.
+
+    ⚠ "NOT already cross-project-scoped", not "no `scope` set yet" — and the difference is the defect
+    v0.4.78 repaired. This filter tested `not fm.get("scope")`, which its own docstring read as
+    "unclassified yet". But scope-absence is not a property of a fact's CONTENT — it is a proxy for
+    WHICH PATH WROTE IT: `local_ingress` stamps `scope: project-local` on everything it writes, and a
+    direct file edit stamps nothing. MEASURED: the two populations separate by file mode — the scoped
+    facts are `0o600` (the writer's), the unscoped ones are ALL `0o664` (direct writes). So the seed's
+    population was "facts written one way", never "facts that might promote", and it systematically
+    EXCLUDED the facts the writer had stamped.
+
+    ⚠ **An earlier draft of this docstring said the unscoped state was "unreachable" and the seed "would
+    empty as those files were archived". BOTH ARE FALSE**, measured by the adversarial round. The
+    population was never draining — it was simply the wrong population. The predicate now keys on the
+    property it means: a local fact is a candidate whether its scope is ABSENT or already
+    `project-local`; anything cross-project-scoped is excluded.
+
+    ⚠ Widening is SAFE because `_is_mirror` runs first: every fact in this store that already carries
+    `user-global`/`stack-general` is a mirror (measured 4 of 4), so the widening cannot re-admit a fact
+    that has already been promoted."""
     if _is_mirror(text):                           # already a global mirror → not a candidate
         return False
     fm = _frontmatter(text)
-    return not fm.get("scope") and fm.get("type", "") in _PROMO_TYPES
+    # `or ""` catches an empty-but-present scope (the v0.4.34 idiom); both it and an absent one mean
+    # "local" here.
+    return str(fm.get("scope") or "").strip() in ("", "project-local") \
+        and fm.get("type", "") in _PROMO_TYPES
 
 
 def _promotion_candidates(fact_files: list) -> list[str]:

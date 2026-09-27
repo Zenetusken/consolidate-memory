@@ -5,6 +5,76 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.78] — 2026-09-26
+
+**Patch — the promotion seed's population was unreachable by construction.**
+
+**1 · The predicate's population was a WRITE-PATH PROXY.** `_is_promotion_candidate` tested
+`not fm.get("scope")`, documented as *"no `scope` set yet"* — read as "unclassified yet". But
+scope-absence is not a property of a fact's CONTENT; it is a proxy for **which path wrote it**.
+`local_ingress` stamps `scope: project-local` on everything it writes; a direct file edit stamps
+nothing. So the seed's population was "facts written one way", never "facts that might promote", and it
+systematically EXCLUDED the facts the writer had stamped. The predicate now keys on the property it
+means: a local fact is a candidate whether its scope is ABSENT or already `project-local`.
+
+⚠ **Two earlier drafts of this paragraph were wrong, and the second correction is the sharper one.**
+Draft 1 said the seed surfaced only files *predating* the writer; measured, **0 of the candidates have
+an mtime before the writer's 2026-09-01 landing**. Draft 2 then said the unscoped state was
+*"unreachable"* and the seed *"would empty as those files were archived"* — **also false, and refuted by
+the same round**: 41 of 93 facts are unscoped, all post-dating the landing, the newest the day of the
+round. The population was never draining. It was simply the wrong population.
+
+⚠ **How the two populations separate, measured: file mode.** The scoped facts are `0o600` — the writer's
+— and the unscoped ones are ALL `0o664`, direct writes. That is the tell the first two drafts missed and
+the reason both framed this as a *time* relation instead of a *path* relation.
+
+⚠ **And the first cut's figures were measured on a different store state than the reader holds.** It
+printed *19 candidates of 42 unscoped* — the values BEFORE this release's own promotion (below),
+which removed one file from both populations. MEASURED on the SHIPPED store, both predicates run
+against it: **pre-fix 18 of 41 unscoped, post-fix 45 of 93.** Both cap at `_PROMO_CAP = 8`, so the
+visible list length never moved — what moved is **which** facts the gate is capable of seeing.
+
+⚠ **The safety argument, re-measured post-promotion:** every fact here carrying
+`user-global`/`stack-general` is a mirror — **5 of 5**, not the *4 of 4* the first cut printed (this
+release's own promotion added the fifth). `_is_mirror` runs first, so the widening cannot re-admit a
+promoted fact.
+
+**2 · The pin, and the value four checks never sampled.** The seed was pinned at four values —
+no-scope/feedback (True), no-scope/project (False), **user-global**/feedback (False), mirror (False).
+None is `scope: project-local`, the state every fact the writer stamps is actually in. Added as a
+**PIN** (RED pre-fix, verified by loading the pre-fix module: `False` before, `True` after). The
+neighbouring label said "an already-**scoped** fact is NOT" and now says "already-**cross-project**-
+scoped", since `project-local` is a scope and IS a candidate.
+
+⚠ **A CONTROL was written and DELETED, because measuring falsified its premise.** It asserted an
+empty-but-present `scope` reads as local; `_frontmatter` is naive and returns the literal `"''"` for
+`scope: ''`, so the assertion failed. STATED BOUND: a **quoted** scope is read literally and excludes
+the fact — unreachable, since the writer emits it unquoted and 0 of 93 facts carry one. It gets no D6
+term, because it never ran green.
+
+**3 · One promotion-blocked fact CLOSED, one still OPEN.**
+
+`a-fixture-can-be-secret-shaped` was blocked by its own body. ⚠ **The trigger was not the vendor
+prefixes — it was AWS's published example key**, spelled in order to claim that key "is allowed by
+scanners". That is true of **GitHub push protection** and false of **this repo's own `_looks_secret`**,
+which flags it. The fact now separates the two scanners and describes the key rather than spelling it.
+**Promoted to `user-global`** — its dependency is the fleet-constant substrate, so Gate 2 applies.
+
+⚠ `a-guards-label-is-not-its-predicate` is **NOT closed**, and this entry's first cut wrongly said
+both were. It is saturated with bare line citations (`index_admission.py:17`, `:86`, `:97-99`,
+`:38-61`, and more), and the symbols behind them were **refactored away** by v0.4.68 — only its THESIS
+survives re-measurement (`_has_canon_files` still tests file presence, and a tombstone still sits as a
+`.md` file). Its remaining live citations are re-anchored here to **symbols, never lines**. The fact
+already carried that rule in one paragraph and had applied it there; the repair is applying it to the
+whole fact. ⚠ `a-conjunct-green-on-both-trees-is-vacuous` IS clean — it cites a function name beside a
+bare filename and carries no line numbers.
+
+⚠ The lesson the pair records, now for the third time across three releases: **bind a citation to a
+greppable anchor, never a line.** v0.4.77 had to apply it by hand to the roadmap; this release applies
+it to a fact that already stated it.
+
+**Suite:** **2397 / 0** (was 2396; the seed PIN adds one named D6 term).
+
 ## [0.4.77] — 2026-09-26
 
 **Patch — the shipped surface that contradicted its own record, and the always-loaded file that was

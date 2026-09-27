@@ -1006,10 +1006,28 @@ check("v0.1.16: promotion seed — an unscoped feedback fact IS a candidate",
       ms._is_promotion_candidate("---\nname: x\nmetadata:\n  type: feedback\n---\nb\n") is True)
 check("v0.1.16: promotion seed — a type:project fact is NOT",
       ms._is_promotion_candidate("---\nname: y\nmetadata:\n  type: project\n---\nb\n") is False)
-check("v0.1.16: promotion seed — an already-scoped fact is NOT",
+check("v0.1.16: promotion seed — an already-CROSS-PROJECT-scoped fact is NOT",
       ms._is_promotion_candidate("---\nname: z\nmetadata:\n  type: feedback\n  scope: user-global\n---\nb\n") is False)
 check("v0.1.16: promotion seed — a mirror is NOT (already global)",
       ms._is_promotion_candidate("---\nname: m\nmetadata:\n  global_ref: m\n  type: feedback\n---\nb\n") is False)
+# ⚠ v0.4.78 (PIN): the seed must surface a fact the LOCAL WRITER stamped. This is the value the four
+# checks above never sampled — and it is the state every fact written since `local_ingress` began
+# stamping `scope: project-local` is actually in. MEASURED pre-fix: this returns False, so the seed's
+# population was only ever files PREDATING that writer, silently emptying as they were archived
+# (`a-pins-coverage-is-the-values-and-path-it-samples`: a pin's coverage is the VALUES it samples).
+# ⚠ The label says CROSS-PROJECT-scoped above because `project-local` IS a scope and IS a candidate —
+# the old label, "already-scoped", now names a wider set than the condition tests.
+check("v0.4.78 (PIN): promotion seed — a `scope: project-local` fact IS a candidate (the value the "
+      "writer stamps on everything, and the one the four checks above never sampled)",
+      ms._is_promotion_candidate("---\nname: w\nmetadata:\n  type: feedback\n  scope: project-local\n---\nb\n") is True)
+# ⚠ A CONTROL asserting "an empty-but-present scope reads as local" was WRITTEN HERE AND DELETED, because
+# it encoded a false premise about the parser and MEASURING said so: `_frontmatter` returns the literal
+# string `"''"` for `scope: ''` — it does not unquote — so the fact is excluded, and the assertion failed.
+# The v0.4.34 `or ""` idiom in the predicate therefore guards a state this parser cannot produce for
+# `scope`: it normalizes an ABSENT key and a BARE-EMPTY one to `None` alike. STATED BOUND, measured: a
+# QUOTED scope is read literally and would exclude the fact. Unreachable today — the writer emits
+# `fm["scope"] = "project-local"` unquoted, and 0 of 93 facts in this store carry a quoted scope — so it
+# is a bound, not a defect. The `user-global` check above is this widening's real control.
 # promotion stacks-guard helper (pure): the set is_relevant intersects AND the dead-canonical guard
 # refuses on. A stack-general fact with an empty set can match no project — promote() must reject it.
 check("v0.1.16: _fact_stacks — tags parse to a set; empty/absent → empty set (the dead-canonical case)",
@@ -27299,6 +27317,14 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                        #     ⚠ `_mint` and `_miss` were fixed by EDITING existing checks
                                        #     (a bool cannot carry a type; `except AssertionError` cannot
                                        #     carry a subclass), so they add no term.
+                            + 1        # v0.4.78 — the promotion seed's MISSING VALUE: 1 PIN (a
+                                       #     `scope: project-local` fact IS a candidate — the state
+                                       #     every fact written since `local_ingress` began stamping
+                                       #     is actually in, and the one value the four v0.1.16
+                                       #     seed checks never sampled). ⚠ A CONTROL was written for
+                                       #     this and DELETED: it asserted the parser treats an empty
+                                       #     scope string as local, and MEASURING showed `_frontmatter`
+                                       #     returns the literal `"''"`. No term: it never ran green.
                             + 22)      # v0.4.42 D2+D3 — 2 D2 pins (the shared input builder:
                                         #     the INDEXED set, and the probative window vector)
                                         #     + 7 D3 pins (body-only keeps the cue, the STALE-cue
